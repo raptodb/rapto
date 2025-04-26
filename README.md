@@ -16,4 +16,5 @@
 <p>The project is work in progress.</p>
 
 <h2>CAS</h2>
-<p><strong>CAS</strong> (<strong>Cache As Storage</strong>) is a system in which storage is utilized and managed as a cache. Rather than maintaining two separate layers, CAS merges storage and caching into a single, unified layer. The cache is governed by a priority-based sorting mechanism, implemented through swapping, in order to accelerate linear search while minimizing computational costs.</p>
+<p><strong>CAS</strong> (<strong>Cache As Storage</strong>) is a system in which storage is utilized and managed as a cache. Rather than maintaining two separate layers, CAS merges storage and caching into a single, unified layer.</p>
+<p>The cache is organized through a priority-based sorting mechanism, supported by intelligent swapping strategies, to accelerate linear search while minimizing computational costs.</p>
