@@ -17,18 +17,19 @@
 
 - [Table of contents](#table-of-contents)
 - [👁️‍🗨️ Overview](#️️-overview)
-- [🧪 The development and use cases](#-the-development-and-use-cases)
+- [🌐 The development and use cases](#-the-development-and-use-cases)
 - [📊 Benchmarks](#-benchmarks)
 - [🚀 Getting started](#-getting-started)
   - [🔗 Dependencies and compatibility](#-dependencies-and-compatibility)
   - [🛠️ How to build](#️-how-to-build)
+  - [🧪 Usage](#-usage)
   - [📚 Documentation](#-documentation)
 
 ## 👁️‍🗨️ Overview
 
 This repository is about Rapto server. Clients are put in specific repositories and are divided by language.
 
-## 🧪 The development and use cases
+## 🌐 The development and use cases
 
 **Rapto** is built on several pillars that set it apart from other data engines.<br> Its core principles are footprinting, speed, minimalism, and security:
 <dl>
@@ -70,6 +71,9 @@ The code is compiled using the Zig build system. Version <ins>0.14.0+</ins> is r
 Example: `zig build -OReleaseFast`
 
 The result will be a executable `rapto` in zig-out folder.
+
+### 🧪 Usage
+
 To use the executable with the various options it is better to consult [/docs/usage](https://github.com/raptodb/rapto/blob/unstable/docs/usage) and [/docs/README.md](https://github.com/raptodb/rapto/blob/unstable/docs/README.md)
 
 Example: `./rapto server --name mydb --db-size 150000 --save 300 100 --addr 127.0.0.1:30000`
