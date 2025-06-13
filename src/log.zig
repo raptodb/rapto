@@ -62,9 +62,9 @@ pub const Logger = struct {
     const Self = @This();
 
     stdout: std.fs.File.Writer = undefined,
-    stderr: std.fs.File.Writer  = undefined,
+    stderr: std.fs.File.Writer = undefined,
 
-    allocator: std.mem.Allocator  = undefined,
+    allocator: std.mem.Allocator = undefined,
 
     level: Level = .noisy,
 
