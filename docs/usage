@@ -1,0 +1,52 @@
+Usage: raptodb <mode> [options]
+
+MODES
+    server    Launch as server
+
+COMMON OPTIONS
+  --name <database name>
+      Specifies the name of the database.
+      *Required
+
+  --addr <ip:port>
+      Specifies the network address for connections.
+      For server mode: the address to bind and listen on.
+      For client mode: the address to connect to.
+      Default: 127.0.0.1 with a random port between 10000-19999.
+
+  --db-path <path>
+      Specifies the path for database storage file.
+      The path must exist and be accessible.
+      Default: current working directory.
+
+  --verbose <level>
+      Sets the verbosity level for logging.
+      Values:
+          - silent (no output),
+          - warnings (only warnings and critical messages),
+          - noisy (all messages including informational logs).
+      Default: noisy.
+
+  --save <delay> <count>
+      Sets snapshot saving based on 2 variables:
+          - delay (how much time must pass in seconds)
+          - count (how many times the database must be answer to a query)
+      If these 2 variables are true, it goes to save the snapshot.
+      If it is not defined, auto-saving is disabled.
+      If count is 0, a min of 1 is selected.
+
+  --tls
+      Enables encrypt server-client traffic with
+      Diffie-Hellman handshake. It works as TLS without certificates.
+      Enables default port to 8443.
+
+  --auth <password>
+      Protects access to the database with a password.
+      If it is activated with the server, authentication is required
+      by the client, otherwise if it is activated with the client,
+      it will be the password to access it.
+
+SERVER-EXCLUSIVE OPTIONS
+  --db-size <size>
+      Sets the maximum database capacity in bytes.
+      This capacity will be applied at disk and RAM.
