@@ -192,7 +192,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     if (conf.db_cap.? == 0) return error.NoCapacity;
 
     // initialize storage
-    var storage = Storage.init(allocator, storage_file, conf.db_cap.?);
+    var storage = Storage.init(allocator, storage_file, conf);
     defer storage.deinit();
 
     // create queue for queries
@@ -330,7 +330,7 @@ pub fn main() void {
         }
 
         logger.info("Rapto {s} is starting.", .{RAPTO_VERSION});
-        logger.info("Server db={s} pid={d} addr={}", .{conf.name.?, std.os.linux.getpid(), conf.addr.?});
+        logger.info("Server db={s} pid={d} addr={}", .{ conf.name.?, std.os.linux.getpid(), conf.addr.? });
 
         serverSession(allocator, &conf) catch |err| {
             const msg = switch (err) {

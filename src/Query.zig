@@ -112,6 +112,7 @@ pub fn resolve(
         .LEN => return .{ try db.LEN(storage, self.args), true },
         .SIZE => return .{ try db.SIZE(storage, self.args), true },
         .MEM => return .{ try db.MEM(storage.allocator, profiler, self.args), true },
+        .DB => return try db.DB(storage, self.args),
 
         .DUMP => return .{ try db.DUMP(storage, self.args), true },
 

@@ -79,6 +79,7 @@ pub const Commands = enum(u8) {
     LEN,
     SIZE,
     MEM,
+    DB,
 
     DUMP,
     RESTORE,
@@ -88,7 +89,7 @@ pub const Commands = enum(u8) {
     COPY,
 
     /// Quantity of commands possible.
-    const qty: u8 = 29;
+    const qty: u8 = 30;
 
     /// Parses text command to enum.
     pub fn parse(noalias command: []const u8) ?Commands {
@@ -342,6 +343,23 @@ pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, lower_arg: []const
         };
 
     return std.fmt.allocPrint(allocator, "{d}", .{value});
+}
+
+pub fn DB(storage: *Storage, lower_arg: []const u8) !struct { []const u8, bool } {
+    const arg = utils.upperString(@constCast(lower_arg));
+
+    return if (utils.advancedCompare(arg, "NAME"))
+        .{ storage.conf.name.?, false }
+    else if (utils.advancedCompare(arg, "CAP"))
+        .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.conf.db_cap.?}), true }
+    else if (utils.advancedCompare(arg, "SIZE"))
+        .{ try std.fmt.allocPrint(
+            storage.allocator,
+            "{d}",
+            .{storage.conf.db_cap.? - storage.store_cap},
+        ), true }
+    else
+        return error.UnknownArgument;
 }
 
 pub fn DUMP(storage: *Storage, key: []const u8) ![]const u8 {

@@ -40,6 +40,7 @@ const utils = @import("utils.zig");
 
 const Object = @import("object.zig").Object;
 const FieldType = @import("object.zig").FieldType;
+const RaptoConfig = @import("rapto.zig").RaptoConfig;
 
 /// Store of objects.
 pub const Storage = struct {
@@ -58,13 +59,16 @@ pub const Storage = struct {
     /// or subtraction of object size.
     store_cap: u64 = 0,
 
+    conf: *RaptoConfig,
+
     /// Initializes storage with an allocator, file and size in bytes.
-    pub fn init(allocator: std.mem.Allocator, file: std.fs.File, size: u64) Self {
+    pub fn init(allocator: std.mem.Allocator, file: std.fs.File, conf: *RaptoConfig) Self {
         return Self{
             .allocator = allocator,
             .file = file,
             .store = std.ArrayListUnmanaged(Object).initCapacity(allocator, 0) catch unreachable,
-            .store_cap = size,
+            .store_cap = conf.db_cap.?,
+            .conf = conf,
         };
     }
 
