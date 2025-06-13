@@ -124,8 +124,6 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
     // first arguments must be mode
     opts.mode = if (std.mem.eql(u8, value, "server"))
         .server
-        //else if (std.mem.eql(u8, value, "client"))
-        //    .client
     else
         return error.InvalidMode;
 

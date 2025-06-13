@@ -67,6 +67,7 @@ var profiler: *Profiler = undefined;
 var quit: bool = false;
 
 pub const RaptoConfig = struct {
+    // Client is not implemented yet.
     /// Mode of start, could be server or client.
     mode: enum { server, client } = .server,
 
