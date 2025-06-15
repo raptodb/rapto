@@ -58,9 +58,4 @@ pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool
     else return std.mem.eql(u8, a, b);
 }
 
-/// Returns upper string.
-pub fn upperString(ascii: []u8) []u8 {
-    for (ascii, 0..) |c, i|
-        ascii[i] = std.ascii.toUpper(c);
-    return ascii[0..];
 }

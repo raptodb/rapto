@@ -63,7 +63,7 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) error{EmptyQuery}!Self
 
     var q = Self{ .client = client };
     q.raw_query = raw_query;
-    q.command = utils.upperString(@constCast(trimmed[0..space_index]));
+    q.command = trimmed[0..space_index];
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
 
     return q;

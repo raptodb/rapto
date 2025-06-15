@@ -315,26 +315,24 @@ pub fn SIZE(storage: *Storage, key: []const u8) ![]const u8 {
     return std.fmt.allocPrint(storage.allocator, "{d}", .{size});
 }
 
-pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, lower_arg: []const u8) ![]const u8 {
-    const arg = utils.upperString(@constCast(lower_arg));
-
+pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) ![]const u8 {
     const value: u64 =
-        if (utils.advancedCompare(arg, "LIVE"))
+        if (utils.advancedCompare(arg, "live"))
             profiler.live_bytes
-        else if (utils.advancedCompare(arg, "PEAK"))
+        else if (utils.advancedCompare(arg, "peak"))
             profiler.live_peak
-        else if (utils.advancedCompare(arg, "TOTAL"))
+        else if (utils.advancedCompare(arg, "total"))
             profiler.allocated
-        else if (utils.advancedCompare(arg, "ALLOC"))
+        else if (utils.advancedCompare(arg, "alloc"))
             profiler.alloc_count
-        else if (utils.advancedCompare(arg, "FREE"))
+        else if (utils.advancedCompare(arg, "free"))
             profiler.free_count
         else blk: {
-            if (utils.advancedCompare(arg, "RESET-PEAK"))
+            if (utils.advancedCompare(arg, "reset-peak"))
                 profiler.live_peak = 0
-            else if (utils.advancedCompare(arg, "RESET-TOTAL"))
+            else if (utils.advancedCompare(arg, "reset-total"))
                 profiler.allocated = 0
-            else if (utils.advancedCompare(arg, "RESET-COUNT")) {
+            else if (utils.advancedCompare(arg, "reset-count")) {
                 profiler.alloc_count = 0;
                 profiler.free_count = 0;
             } else return error.UnknownArgument;
@@ -345,14 +343,12 @@ pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, lower_arg: []const
     return std.fmt.allocPrint(allocator, "{d}", .{value});
 }
 
-pub fn DB(storage: *Storage, lower_arg: []const u8) !struct { []const u8, bool } {
-    const arg = utils.upperString(@constCast(lower_arg));
-
-    return if (utils.advancedCompare(arg, "NAME"))
+pub fn DB(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
+    return if (utils.advancedCompare(arg, "name"))
         .{ storage.conf.name.?, false }
-    else if (utils.advancedCompare(arg, "CAP"))
+    else if (utils.advancedCompare(arg, "cap"))
         .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.conf.db_cap.?}), true }
-    else if (utils.advancedCompare(arg, "SIZE"))
+    else if (utils.advancedCompare(arg, "size"))
         .{ try std.fmt.allocPrint(
             storage.allocator,
             "{d}",
