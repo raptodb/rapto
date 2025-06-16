@@ -33,22 +33,26 @@
 //! It contains the implementation of testing module.
 
 test {
+    // NOTE: These modules cannot be tested.
+    // They require the original server boot.
     _ = @import("auth.zig");
-    _ = @import("db.zig");
     _ = @import("log.zig");
-    _ = @import("lz4.zig"); // test unit done
-    _ = @import("object.zig");
     _ = @import("options.zig");
-    _ = @import("Query.zig"); // test unit done
-    _ = @import("queue.zig");
     _ = @import("rapto.zig");
     _ = @import("ree.zig");
     _ = @import("server.zig");
     _ = @import("signal.zig");
     _ = @import("snap.zig");
     _ = @import("socket.zig");
-    _ = @import("storage.zig");
-    _ = @import("utils.zig"); // test unit done
 
-    @import("std").testing.refAllDecls(@This());
+    // Tested modules
+    _ = @import("db.zig");
+    _ = @import("lz4.zig");
+    _ = @import("object.zig");
+    _ = @import("Query.zig");
+    _ = @import("queue.zig");
+    _ = @import("storage.zig");
+    _ = @import("utils.zig");
+
+    @import("std").testing.refAllDeclsRecursive(@This());
 }
