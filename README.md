@@ -13,7 +13,7 @@
 
 <br>
 
-[![TESTS](https://github.com/raptodb/rapto/actions/workflows/test_unit.yml/badge.svg)](https://github.com/raptodb/rapto/actions/workflows/test_unit.yml)
+[![TESTS](https://github.com/raptodb/rapto/actions/workflows/test_unit.yml/badge.svg?branch=unstable)](https://github.com/raptodb/rapto/actions/workflows/test_unit.yml)
 
 ## Table of contents
 
