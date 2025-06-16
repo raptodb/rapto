@@ -36,7 +36,7 @@ test {
     _ = @import("auth.zig");
     _ = @import("db.zig");
     _ = @import("log.zig");
-    _ = @import("lz4.zig");
+    _ = @import("lz4.zig"); // test unit done
     _ = @import("object.zig");
     _ = @import("options.zig");
     _ = @import("Query.zig");

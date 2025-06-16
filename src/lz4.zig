@@ -42,3 +42,14 @@ pub fn decompress(allocator: std.mem.Allocator, noalias src: []const u8) error{ 
 
     return allocator.realloc(buf, @intCast(len));
 }
+
+test "compress and decompress" {
+    const original = "some test data that should compress and decompress correctly";
+    const compressed = try compress(std.testing.allocator, original);
+    defer std.testing.allocator.free(compressed);
+
+    const decompressed = try decompress(std.testing.allocator, compressed);
+    defer std.testing.allocator.free(decompressed);
+
+    try std.testing.expectEqualSlices(u8, original, decompressed);
+}
