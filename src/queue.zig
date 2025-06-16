@@ -75,3 +75,20 @@ pub fn ThreadSafeQueue(comptime T: type) type {
         }
     };
 }
+
+test "queue" {
+    var q = ThreadSafeQueue(i32){};
+    defer q.deinit(std.testing.allocator);
+
+    try q.put(std.testing.allocator, 32);
+    try q.put(std.testing.allocator, 21);
+    try q.put(std.testing.allocator, 0);
+    try q.put(std.testing.allocator, 16);
+    try q.put(std.testing.allocator, 500);
+
+    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 32);
+    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 21);
+    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 0);
+    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 16);
+    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 500);
+}
