@@ -227,3 +227,47 @@ pub const Object = struct {
         self.* = undefined;
     }
 };
+
+test "set" {
+    const ikey = "integerkey";
+    const ivalue: i64 = 42;
+    const dkey = "decimalkey";
+    const dvalue: f64 = 3.14;
+    const skey = "stringkey";
+    const svalue = "text in key";
+
+    var iobj = try Object.set(std.testing.allocator, .integer, ikey, ivalue);
+    defer iobj.deinit(std.testing.allocator);
+
+    var dobj = try Object.set(std.testing.allocator, .decimal, dkey, dvalue);
+    defer dobj.deinit(std.testing.allocator);
+
+    var sobj = try Object.set(std.testing.allocator, .string, skey, svalue);
+    defer sobj.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualStrings(ikey, iobj.key);
+    try std.testing.expect(ivalue == iobj.field.integer);
+    try std.testing.expectEqualStrings(dkey, dobj.key);
+    try std.testing.expect(dvalue == dobj.field.decimal);
+    try std.testing.expectEqualStrings(skey, sobj.key);
+    try std.testing.expectEqualStrings(svalue, sobj.field.string);
+}
+
+test "serialize and deserialize" {
+    const key = "keyname";
+    const value = "serialized string";
+
+    var obj = try Object.set(std.testing.allocator, .string, key, value);
+    defer obj.deinit(std.testing.allocator);
+
+    const serialized = try obj.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(serialized);
+
+    var deserialized = try Object.deserialize(std.testing.allocator, serialized);
+    defer deserialized.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualStrings(obj.key, deserialized.key);
+    try std.testing.expectEqualStrings(obj.field.string, deserialized.field.string);
+    try std.testing.expectEqual(obj.metadata.access_times, deserialized.metadata.access_times);
+    try std.testing.expectEqual(obj.metadata.last_access, deserialized.metadata.last_access);
+}
