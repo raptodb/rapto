@@ -50,19 +50,17 @@ pub fn ThreadSafeQueue(comptime T: type) type {
             self.cond.signal();
         }
 
-        pub fn waitAndPop(self: *Self, allocator: std.mem.Allocator) ?T {
+        pub fn waitAndPop(self: *Self, allocator: std.mem.Allocator) T {
             self.mutex.lock();
             defer self.mutex.unlock();
 
             while (self.queue.items.len == 0)
                 self.cond.wait(&self.mutex);
 
-            if (self.queue.pop()) |item| {
-                defer self.queue.shrinkAndFree(allocator, self.queue.items.len);
-                return item;
-            }
+            const item = self.queue.orderedRemove(0);
+            defer self.queue.shrinkAndFree(allocator, self.queue.items.len);
 
-            return null;
+            return item;
         }
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {

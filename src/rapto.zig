@@ -246,38 +246,41 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
     logger.info("Started {s} server addr={}; LISTENING...", .{ if (conf.tls) "TLS" else "OPEN", conf.addr.? });
 
-    while (queue.waitAndPop(allocator)) |task| if (task.client) |client| {
-        defer task.free(allocator);
+    while (true) {
+        const task = queue.waitAndPop(allocator);
+        if (task.client) |client| {
+            defer task.free(allocator);
 
-        if (utils.advancedCompare(task.command, "DOWN")) {
-            @branchHint(.cold);
-            exitProcedure(&storage, &queue);
-            break;
+            if (utils.advancedCompare(task.command, "DOWN")) {
+                @branchHint(.cold);
+                exitProcedure(&storage, &queue);
+                break;
+            }
+
+            const resp, const is_heap = task.resolve(
+                &storage,
+                &logger,
+                profiler,
+            ) catch |err| .{ ree.expandResolveError(err), false };
+            defer if (is_heap) allocator.free(resp);
+
+            if (client.tls_stream) |*tls| {
+                // send response with encryption.
+                // this increases the latency
+                try tls.write(allocator, resp);
+            }
+            // if TLS is disabled,
+            // send response without encryption
+            else try client.stream.write(resp);
+
+            // increment counter of storage modifies
+            if (conf.save != null)
+                _ = modc.fetchAdd(1, .seq_cst);
         }
-
-        const resp, const is_heap = task.resolve(
-            &storage,
-            &logger,
-            profiler,
-        ) catch |err| .{ ree.expandResolveError(err), false };
-        defer if (is_heap) allocator.free(resp);
-
-        if (client.tls_stream) |*tls| {
-            // send response with encryption.
-            // this increases the latency
-            try tls.write(allocator, resp);
-        }
-        // if TLS is disabled,
-        // send response without encryption
-        else try client.stream.write(resp);
-
-        // increment counter of storage modifies
-        if (conf.save != null)
-            _ = modc.fetchAdd(1, .seq_cst);
+        // if client is null,
+        // quit is detected
+        else break;
     }
-    // if client is null,
-    // quit is detected
-    else break;
 }
 
 pub fn main() void {
