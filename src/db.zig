@@ -104,6 +104,18 @@ pub const Commands = enum(u8) {
     }
 };
 
+test "command parsing" {
+    try std.testing.expect(Commands.parse("GET") == .GET);
+    try std.testing.expect(Commands.parse("TYPE") == .TYPE);
+    try std.testing.expect(Commands.parse("COPY") == .COPY);
+    try std.testing.expect(Commands.parse("STAIL") == .STAIL);
+
+    try std.testing.expect(Commands.parse("Save") != .SAVE);
+    try std.testing.expect(Commands.parse("touch") != .TOUCH);
+    try std.testing.expect(Commands.parse("") == null);
+    try std.testing.expect(Commands.parse("notacommand") == null);
+}
+
 pub inline fn PING() []const u8 {
     return "pong";
 }
