@@ -48,7 +48,7 @@ test {
     _ = @import("snap.zig");
     _ = @import("socket.zig");
     _ = @import("storage.zig");
-    _ = @import("utils.zig");
+    _ = @import("utils.zig"); // test unit done
 
     @import("std").testing.refAllDecls(@This());
 }

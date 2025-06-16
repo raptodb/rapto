@@ -58,4 +58,17 @@ pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool
     else return std.mem.eql(u8, a, b);
 }
 
+test "advanced compare" {
+    try std.testing.expect(advancedCompare("abc", "abc"));
+    try std.testing.expect(!advancedCompare("abc", "abC"));
+    try std.testing.expect(!advancedCompare("abc", "abcd"));
+    try std.testing.expect(advancedCompare("", ""));
+    try std.testing.expect(advancedCompare(
+        "this is a long string used for hashing compare",
+        "this is a long string used for hashing compare",
+    ));
+    try std.testing.expect(!advancedCompare(
+        "this is a long string used for hashing compare",
+        "this is a long string used for hashing comparx",
+    ));
 }
