@@ -159,3 +159,11 @@ pub fn resolve(
 pub fn free(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.raw_query);
 }
+
+test "parse query" {
+    const q = try parseQuery(undefined, "PING abc def");
+
+    try std.testing.expectEqualSlices(u8, "PING", q.command);
+    try std.testing.expectEqualSlices(u8, "abc def", q.args);
+    try std.testing.expectEqualSlices(u8, "PING abc def", q.raw_query);
+}

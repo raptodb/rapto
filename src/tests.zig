@@ -39,7 +39,7 @@ test {
     _ = @import("lz4.zig"); // test unit done
     _ = @import("object.zig");
     _ = @import("options.zig");
-    _ = @import("Query.zig");
+    _ = @import("Query.zig"); // test unit done
     _ = @import("queue.zig");
     _ = @import("rapto.zig");
     _ = @import("ree.zig");
