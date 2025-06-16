@@ -326,3 +326,35 @@ fn compareLRU(_: void, a: Object, b: Object) bool {
     // compare last access with ascendent order
     return a.metadata.last_access < b.metadata.last_access;
 }
+
+test "storage" {
+    var conf = RaptoConfig{ .db_cap = 10000 };
+    var storage = Storage.init(std.testing.allocator, undefined, &conf);
+    defer storage.deinit();
+
+    const index1 = try storage.put(.string, "foo", "bar");
+    try std.testing.expect(index1 == 0);
+
+    const index2 = try storage.put(.integer, "num", 42);
+    try std.testing.expect(index2 == 1);
+
+    const obj1 = storage.get("foo") orelse return error.TestExpectedObject;
+    try std.testing.expectEqualStrings("foo", obj1.key);
+    try std.testing.expectEqualStrings("bar", obj1.field.string);
+
+    const obj2 = storage.get("num") orelse return error.TestExpectedObject;
+    try std.testing.expect(obj2.field.integer == 42);
+
+    // overwriting
+    const index3 = try storage.put(.string, "foo", "baz");
+    try std.testing.expect(index1 == index3 - 1); // index1 promoted after put
+
+    const obj3 = storage.get("foo") orelse return error.TestExpectedObject;
+    try std.testing.expectEqualStrings("baz", obj3.field.string);
+
+    try storage.removeAtIndex(index1);
+    try std.testing.expect(storage.get("num") == null);
+
+    const index4 = storage.search("foo") orelse return error.TestExpectedObject;
+    try std.testing.expect(index4 == 0);
+}
