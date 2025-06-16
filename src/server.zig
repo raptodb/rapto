@@ -51,6 +51,9 @@ const RaptoConfig = @import("rapto.zig").RaptoConfig;
 /// Represents client with informations
 /// and streams.
 pub const Client = struct {
+    /// Is alive
+    alive: bool = true,
+
     /// Client unique ID.
     id: u64,
     /// Address of client
@@ -152,6 +155,7 @@ pub const Server = struct {
 
             client.stream.write(msg) catch {};
         };
+        client.alive = false;
 
         self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name orelse "", client.address });
         self.destroyClient(client);
@@ -242,7 +246,18 @@ pub const Server = struct {
 
         client.deinit(self.allocator);
         _ = self.clients.orderedRemove(i);
-        self.allocator.destroy(client);
+
+        // removes the client when it is no longer active
+        while (true) {
+            if (!client.alive) {
+                @branchHint(.likely);
+
+                self.allocator.destroy(client);
+                break;
+            }
+            
+            std.time.sleep(50 * std.time.ns_per_ms);
+        }
     }
 
     /// Closes and deinits clients.
