@@ -93,7 +93,7 @@ pub inline fn usage() []const u8 {
     \\SERVER-EXCLUSIVE OPTIONS
     \\  --db-size <size>
     \\      Sets the maximum database capacity in bytes.
-    \\      This capacity will be applied at disk and RAM.
+    \\      This capacity will be applied at disk.
     \\
     ;
 }
