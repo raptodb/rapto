@@ -69,24 +69,25 @@ pub fn autosnap(storage: *Storage, logger: *log.Logger, conf: *const AutosnapCon
 }
 
 /// Attempts to save the storage to disk.
-pub fn snap(storage: *Storage, logger: *log.Logger, auto: bool) !void {
+pub fn snap(storage: *Storage, logger: *log.Logger, auto: bool) error{SaveFailed}!void {
     storage.save() catch |err| {
+        @branchHint(.unlikely);
+
         const msg = switch (err) {
             error.OutOfMemory => signal.OOM(),
             error.NoSpaceLeft => signal.OOD(),
             else => ree.expandSaveError(err),
         };
 
-        if (auto)
-            logger.warning("Auto-snap: failed to save: {s}", .{msg})
-        else
-            logger.warning("Snap: failed to save: {s}", .{msg});
+        const src = if (auto) "Auto-snap" else "Snap";
+        logger.warning("{s}: failed to save: {s}", .{ src, msg });
+
+        // Snap fail
+        return error.SaveFailed;
     };
 
-    if (auto)
-        logger.info("Auto-snap: saved successful.", .{})
-    else
-        logger.info("Snap: saved successful.", .{});
+    const src = if (auto) "Auto-snap" else "Snap";
+    logger.info("{s}: saved successful.", .{src});
 
     // Snap success
     return;
