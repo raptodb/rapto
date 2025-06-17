@@ -1,8 +1,8 @@
-# Contributing to Rapto
+# Contributing to Raptodb project organization
 
 ## How to Contribute
 
-Contributions to Rapto can be made in several ways:
+Contributions to [official Rapto repository](https://github.com/raptodb/rapto) can be made in several ways:
 
 1. **Opening Issues**: If you encounter a bug, have a feature request, or want to suggest improvements, please open an issue.
 
