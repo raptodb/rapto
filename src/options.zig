@@ -39,19 +39,6 @@ const signal = @import("signal.zig");
 
 const RaptoConfig = @import("rapto.zig").RaptoConfig;
 
-/// Errors that can appear when parsing options.
-pub const OptionsError = error{
-    InvalidOption,
-    InvalidValue,
-    InvalidMode,
-    MissingMode,
-    MissingName,
-    MissingValue,
-    InvalidDirectory,
-    IncompleteAddr,
-    CacheLarger,
-} || signal.SignalError;
-
 // Gets usage text.
 pub inline fn usage() []const u8 {
     return 
@@ -113,6 +100,18 @@ pub inline fn usage() []const u8 {
 
 /// Parse arguments into RaptoConfig struct.
 /// It can return parsing errors.
+pub const OptionsError = error{
+    HelpFlag,
+    InvalidOption,
+    InvalidValue,
+    InvalidMode,
+    MissingMode,
+    MissingName,
+    MissingValue,
+    InvalidDirectory,
+    IncompleteAddr,
+    CacheLarger,
+} || signal.SignalError;
 pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator) OptionsError!RaptoConfig {
     // skip executable path
     _ = args.skip();
@@ -124,13 +123,17 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
     // first arguments must be mode
     opts.mode = if (std.mem.eql(u8, value, "server"))
         .server
+    else if (std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "-h"))
+        return error.HelpFlag
     else
         return error.InvalidMode;
 
     // check flag with value
     while (args.next()) |flag| {
         // check for flags without values
-        if (std.mem.eql(u8, flag, "--tls")) {
+        if (std.mem.eql(u8, flag, "--help") or std.mem.eql(u8, flag, "-h"))
+            return error.HelpFlag
+        else if (std.mem.eql(u8, flag, "--tls")) {
             opts.tls = true;
             continue;
         }

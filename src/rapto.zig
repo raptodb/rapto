@@ -310,10 +310,11 @@ pub fn main() void {
     errdefer args.deinit();
 
     var conf = options.parseOptions(allocator, &args) catch |err| {
-        const msg = if (err == error.OutOfMemory) {
-            @branchHint(.unlikely);
-            signal.OOM();
-        } else ree.expandOptionsError(err);
+        const msg = switch (err) {
+            error.HelpFlag => return logger.stdout.print("{s}", .{options.usage()}) catch {},
+            error.OutOfMemory => signal.OOM(),
+            else => ree.expandOptionsError(err),
+        };
 
         logger.critical("Options parser: {s}\n\n{s}", .{ msg, options.usage() });
     };
