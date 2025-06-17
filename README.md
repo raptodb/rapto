@@ -7,7 +7,7 @@
 <br><br>
 
 <p align="center">
-  For engineers seeking a fast, memory-efficient database/data engine, <br>
+  For engineers seeking a fast, memory-efficient database, <br>
   <strong>Rapto</strong> provides transposition-heuristic storage, low memory footprint and high-performance querying.
 </p>
 
@@ -31,7 +31,7 @@ This repository is about Rapto server. Clients are put in specific repositories 
 
 ## 🌐 The development and use cases
 
-**Rapto** is built on several pillars that set it apart from other data engines.<br> Its core principles are footprinting, speed, minimalism, and security:
+**Rapto** is built on several pillars that set it apart from other databases.<br> Its core principles are footprinting, speed, minimalism, and security:
 <dl>
 <dt>Footprinted</dt>
 <dd>Memory control is a key component. Memory usage is monitored during each operation to ensure efficient and predictable behavior.</dd>
