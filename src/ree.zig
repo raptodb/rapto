@@ -46,7 +46,7 @@ pub fn expandOptionsError(err: OptionsError) []const u8 {
     return switch (err) {
         error.InvalidOption => "Unknown option.",
         error.InvalidValue => "Invalid value.",
-        error.InvalidMode => "Invalid mode. Must be 'server' or 'client'.",
+        error.InvalidMode => "Invalid mode. Must be 'server'.",
         error.MissingMode => "Missing mode.",
         error.MissingName => "Missing name.",
         error.MissingValue => "Missing value.",
