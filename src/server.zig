@@ -255,7 +255,7 @@ pub const Server = struct {
                 self.allocator.destroy(client);
                 break;
             }
-            
+
             std.time.sleep(50 * std.time.ns_per_ms);
         }
     }
