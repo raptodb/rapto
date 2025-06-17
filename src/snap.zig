@@ -56,8 +56,6 @@ pub fn autosnap(storage: *Storage, logger: *log.Logger, conf: *const AutosnapCon
     var timer = std.time.Timer.start() catch unreachable;
 
     while (true) {
-        std.time.sleep(1 * std.time.ns_per_s);
-
         if (timer.read() >= conf.delay * std.time.ns_per_s and modc.load(.acquire) >= conf.count) {
             // Save to storage
             snap(storage, logger, true) catch {};
@@ -65,6 +63,8 @@ pub fn autosnap(storage: *Storage, logger: *log.Logger, conf: *const AutosnapCon
             modc.store(0, .release);
             timer.reset();
         }
+
+        std.time.sleep(1 * std.time.ns_per_s);
     }
 }
 
