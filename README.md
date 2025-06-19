@@ -36,7 +36,7 @@ To ensure security, Zig is the winning candidate for distributed systems.
 
 ## Benchmarks
 
-Valid benchmarks are available through Rapto clients. <br>
+Valid benchmarks are available through Rapto clients.
 Internal tests focusing exclusively on query resolution within the engine have shown latencies in the range of <ins>~3 to ~6 microseconds</ins>. <br>
 > [!IMPORTANT]
 > However, these results are not publicly verified and should be considered indicative only.
