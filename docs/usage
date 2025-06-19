@@ -46,6 +46,9 @@ COMMON OPTIONS
       by the client, otherwise if it is activated with the client,
       it will be the password to access it.
 
+  --help/-h
+      Prints usage clearly.
+
 SERVER-EXCLUSIVE OPTIONS
   --db-size <size>
       Sets the maximum database capacity in bytes.

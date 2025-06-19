@@ -89,6 +89,9 @@ pub inline fn usage() []const u8 {
     \\      If it is activated with the server, authentication is required
     \\      by the client, otherwise if it is activated with the client,
     \\      it will be the password to access it.
+    \\
+    \\  --help/-h
+    \\      Prints usage clearly.
     \\  
     \\SERVER-EXCLUSIVE OPTIONS
     \\  --db-size <size>
