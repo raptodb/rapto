@@ -37,6 +37,7 @@ const std = @import("std");
 const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
 
 const ResolveError = @import("Query.zig").ResolveError;
+const ParseQueryError = @import("Query.zig").ParseQueryError;
 const OptionsError = @import("options.zig").OptionsError;
 const ClientError = @import("server.zig").Server.ClientError;
 const ServerSessionError = @import("rapto.zig").ServerSessionError;
@@ -59,13 +60,12 @@ pub fn expandOptionsError(err: OptionsError) []const u8 {
 
 pub fn expandResolveError(err: ResolveError) []const u8 {
     return switch (err) {
-        error.CommandNotFound => "ERR: command does not exist",
-        error.MissingTokens => "ERR: tokens missing",
-        error.MismatchType => "ERR: incompatible types",
-        error.TypeOverflow => "ERR: value too large for type",
-        error.KeyNotFound => "ERR: key not found",
-        error.KeyReplacementExist => "ERR: new name correspond to existent key",
-        error.SaveFailed => "ERR: persistent saving is failed",
+        error.MissingTokens => "ERR: tokens missing.",
+        error.MismatchType => "ERR: incompatible types.",
+        error.TypeOverflow => "ERR: value too large for type.",
+        error.KeyNotFound => "ERR: key not found.",
+        error.KeyReplacementExist => "ERR: new name correspond to existent key.",
+        error.SaveFailed => "ERR: persistent saving is failed.",
         error.InvalidObject => "ERR: serialized object is invalid.",
         error.InvalidMetadata => "ERR: metadata is corrupted.",
         error.NoKeysFound => "ERR: no keys found.",
@@ -89,6 +89,13 @@ pub fn expandClientError(err: ClientError) []const u8 {
         => "ERR: no-connection",
 
         else => "ERR: unknown",
+    };
+}
+
+pub fn expandQueryParsingError(err: ParseQueryError) []const u8 {
+    return switch (err) {
+        error.EmptyQuery => "ERR: query is empty or invalid.",
+        error.CommandNotFound => "ERR: command does not exist.",
     };
 }
 

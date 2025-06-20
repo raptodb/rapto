@@ -251,7 +251,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
         if (task.client) |client| {
             defer task.free(allocator);
 
-            if (utils.advancedCompare(task.command, "DOWN")) {
+            if (task.command == .DOWN) {
                 @branchHint(.cold);
                 exitProcedure(&storage, &queue);
                 break;

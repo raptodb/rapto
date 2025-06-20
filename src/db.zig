@@ -88,8 +88,10 @@ pub const Commands = enum(u8) {
     SAVE,
     COPY,
 
+    DOWN,
+
     /// Quantity of commands possible.
-    const qty: u8 = 30;
+    const qty: u8 = 31;
 
     /// Parses text command to enum.
     pub fn parse(noalias command: []const u8) ?Commands {

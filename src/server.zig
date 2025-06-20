@@ -226,10 +226,10 @@ pub const Server = struct {
 
                 // adding query to queue associated with client.
                 // useful to return the response.
-                try self.queue.put(
-                    self.allocator,
-                    Query.parseQuery(client, raw_query) catch continue,
-                );
+                try self.queue.put(self.allocator, Query.parseQuery(client, raw_query) catch |err| {
+                    client.stream.write(ree.expandQueryParsingError(err)) catch {};
+                    continue;
+                });
             }
 
             // if error is EOF message is corrupted.

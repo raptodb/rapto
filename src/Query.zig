@@ -49,11 +49,12 @@ const Self = @This();
 client: ?*Client = null,
 
 raw_query: []const u8 = undefined,
-command: []const u8 = undefined,
+command: db.Commands = undefined,
 args: []const u8 = undefined,
 
 /// Parses raw query to valid query. It divide command with arguments.
-pub fn parseQuery(client: *Client, raw_query: []const u8) error{EmptyQuery}!Self {
+pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
+pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     const trimmed = std.mem.trim(u8, raw_query, " ");
     if (trimmed.len == 0) {
         @branchHint(.unlikely);
@@ -63,7 +64,7 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) error{EmptyQuery}!Self
 
     var q = Self{ .client = client };
     q.raw_query = raw_query;
-    q.command = trimmed[0..space_index];
+    q.command = db.Commands.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
 
     return q;
@@ -72,7 +73,6 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) error{EmptyQuery}!Self
 /// Resolves query.
 /// Returns response text and allocatedFromHeap bool.
 pub const ResolveError = error{
-    CommandNotFound,
     MissingTokens,
     TypeOverflow,
     KeyNotFound,
@@ -91,9 +91,7 @@ pub fn resolve(
     logger: *log.Logger,
     profiler: *Profiler,
 ) ResolveError!struct { []const u8, bool } {
-    const c = db.Commands.parse(self.command) orelse return error.CommandNotFound;
-
-    switch (c) {
+    switch (self.command) {
         // commands with string return type
         .PING => return .{ db.PING(), false },
 
@@ -150,6 +148,9 @@ pub fn resolve(
         },
         .SAVE => try db.SAVE(storage, logger),
         .COPY => try db.COPY(storage, self.args),
+
+        // handled before (as DOWN)
+        else => unreachable,
     }
 
     return .{ "OK", false };
@@ -163,7 +164,7 @@ pub fn free(self: Self, allocator: std.mem.Allocator) void {
 test "parse query" {
     const q = try parseQuery(undefined, "PING abc def");
 
-    try std.testing.expectEqualSlices(u8, "PING", q.command);
+    try std.testing.expect(db.Commands.PING == q.command);
     try std.testing.expectEqualSlices(u8, "abc def", q.args);
     try std.testing.expectEqualSlices(u8, "PING abc def", q.raw_query);
 }
