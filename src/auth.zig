@@ -36,50 +36,24 @@ const std = @import("std");
 
 const socket = @import("socket.zig");
 
-/// Auth system for client and server.
-/// Initialized with password.
-pub const Auth = struct {
-    const Self = @This();
-
-    stream: *socket.Stream,
+/// Handles client authentication as server.
+/// This is protected with password.
+pub const ServerAuthError = error{UnmatchKey} || socket.TLS.WriteError;
+pub fn auth(
+    allocator: std.mem.Allocator,
     tls: *socket.TLS,
+    password: []const u8,
+) ServerAuthError!void {
+    // send a request for auth password
+    try tls.write(allocator, "send-authpass");
 
-    passwd: []const u8,
-
-    /// Initializes Auth with password.
-    pub fn init(passwd: []const u8, stream: *socket.Stream, tls: *socket.TLS) Self {
-        return Self{ .passwd = passwd, .stream = stream, .tls = tls };
+    // check if received password match with server password
+    if (!tls.hasRequest(allocator, password)) {
+        // send bad message
+        try tls.write(allocator, "recvd-authpass:NO");
+        return error.UnmatchKey;
     }
 
-    /// Makes authentication as client with password.
-    pub const ClientAuthError = error{ UnmatchKey, AuthNotRequested } || socket.TLS.WriteError;
-    pub fn auth(self: Self, allocator: std.mem.Allocator) !void {
-        // check if received request for auth password
-        if (!self.stream.hasRequest(allocator, "send-authpass"))
-            return error.AuthNotRequested;
-
-        // send auth password
-        try self.tls.write(allocator, self.passwd);
-
-        if (!self.stream.hasRequest(allocator, "recvd-authpass:OK"))
-            return error.UnmatchKey;
-    }
-
-    /// Handles client authentication as server.
-    /// This is protected with password.
-    pub const ServerAuthError = error{UnmatchKey} || socket.TLS.WriteError;
-    pub fn handleAuth(self: Self, allocator: std.mem.Allocator) !void {
-        // send a request for auth password
-        try self.tls.write(allocator, "send-authpass");
-
-        // check if received password match with server password
-        if (!self.stream.hasRequest(allocator, self.passwd)) {
-            // send bad message
-            try self.tls.write(allocator, "recvd-authpass:NO");
-            return error.UnmatchKey;
-        }
-
-        // send good message
-        try self.tls.write(allocator, "recvd-authpass:OK");
-    }
-};
+    // send good message
+    try tls.write(allocator, "recvd-authpass:OK");
+}

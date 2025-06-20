@@ -42,10 +42,10 @@ const socket = @import("socket.zig");
 const signal = @import("signal.zig");
 const log = @import("log.zig");
 const ree = @import("ree.zig");
+const auth = @import("auth.zig");
 
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 const Query = @import("Query.zig");
-const Auth = @import("auth.zig").Auth;
 const RaptoConfig = @import("rapto.zig").RaptoConfig;
 
 /// Represents client with informations
@@ -191,10 +191,8 @@ pub const Server = struct {
                 // if auth is enabled, requests password to
                 // client for access
                 if (self.conf.auth) |auth_pass| {
-                    const auth = Auth.init(auth_pass, client.stream, &client.tls_stream.?);
-
                     // request authentication to client
-                    try auth.handleAuth(self.allocator);
+                    try auth.auth(self.allocator, &client.tls_stream.?, auth_pass);
                 }
             }
 

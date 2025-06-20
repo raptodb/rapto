@@ -178,51 +178,6 @@ pub const TLS = struct {
         };
     }
 
-    /// Performs a handshake as client. If handshake success returns
-    /// TLS struct with shared key, else return an error.
-    /// 1. Server sends a request to receive public-key from CLIENT.
-    /// 2. CLIENT replies with public-key.
-    /// 3. Server encrypts shared-key with public-key and send it to CLIENT.
-    /// 4. CLIENT decrypt shared-key with private-key.
-    /// 5. Now server and CLIENT have shared-key.
-    pub const HandshakeClientError = error{HandshakeFail} || signal.SignalError || Stream.WriteError || ReadError;
-    pub fn handshakeClient(allocator: std.mem.Allocator, stream: *Stream) !Self {
-        var self = Self{
-            .stream = stream,
-
-            // generates a randomic nonce
-            .nonce = genRandomicBytes(ChaCha20Poly1305.nonce_length),
-        };
-
-        // if request is not send-pk handshake is failed
-        if (!self.stream.hasRequest(allocator, "send-pk"))
-            return error.HandshakeFail;
-
-        // generates public-key and private-key
-        const keys = X25519.KeyPair.generate();
-
-        // send requested public-key
-        try self.stream.write(&keys.public_key);
-
-        // request shared-key
-        try self.stream.write("send-sk");
-
-        // set secret-key to decrypt shared-key
-        @memcpy(&self.shared_key, &keys.secret_key);
-        // set shared-key from server
-        const shared_key = try self.read(allocator);
-        defer allocator.free(shared_key);
-
-        // copy received shared-key to original shared-key
-        @memcpy(self.shared_key[0..], shared_key[0..]);
-
-        // finalize assuring the server that
-        // the shared-key has been received
-        try self.stream.write("recvd-sk");
-
-        return self;
-    }
-
     /// Performs a handshake as server. If handshake fails return an error.
     /// 1. SERVER sends a request to receive public-key from client.
     /// 2. Client replies with public-key.
@@ -262,7 +217,7 @@ pub const TLS = struct {
     /// Reads a stream and decrypt content with shared-key.
     /// The output must be deallocated manually.
     pub const ReadError = error{DecryptionFail} || signal.SignalError || Stream.ReadError;
-    pub fn read(self: *Self, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn read(self: *Self, allocator: std.mem.Allocator) ReadError![]const u8 {
         // reads from stream
         const readed = try self.stream.read(allocator);
 
@@ -322,6 +277,14 @@ pub const TLS = struct {
 
         // send buf to stream and deallocates it
         try self.stream.write(nonce_tag_enc);
+    }
+
+    /// Checks if received buf has correspondences.
+    pub fn hasRequest(self: *Self, allocator: std.mem.Allocator, request: []const u8) bool {
+        const readed = self.read(allocator) catch return false;
+        defer allocator.free(readed);
+
+        return utils.advancedCompare(readed, request);
     }
 
     /// Computes next nonce by incrementing buffer.
