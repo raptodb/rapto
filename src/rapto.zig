@@ -35,7 +35,6 @@
 const DEBUG_MODE_MEMORY = false;
 
 pub const RAPTO_VERSION = "0.1.0";
-pub const SEMANTIC_RAPTO_VERSION = std.SemanticVersion.parse(RAPTO_VERSION) catch unreachable;
 
 const std = @import("std");
 
