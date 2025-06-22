@@ -309,6 +309,7 @@ pub fn IDLE(storage: *Storage, key: []const u8) ![]const u8 {
         std.time.microTimestamp(),
         obj.metadata.last_access,
     ) catch return error.InvalidMetadata;
+
     return std.fmt.allocPrint(storage.allocator, "{d}", .{idle});
 }
 
