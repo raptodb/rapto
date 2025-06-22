@@ -81,6 +81,7 @@ pub fn expandClientError(err: ClientError) []const u8 {
         error.HandshakeFail => "ERR: tls-handshake-fail",
         error.UnmatchKey => "ERR: auth-fail",
         error.DecryptionFail => "ERR: decryption-fail",
+        error.WouldBlock => "ERR: timeout-reached",
 
         // stream errors
         error.ConnectionTimedOut,
