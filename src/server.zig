@@ -67,10 +67,9 @@ pub const Client = struct {
     tls_stream: ?socket.TLS = null,
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        self.stream.close();
-
         if (self.name) |n|
             allocator.free(n);
+
         allocator.destroy(self.stream);
 
         self.* = undefined;
@@ -155,9 +154,8 @@ pub const Server = struct {
 
             client.stream.write(msg) catch {};
         };
-        client.alive = false;
 
-        self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name orelse "", client.address });
+        client.alive = false;
         self.destroyClient(client);
     }
 
@@ -245,25 +243,16 @@ pub const Server = struct {
         client.deinit(self.allocator);
         _ = self.clients.orderedRemove(i);
 
-        // removes the client when it is no longer active
-        while (true) {
-            if (!client.alive) {
-                @branchHint(.likely);
-
-                self.allocator.destroy(client);
-                break;
-            }
-
-            std.time.sleep(50 * std.time.ns_per_ms);
-        }
+        self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name.?, client.address });
     }
 
     /// Closes and deinits clients.
     pub fn deinit(self: *Self) void {
         // close clients
         for (self.clients.items) |client| {
-            self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name.?, client.address });
-            self.destroyClient(client);
+            // call exception in handler
+            // trigging destroyClient
+            client.stream.close();
         }
 
         // deinit clients
