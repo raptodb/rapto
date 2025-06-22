@@ -177,6 +177,7 @@ pub const Server = struct {
             // else throws error.
             const match_version = client.stream.hasRequest(self.allocator, RAPTO_VERSION);
             if (!match_version) return error.UnmatchVersion;
+            try client.stream.write("OK");
 
             // authentication block for TLS and Auth.
             // if TLS is enabled, starting TLS handshake
