@@ -103,9 +103,8 @@ pub const Logger = struct {
             else => {},
         }
 
-        if (self.conf) |conf| {
+        if (self.conf) |conf|
             self.stdout.print(server_footer, .{ conf.name.?, conf.addr.? }) catch unreachable;
-        }
     }
 
     /// Prints info message.
