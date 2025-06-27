@@ -42,7 +42,6 @@ const socket = @import("socket.zig");
 const signal = @import("signal.zig");
 const log = @import("log.zig");
 const ree = @import("ree.zig");
-const auth = @import("auth.zig");
 
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 const Query = @import("Query.zig");
@@ -63,8 +62,6 @@ pub const Client = struct {
 
     /// Stream of client
     stream: *socket.Stream,
-    // TLS wrapper for stream
-    tls_stream: ?socket.TLS = null,
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         if (self.name) |n|
@@ -111,7 +108,6 @@ pub const Server = struct {
     }
 
     /// Listen clients and accept clients.
-    /// Supports TLS traffic and authentication.
     pub fn listen(self: *Self) void {
         var id: u64 = 0;
 
@@ -160,15 +156,9 @@ pub const Server = struct {
     }
 
     /// Client handler. Setups and reads queries.
-    pub const ClientError = error{
-        UnmatchVersion,
-        HandshakeFail,
-        UnmatchKey,
-        DecryptionFail,
-    } || socket.Stream.ReadError || socket.Stream.WriteError;
+    pub const ClientError = error{UnmatchVersion} || socket.Stream.ReadError || socket.Stream.WriteError;
     fn handleClient(self: *Self, client: *Client) ClientError!void {
-        // check if version matching with server version
-        // and auth client with TLS and Auth. If they are enabled.
+        // check if version matching with server version.
         // Next get the conventional name of client and add to
         // accepted clients.
         {
@@ -178,22 +168,6 @@ pub const Server = struct {
             const match_version = client.stream.hasRequest(self.allocator, RAPTO_VERSION);
             if (!match_version) return error.UnmatchVersion;
             try client.stream.write("OK");
-
-            // authentication block for TLS and Auth.
-            // if TLS is enabled, starting TLS handshake
-            if (self.conf.tls) {
-                client.tls_stream = .init(client.stream);
-
-                // try TLS handshake
-                try client.tls_stream.?.handshakeServer(self.allocator);
-
-                // if auth is enabled, requests password to
-                // client for access
-                if (self.conf.auth) |auth_pass| {
-                    // request authentication to client
-                    try auth.auth(self.allocator, &client.tls_stream.?, auth_pass);
-                }
-            }
 
             // try to get name of client
             const name = try client.stream.read(self.allocator);
@@ -211,10 +185,7 @@ pub const Server = struct {
         // read query and add to queue
         while (true) {
             // receive query from client
-            const recvd = if (client.tls_stream) |*tls|
-                tls.read(self.allocator)
-            else
-                client.stream.read(self.allocator);
+            const recvd = client.stream.read(self.allocator);
 
             if (recvd) |raw_query| {
                 // parseQuery make no allocation,

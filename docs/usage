@@ -35,17 +35,6 @@ COMMON OPTIONS
       If it is not defined, auto-saving is disabled.
       If count is 0, a min of 1 is selected.
 
-  --tls
-      Enables encrypt server-client traffic with
-      Diffie-Hellman handshake. It works as TLS without certificates.
-      Enables default port to 8443.
-
-  --auth <password>
-      Protects access to the database with a password.
-      If it is activated with the server, authentication is required
-      by the client, otherwise if it is activated with the client,
-      it will be the password to access it.
-
   --help/-h
       Prints usage clearly.
 

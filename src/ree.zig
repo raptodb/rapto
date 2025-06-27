@@ -78,9 +78,6 @@ pub fn expandResolveError(err: ResolveError) []const u8 {
 pub fn expandClientError(err: ClientError) []const u8 {
     return switch (err) {
         error.UnmatchVersion => "ERR: compatible-version=" ++ RAPTO_VERSION,
-        error.HandshakeFail => "ERR: tls-handshake-fail",
-        error.UnmatchKey => "ERR: auth-fail",
-        error.DecryptionFail => "ERR: decryption-fail",
         error.WouldBlock => "ERR: timeout-reached",
 
         // stream errors

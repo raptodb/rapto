@@ -83,15 +83,6 @@ pub const RaptoConfig = struct {
     /// every <delay> with min of <count>.
     save: ?snap.AutosnapConf = null,
 
-    /// If enabled, encrypt server-client
-    /// traffic with Diffie-Hellman handshake.
-    /// It works as TLS without certificates.
-    tls: bool = false,
-
-    /// If enabled, client must be
-    /// authenticated with a password.
-    auth: ?[]const u8 = null,
-
     /// IPv4 address for client connection
     /// or server binding.
     addr: ?std.net.Ip4Address = null,
@@ -106,9 +97,6 @@ pub const RaptoConfig = struct {
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(self.name.?);
         allocator.free(self.db_path.?);
-
-        if (self.auth) |passwd|
-            allocator.free(passwd);
     }
 };
 
@@ -243,7 +231,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
         logger.stdout.writeByte('\n') catch unreachable;
     }
 
-    logger.info("Started {s} server addr={}; LISTENING...", .{ if (conf.tls) "TLS" else "OPEN", conf.addr.? });
+    logger.info("Started server addr={}; LISTENING...", .{conf.addr.?});
 
     while (true) {
         const task = queue.waitAndPop(allocator);
@@ -263,14 +251,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
             ) catch |err| .{ ree.expandResolveError(err), false };
             defer if (is_heap) allocator.free(resp);
 
-            if (client.tls_stream) |*tls| {
-                // send response with encryption.
-                // this increases the latency
-                try tls.write(allocator, resp);
-            }
-            // if TLS is disabled,
-            // send response without encryption
-            else try client.stream.write(resp);
+            try client.stream.write(resp);
 
             // increment counter of storage modifies
             if (conf.save != null)

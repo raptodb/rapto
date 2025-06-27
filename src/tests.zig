@@ -35,7 +35,6 @@
 test {
     // NOTE: These modules cannot be tested.
     // They require the original server boot.
-    _ = @import("auth.zig");
     _ = @import("log.zig");
     _ = @import("options.zig");
     _ = @import("rapto.zig");

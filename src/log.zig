@@ -39,7 +39,7 @@ const signal = @import("signal.zig");
 
 const RaptoConfig = @import("rapto.zig").RaptoConfig;
 
-const server_footer: []const u8 = "Session [SERVER db={s};addr={};pass={s}] Press q: quit, s: save.\n";
+const server_footer: []const u8 = "Session [SERVER db={s};addr={}] Press q: quit, s: save.\n";
 
 /// Level of verbosity when print log,
 /// warnings or critical messages.
@@ -104,11 +104,7 @@ pub const Logger = struct {
         }
 
         if (self.conf) |conf| {
-            self.stdout.print(server_footer, .{
-                conf.name.?,
-                conf.addr.?,
-                conf.auth orelse "",
-            }) catch unreachable;
+            self.stdout.print(server_footer, .{ conf.name.?, conf.addr.? }) catch unreachable;
         }
     }
 

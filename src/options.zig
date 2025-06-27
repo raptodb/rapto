@@ -78,17 +78,6 @@ pub inline fn usage() []const u8 {
     \\      If these 2 variables are true, it goes to save the snapshot.
     \\      If it is not defined, auto-saving is disabled.
     \\      If count is 0, a min of 1 is selected.
-    \\  
-    \\  --tls
-    \\      Enables encrypt server-client traffic with
-    \\      Diffie-Hellman handshake. It works as TLS without certificates.
-    \\      Enables default port to 8443.
-    \\
-    \\  --auth <password>
-    \\      Protects access to the database with a password.
-    \\      If it is activated with the server, authentication is required
-    \\      by the client, otherwise if it is activated with the client,
-    \\      it will be the password to access it.
     \\
     \\  --help/-h
     \\      Prints usage clearly.
@@ -133,14 +122,11 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
 
     // check flag with value
     while (args.next()) |flag| {
-        // check for flags without values
+        // ----- flags without values ------
         if (std.mem.eql(u8, flag, "--help") or std.mem.eql(u8, flag, "-h"))
-            return error.HelpFlag
-        else if (std.mem.eql(u8, flag, "--tls")) {
-            opts.tls = true;
-            continue;
-        }
+            return error.HelpFlag;
 
+        // ----- flags with values -----
         value = args.next() orelse return error.MissingValue;
 
         // required parameters
@@ -185,10 +171,7 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
             const count = std.fmt.parseInt(u64, args.next() orelse return error.MissingValue, 10) catch return error.InvalidValue;
 
             opts.save = .{ .delay = delay, .count = @max(count, 1) };
-        } else if (std.mem.eql(u8, flag, "--auth"))
-            opts.auth = try allocator.dupe(u8, value)
-        else
-            return error.InvalidOption;
+        } else return error.InvalidOption;
     }
 
     // database name is a required parameter.
@@ -196,18 +179,11 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
     if (opts.name == null) return error.MissingName;
 
     // if addr is not set, generate localhost with
-    // random port from 10000 to 19999. if TLS is
-    // enabled default port is 8443
+    // random port from 10000 to 19999
     if (opts.addr == null) {
-        const port: u16 = if (opts.tls) 8443 else std.crypto.random.intRangeAtMost(u16, 10000, 19999);
+        const port: u16 = std.crypto.random.intRangeAtMost(u16, 10000, 19999);
         opts.addr = std.net.Ip4Address.parse("127.0.0.1", port) catch unreachable;
     }
-
-    // auth can't work without TLS,
-    // if TLS is disabled while auth is enabled,
-    // enables TLS automatically
-    if (!opts.tls and opts.auth != null)
-        opts.tls = true;
 
     // if capacity is null, set to 0
     opts.db_cap = opts.db_cap orelse 0;
