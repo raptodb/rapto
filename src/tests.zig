@@ -53,5 +53,5 @@ test {
     _ = @import("storage.zig");
     _ = @import("utils.zig");
 
-    @import("std").testing.refAllDeclsRecursive(@This());
+    @import("std").testing.refAllDecls(@This());
 }

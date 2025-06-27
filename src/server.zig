@@ -234,3 +234,7 @@ pub const Server = struct {
         self.* = undefined;
     }
 };
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

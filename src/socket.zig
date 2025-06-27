@@ -148,3 +148,7 @@ pub const Stream = struct {
         posix.close(self.handle);
     }
 };
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

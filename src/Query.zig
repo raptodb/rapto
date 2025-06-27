@@ -168,3 +168,7 @@ test "parse query" {
     try std.testing.expectEqualSlices(u8, "abc def", q.args);
     try std.testing.expectEqualSlices(u8, "PING abc def", q.raw_query);
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

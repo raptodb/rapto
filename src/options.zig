@@ -209,3 +209,7 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
 
     return opts;
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

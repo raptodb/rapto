@@ -358,3 +358,7 @@ test "storage" {
     const index4 = storage.search("foo") orelse return error.TestExpectedObject;
     try std.testing.expect(index4 == 0);
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

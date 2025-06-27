@@ -423,3 +423,7 @@ pub fn COPY(storage: *Storage, args: []const u8) !void {
 
     storage.store.items[i].metadata = d.metadata;
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

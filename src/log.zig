@@ -163,3 +163,7 @@ pub fn getFormattedTime() [19]u8 {
 
     return buf[0..19].*;
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

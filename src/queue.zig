@@ -92,3 +92,7 @@ test "queue" {
     try std.testing.expect(q.waitAndPop(std.testing.allocator) == 16);
     try std.testing.expect(q.waitAndPop(std.testing.allocator) == 500);
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

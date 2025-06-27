@@ -53,3 +53,7 @@ test "compress and decompress" {
 
     try std.testing.expectEqualSlices(u8, original, decompressed);
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

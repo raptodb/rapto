@@ -134,3 +134,7 @@ pub fn toRawTermios() std.c.termios {
 
     return old_termios;
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

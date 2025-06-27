@@ -72,3 +72,7 @@ test "advanced compare" {
         "this is a long string used for hashing comparx",
     ));
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

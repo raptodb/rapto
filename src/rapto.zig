@@ -340,3 +340,7 @@ pub fn main() void {
         std.debug.assert(profiler.live_bytes == 53);
     }
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

@@ -271,3 +271,7 @@ test "serialize and deserialize" {
     try std.testing.expectEqual(obj.metadata.access_times, deserialized.metadata.access_times);
     try std.testing.expectEqual(obj.metadata.last_access, deserialized.metadata.last_access);
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

@@ -92,3 +92,7 @@ pub fn snap(storage: *Storage, logger: *log.Logger, auto: bool) error{SaveFailed
     // Snap success
     return;
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

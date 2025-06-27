@@ -124,3 +124,7 @@ pub fn expandSaveError(err: SaveError) []const u8 {
         else => "Unknown error.",
     };
 }
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}
