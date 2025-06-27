@@ -61,6 +61,10 @@ pub const Storage = struct {
 
     conf: *RaptoConfig,
 
+    pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit } || signal.SignalError;
+    pub const SaveError = error{ FileSeek, FileSync } || signal.SignalError || std.fs.File.WriteError;
+    pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit } || signal.SignalError;
+
     /// Initializes storage with an allocator, file and size in bytes.
     pub fn init(allocator: std.mem.Allocator, file: std.fs.File, conf: *RaptoConfig) Self {
         return Self{
@@ -74,7 +78,6 @@ pub const Storage = struct {
 
     /// Loads stored objects from file to memory.
     /// Returns the number of loaded items.
-    pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit } || signal.SignalError;
     pub noinline fn load(self: *Self) LoadError!u64 {
         const reader = self.file.reader();
         // count of loaded items
@@ -143,7 +146,6 @@ pub const Storage = struct {
 
     /// Save objects into file. This function
     /// overwrites the file with new data.
-    pub const SaveError = error{ FileSeek, FileSync } || signal.SignalError || std.fs.File.WriteError;
     pub noinline fn save(self: *Self) SaveError!void {
         self.file.seekTo(0) catch return error.FileSeek;
         self.file.setEndPos(0) catch return error.FileSeek;
@@ -183,7 +185,6 @@ pub const Storage = struct {
     /// Puts item in the store and return index. If exist, overwrite it.
     /// If not exist, stores item on head of array, as most
     /// priority element for LRU policy.
-    pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit } || signal.SignalError;
     pub fn put(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
         // check if key already exist
         if (self.search(key)) |i| {

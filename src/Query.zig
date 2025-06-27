@@ -52,8 +52,22 @@ raw_query: []const u8 = undefined,
 command: db.Commands = undefined,
 args: []const u8 = undefined,
 
-/// Parses raw query to valid query. It divide command with arguments.
 pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
+pub const ResolveError = error{
+    MissingTokens,
+    TypeOverflow,
+    KeyNotFound,
+    KeyReplacementExist,
+    MismatchType,
+    SaveFailed,
+    InvalidObject,
+    InvalidMetadata,
+    NoKeysFound,
+    UnknownArgument,
+    ExcedeedSpaceLimit,
+} || signal.SignalError || Storage.PutError;
+
+/// Parses raw query to valid query. It divide command with arguments.
 pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     const trimmed = std.mem.trim(u8, raw_query, " ");
     if (trimmed.len == 0) {
@@ -72,19 +86,6 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
 
 /// Resolves query.
 /// Returns response text and allocatedFromHeap bool.
-pub const ResolveError = error{
-    MissingTokens,
-    TypeOverflow,
-    KeyNotFound,
-    KeyReplacementExist,
-    MismatchType,
-    SaveFailed,
-    InvalidObject,
-    InvalidMetadata,
-    NoKeysFound,
-    UnknownArgument,
-    ExcedeedSpaceLimit,
-} || signal.SignalError || Storage.PutError;
 pub fn resolve(
     self: Self,
     storage: *Storage,

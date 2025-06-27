@@ -85,8 +85,10 @@ pub const Server = struct {
 
     conf: *RaptoConfig,
 
-    /// Initializes and binds server.
     pub const BindError = signal.SignalError || error{BindError};
+    pub const ClientError = error{UnmatchVersion} || socket.Stream.ReadError || socket.Stream.WriteError;
+
+    /// Initializes and binds server.
     pub fn bind(
         allocator: std.mem.Allocator,
         logger: *log.Logger,
@@ -156,7 +158,6 @@ pub const Server = struct {
     }
 
     /// Client handler. Setups and reads queries.
-    pub const ClientError = error{UnmatchVersion} || socket.Stream.ReadError || socket.Stream.WriteError;
     fn handleClient(self: *Self, client: *Client) ClientError!void {
         // check if version matching with server version.
         // Next get the conventional name of client and add to

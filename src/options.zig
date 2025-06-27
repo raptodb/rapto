@@ -33,7 +33,6 @@
 //! It contains the implementation of cli options.
 
 const std = @import("std");
-const builtin = @import("builtin");
 
 const signal = @import("signal.zig");
 
@@ -90,8 +89,6 @@ pub inline fn usage() []const u8 {
     ;
 }
 
-/// Parse arguments into RaptoConfig struct.
-/// It can return parsing errors.
 pub const OptionsError = error{
     HelpFlag,
     InvalidOption,
@@ -104,6 +101,9 @@ pub const OptionsError = error{
     IncompleteAddr,
     CacheLarger,
 } || signal.SignalError;
+
+/// Parse arguments into RaptoConfig struct.
+/// It can return parsing errors.
 pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator) OptionsError!RaptoConfig {
     // skip executable path
     _ = args.skip();
@@ -194,14 +194,6 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
         // with current absolute path
         const storage_dir = opts.db_path orelse std.fs.cwd().realpathAlloc(allocator, ".") catch unreachable;
         defer allocator.free(storage_dir);
-
-        // for windows systems, path's backslashes
-        // is replaced with slashes, as linux
-        if (builtin.os.tag == .windows) {
-            for (@constCast(storage_dir)) |*c| {
-                if (c.* == '\\') c.* = '/';
-            }
-        }
 
         // set database directory with database storage file
         opts.db_path = try std.fmt.allocPrint(allocator, "{s}/{s}.raptodb", .{ storage_dir, opts.name.? });

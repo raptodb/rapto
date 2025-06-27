@@ -90,9 +90,11 @@ pub const Object = struct {
         }
     } = undefined,
 
+    pub const SetError = error{TypeOverflow} || signal.SignalError;
+    pub const DeserializeError = error{ EndOfStream, UnsupportedType } || signal.SignalError;
+
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
-    pub const SetError = error{TypeOverflow} || signal.SignalError;
     pub fn set(allocator: std.mem.Allocator, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) SetError!Self {
         // check key length for a limit of 2^8
         if (key.len > std.math.maxInt(u8)) {
@@ -116,7 +118,6 @@ pub const Object = struct {
     }
 
     /// Return struct from serialized data.
-    pub const DeserializeError = error{ EndOfStream, UnsupportedType } || signal.SignalError;
     pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) DeserializeError!Self {
         // init io reader
         var deserialized = std.io.fixedBufferStream(data);
