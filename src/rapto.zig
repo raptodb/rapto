@@ -207,12 +207,12 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
         const t0 = try spawn(snap.autosnap, .{ &storage, &logger, save, &modc });
         t0.detach();
 
-        logger.info("Auto-snap: enabled with delay={d} count={d}.", .{ save.delay, save.count });
+        logger.info("Auto-snap enabled with delay={d} count={d}.", .{ save.delay, save.count });
     }
     // if save is not enabled warn
     // to say that Auto-snap is disabled.
     // items will not be saved persistently.
-    else logger.warning("Auto-snap: disabled.", .{});
+    else logger.warning("Auto-snap disabled.", .{});
 
     // bind server
     var session = try Server.bind(allocator, &logger, conf.addr.?, &queue, conf);
