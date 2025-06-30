@@ -251,7 +251,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
             ) catch |err| .{ ree.expandResolveError(err), false };
             defer if (is_heap) allocator.free(resp);
 
-            try client.stream.write(resp);
+            client.stream.write(resp) catch {};
 
             // increment counter of storage modifies
             if (conf.save != null)
