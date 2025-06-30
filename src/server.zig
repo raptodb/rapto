@@ -138,6 +138,7 @@ pub const Server = struct {
     /// Wrapper for client handler.
     /// This function handles errors.
     fn handleClientWrapper(self: *Self, client: *Client) void {
+        client.stream.disableNagle() catch return;
         client.stream.setReadDeadline(DEADLINE_MS) catch return;
         client.stream.setWriteDeadline(DEADLINE_MS) catch return;
 
