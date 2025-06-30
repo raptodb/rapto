@@ -111,6 +111,18 @@ pub const Stream = struct {
         return utils.advancedCompare(readed, request);
     }
 
+    /// Disables Nagle's algorithm.
+    /// Optimizes netowrk performance.
+    pub fn disableNagle(self: *Self) error{SocketConfig}!void {
+        const val: u32 = 1;
+        posix.setsockopt(
+            self.handle,
+            posix.IPPROTO.TCP,
+            posix.TCP.NODELAY,
+            @as([*]const u8, @ptrCast(&val))[0..4],
+        ) catch return error.SocketConfig;
+    }
+
     /// Sets the timeout for read function.
     /// Accepts milliseconds parameter.
     pub fn setReadDeadline(self: *Self, ms: u32) error{SocketConfig}!void {
