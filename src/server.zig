@@ -193,12 +193,14 @@ pub const Server = struct {
                 // free only if error is occurred
                 errdefer self.allocator.free(raw_query);
 
-                // adding query to queue associated with client.
-                // useful to return the response.
-                try self.queue.put(self.allocator, Query.parseQuery(client, raw_query) catch |err| {
+                if (Query.parseQuery(client, raw_query)) |query| {
+                    // adding query to queue associated with client.
+                    // useful to return the response.
+                    try self.queue.put(self.allocator, query);
+                } else |err| {
                     client.stream.write(ree.expandQueryParsingError(err)) catch {};
                     continue;
-                });
+                }
             }
 
             // if error is EOF message is corrupted.
