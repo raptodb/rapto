@@ -112,7 +112,7 @@ pub const Stream = struct {
     }
 
     /// Disables Nagle's algorithm.
-    /// Optimizes netowrk performance.
+    /// Optimizes network performance.
     pub fn disableNagle(self: *Self) error{SocketConfig}!void {
         const val: u32 = 1;
         posix.setsockopt(
