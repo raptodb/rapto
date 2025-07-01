@@ -33,7 +33,7 @@
 //! It contains the implementation of testing module.
 
 test {
-    // NOTE: These modules cannot be tested.
+    // NOTE: These modules cannot be tested over semantic.
     // They require the original server boot.
     _ = @import("log.zig");
     _ = @import("options.zig");
