@@ -7,7 +7,7 @@
 
 const std = @import("std");
 
-pub const VERSION = "0.2.6";
+pub const VERSION = "1.0.0";
 pub const SEMANTIC_VERSION = std.SemanticVersion.parse(VERSION) catch unreachable;
 
 /// Profiler struct that tracks memory allocations and deallocations.
@@ -149,8 +149,9 @@ pub const Zprof = struct {
     /// When true, allocation events can be logged to stdout.
     log: bool,
 
-    /// Initialize a new Zprof instance.
+    /// Allocates and initializes a new Zprof instance.
     /// Wraps an existing allocator with memory profiling capabilities.
+    /// After, it must be freed with `deinit()` function.
     pub fn init(allocator: *std.mem.Allocator, log: bool) !*Self {
         // create our custom allocator with profiling hooks
         const zprof_ptr = try allocator.create(Zprof);
@@ -276,5 +277,10 @@ pub const Zprof = struct {
 
         // then actually free the memory
         return self.wrapped_allocator.rawFree(buf, alignment, ret_addr);
+    }
+
+    /// Deinitializes self.
+    pub fn deinit(self: *Self) void {
+        self.wrapped_allocator.destroy(self);
     }
 };
