@@ -16,23 +16,19 @@ The contexts of use are limited and very specific, such as real-time monitoring,
 
 ## The pillars
 
-### 👣 _Footprinting_
+**👣 _Footprinting_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Memory is used efficiently for low-space environments, leaving trace and control for each operation.
 
-Memory is used efficiently for low-space environments, leaving trace and control for each operation.
+**⚡ _Performance_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Performance-oriented, Rapto will be a competition for other databases.
 
-### ⚡ _Performance_
+**📄 _Minimalism_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;The key to good code introduces flexibility, simplicity, overall efficiency and documentation.
 
-Performance-oriented, Rapto will be a competition for other databases.
+**🛡️ _Security_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;To ensure security, Zig is the winning candidate for distributed systems.
 
-### 📄 _Minimalism_
-
-The key to good code introduces flexibility, simplicity, overall efficiency and documentation.
-
-### 🛡️ _Security_
-
-To ensure security, Zig is the winning candidate for distributed systems.
-
-***These features make Rapto a choice for high-reliability professional contexts, now and in the future.***
+> ***These features make Rapto a choice for high-reliability professional contexts, now and in the future.***
 
 ## Benchmarks
 
@@ -47,3 +43,10 @@ Available tested benchmarks:
 ## Documentation
 
 The only official documentation of Rapto resides in the [wiki](https://github.com/raptodb/rapto/wiki) of this repository.
+
+## License
+
+Copyright (c) raptodb <br>
+Copyright (c) Andrea Vaccaro (owner)
+
+The content of this repository is licensed under the [BSD-3-Clause](LICENSE.md) license.
