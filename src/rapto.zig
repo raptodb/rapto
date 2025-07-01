@@ -276,6 +276,8 @@ pub fn main() void {
 
     // this allocator is wrapped with tracker Zprof
     const zprof = Zprof.init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
+    defer zprof.deinit();
+    
     profiler = &zprof.profiler;
     const allocator = zprof.allocator;
 
