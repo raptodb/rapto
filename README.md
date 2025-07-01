@@ -41,6 +41,9 @@ Internal tests focusing exclusively on query resolution within the engine have s
 > [!IMPORTANT]
 > However, these results are not publicly verified and should be considered indicative only.
 
+Available tested benchmarks:
+- [zig-rapto](https://github.com/raptodb/zig-rapto?tab=readme-ov-file#benchmark)
+
 ## Documentation
 
 The only official documentation of Rapto resides in the [wiki](https://github.com/raptodb/rapto/wiki) of this repository.
