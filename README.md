@@ -16,29 +16,35 @@ The contexts of use are limited and very specific, such as real-time monitoring,
 
 ## The pillars
 
-**👣 _Footprinting_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Memory is used efficiently for low-space environments, leaving trace and control for each operation.
-
-**⚡ _Performance_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Performance-oriented, Rapto will be a competition for other databases.
-
-**📄 _Minimalism_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;The key to good code introduces flexibility, simplicity, overall efficiency and documentation.
+**🎯 _Quality_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Architecture and code quality ensuring readability and maintainability.
 
 **🛡️ _Security_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;To ensure security, Zig is the winning candidate for distributed systems.
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Built using trusted, safety-focused languages like Zig.
 
-> ***These features make Rapto a choice for high-reliability professional contexts, now and in the future.***
+**👣 _Footprinting_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Memory is used efficiently by tracking it at each operation.
+
+**⚡ _Performance_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Optimized for peak computational and memory efficiency.
+
+**🦾 _Flexibility_** <br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Introduction of new features without cost and performance regression.
+
+> ***The foundation of all these pillars is the reliability that Rapto is committed to ensuring in professional systems.***
 
 ## Benchmarks
 
-Valid benchmarks are available through Rapto clients.
-Internal tests focusing exclusively on query resolution within the engine have shown latencies in the range of <ins>~3 to ~6 microseconds</ins>. <br>
+Valid benchmarks are available through Rapto clients. <br>
+Internal tests focused on query resolution showed latencies in a few hundreds of microseconds.
 > [!IMPORTANT]
 > However, these results are not publicly verified and should be considered indicative only.
 
-Available tested benchmarks:
-- [zig-rapto](https://github.com/raptodb/zig-rapto?tab=readme-ov-file#benchmark)
+#### Official Rapto clients
+
+| Client                                            | Server version        | Benchmark tested | Benchmarking Note                                              |
+| :------------------------------------------------ | :-------------------: | :--------------: | :------------------------------------------------------------- |
+| [zig-rapto](https://github.com/raptodb/zig-rapto) | `v0.1.0` (unreleased) | ⚠️               | Testing based only on ISET, DSET, SSET and GET; to be improved |
 
 ## Documentation
 
@@ -47,6 +53,6 @@ The only official documentation of Rapto resides in the [wiki](https://github.co
 ## License
 
 Copyright (c) raptodb <br>
-Copyright (c) Andrea Vaccaro (owner)
+Copyright (c) Andrea Vaccaro (President)
 
 The content of this repository is licensed under the [BSD-3-Clause](LICENSE.md) license.
