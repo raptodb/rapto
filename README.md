@@ -43,8 +43,8 @@ Internal tests focused on query resolution showed latencies in a few hundreds of
 #### Official Rapto clients
 
 | Client                                            | Server version        | Benchmark tested | Benchmarking Note                                              |
-| :------------------------------------------------ | :-------------------: | :--------------: | :------------------------------------------------------------- |
-| [zig-rapto](https://github.com/raptodb/zig-rapto) | `v0.1.0` (unreleased) | ⚠️               | Testing based only on ISET, DSET, SSET and GET; to be improved |
+| :------------------------------------------------ | :-------------------: | :--------------: | :------------- |
+| [zig-rapto](https://github.com/raptodb/zig-rapto) | `v0.1.0` (unreleased) | ⚠️               | To be improved |
 
 ## Documentation
 
