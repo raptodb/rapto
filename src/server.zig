@@ -216,10 +216,10 @@ pub const Server = struct {
     pub fn destroyClient(self: *Self, client: *Client) void {
         const i = std.mem.indexOfScalar(*Client, self.clients.items, client) orelse return;
 
+        self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name.?, client.address });
+
         client.deinit(self.allocator);
         _ = self.clients.orderedRemove(i);
-
-        self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name.?, client.address });
     }
 
     /// Closes and deinits clients.
