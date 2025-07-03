@@ -150,7 +150,7 @@ pub fn resolve(
         .SAVE => try db.SAVE(storage, logger),
         .COPY => try db.COPY(storage, self.args),
 
-        // handled before (as DOWN)
+        // handled out of this function (as DOWN)
         else => unreachable,
     }
 
