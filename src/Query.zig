@@ -116,17 +116,9 @@ pub fn resolve(
         .DUMP => return .{ try db.DUMP(storage, self.args), true },
 
         // commands with void return type
-        .ISET => {
+        .SET => {
             @branchHint(.likely);
-            try db.ISET(storage, self.args);
-        },
-        .DSET => {
-            @branchHint(.likely);
-            try db.DSET(storage, self.args);
-        },
-        .SSET => {
-            @branchHint(.likely);
-            try db.SSET(storage, self.args);
+            try db.SET(storage, self.args);
         },
         .UPDATE => {
             @branchHint(.likely);

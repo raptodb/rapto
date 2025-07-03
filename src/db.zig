@@ -54,9 +54,7 @@ inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u8, [
 pub const Commands = enum(u8) {
     PING,
 
-    ISET,
-    DSET,
-    SSET,
+    SET,
     UPDATE,
     RENAME,
 
@@ -91,7 +89,7 @@ pub const Commands = enum(u8) {
     DOWN,
 
     /// Quantity of commands possible.
-    const qty: u8 = 31;
+    const qty: u8 = 29;
 
     /// Parses text command to enum.
     pub fn parse(noalias command: []const u8) ?Commands {
@@ -122,30 +120,42 @@ pub inline fn PING() []const u8 {
     return "pong";
 }
 
-pub fn ISET(storage: *Storage, args: []const u8) !void {
+pub fn SET(storage: *Storage, args: []const u8) !void {
     const key, const value = try kvFormat(args);
-    const int_value = std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
 
-    _ = try storage.put(.integer, key, int_value);
-}
+    const value_type: FieldType = blk: {
+        // check if value is string if
+        // starts with " and ends with "
+        if (std.mem.startsWith(u8, value, "\"") and std.mem.endsWith(u8, value, "\"")) {
+            if (value.len > std.math.maxInt(u32)) {
+                @branchHint(.cold);
+                return error.TypeOverflow;
+            }
 
-pub fn DSET(storage: *Storage, args: []const u8) !void {
-    const key, const value = try kvFormat(args);
-    const float_value = std.fmt.parseFloat(f64, value) catch return error.MismatchType;
+            break :blk .string;
+        }
 
-    _ = try storage.put(.decimal, key, float_value);
-}
+        // check if value is decimal if
+        // contains a dot
+        else if (std.mem.indexOfScalar(u8, value, '.') != null) {
+            break :blk .decimal;
+        }
 
-pub fn SSET(storage: *Storage, args: []const u8) !void {
-    const key, const string_value = try kvFormat(args);
+        // probably a integer
+        break :blk .integer;
+    };
 
-    // string have a size limit of 2^32 bytes
-    if (string_value.len > std.math.maxInt(u32)) {
-        @branchHint(.unlikely);
-        return error.TypeOverflow;
+    switch (value_type) {
+        .integer => {
+            const fvalue = std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
+            _ = try storage.put(.integer, key, fvalue);
+        },
+        .decimal => {
+            const fvalue = std.fmt.parseFloat(f64, value) catch return error.MismatchType;
+            _ = try storage.put(.decimal, key, fvalue);
+        },
+        .string => _ = try storage.put(.string, key, value[1..value.len-1]),
     }
-
-    _ = try storage.put(.string, key, string_value);
 }
 
 pub fn UPDATE(storage: *Storage, args: []const u8) !void {
