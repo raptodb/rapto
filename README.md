@@ -8,11 +8,11 @@
 
 ## The Rapto database
 
-Rapto is an in-memory key-value database with temporal persistent storage. It is designed to ensure speed and simplicity in operations and is used in very specific contexts.
+Rapto is an in-memory key-value database with persistent storage. It is designed to ensure speed and simplicity in operations and is used in very specific contexts.
 
 The supported data types are intentionally minimal for reasons of efficiency and purpose and include `integer`, `decimal` and `string`. They are subject to continuous optimization to maximize performance in query operations.
 
-The contexts of use are limited and very specific, such as real-time monitoring, embedded systems, LRU cache.
+The contexts of use are limited and very specific, such as real-time monitoring, embedded systems, LRU cache. For a general overview, it is recommended to use a few frequently accessed keys.
 
 ## The pillars
 
