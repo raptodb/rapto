@@ -100,7 +100,7 @@ pub fn resolve(
             @branchHint(.likely);
             return .{ try db.GET(storage, self.args), true };
         },
-        .TYPE => return .{ try db.TYPE(storage, self.args), true },
+        .TYPE => return .{ try db.TYPE(storage, self.args), false },
         .CHECK => return .{ db.CHECK(storage, self.args), true },
         .COUNT => return .{ try db.COUNT(storage), true },
         .LIST => return .{ try db.LIST(storage), true },
