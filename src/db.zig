@@ -116,16 +116,13 @@ test "command parsing" {
     try std.testing.expect(Commands.parse("notacommand") == null);
 }
 
-pub inline fn PING() []const u8 {
-    return "pong";
-}
-
 pub fn SET(storage: *Storage, args: []const u8) !void {
-    const key, const value = try kvFormat(args);
+    @branchHint(.likely);
 
+    const key, const value = try kvFormat(args);
     const value_type: FieldType = blk: {
         // check if value is string if
-        // starts with " and ends with "
+        // it is encapsulated with ""
         if (std.mem.startsWith(u8, value, "\"") and std.mem.endsWith(u8, value, "\"")) {
             if (value.len > std.math.maxInt(u32)) {
                 @branchHint(.cold);
@@ -154,11 +151,13 @@ pub fn SET(storage: *Storage, args: []const u8) !void {
             const fvalue = std.fmt.parseFloat(f64, value) catch return error.MismatchType;
             _ = try storage.put(.decimal, key, fvalue);
         },
-        .string => _ = try storage.put(.string, key, value[1..value.len-1]),
+        .string => _ = try storage.put(.string, key, value[1 .. value.len - 1]),
     }
 }
 
 pub fn UPDATE(storage: *Storage, args: []const u8) !void {
+    @branchHint(.likely);
+
     const key, const string_value = try kvFormat(args);
     const value = std.fmt.parseFloat(f64, string_value) catch return error.MismatchType;
 
@@ -192,7 +191,9 @@ pub fn RENAME(storage: *Storage, args: []const u8) !void {
     } else return error.KeyNotFound;
 }
 
-pub fn GET(storage: *Storage, key: []const u8) ![]const u8 {
+pub fn GET(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
+    @branchHint(.likely);
+
     const obj = storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
 
@@ -208,23 +209,23 @@ pub fn GET(storage: *Storage, key: []const u8) ![]const u8 {
         .string => |value| std.fmt.allocPrint(storage.allocator, "\"{s}\"", .{value}),
     };
 
-    return value catch error.OutOfMemory;
+    return .{ value catch return error.OutOfMemory, true };
 }
 
-pub fn TYPE(storage: *Storage, key: []const u8) ![]const u8 {
+pub fn TYPE(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
     const obj = storage.get(key) orelse return error.KeyNotFound;
-    return @tagName(obj.field);
+    return .{ @tagName(obj.field), false };
 }
 
-pub fn CHECK(storage: *Storage, key: []const u8) []const u8 {
-    return if (storage.search(key) == null) "0" else "1";
+pub fn CHECK(storage: *Storage, key: []const u8) struct { []const u8, bool } {
+    return .{ if (storage.search(key) == null) "0" else "1", false };
 }
 
-pub fn COUNT(storage: *Storage) ![]const u8 {
-    return try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.store.items.len});
+pub fn COUNT(storage: *Storage) !struct { []const u8, bool } {
+    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.store.items.len}), true };
 }
 
-pub fn LIST(storage: *Storage) ![]const u8 {
+pub fn LIST(storage: *Storage) !struct { []const u8, bool } {
     var keys = std.ArrayListUnmanaged([]const u8).initCapacity(storage.allocator, 0) catch unreachable;
     defer keys.deinit(storage.allocator);
 
@@ -238,7 +239,7 @@ pub fn LIST(storage: *Storage) ![]const u8 {
     return if (keys.items.len == 0)
         error.NoKeysFound
     else
-        try std.mem.join(storage.allocator, " ", keys.items);
+        .{ try std.mem.join(storage.allocator, " ", keys.items), false };
 }
 
 pub fn TOUCH(storage: *Storage, key: []const u8) !void {
@@ -282,7 +283,7 @@ pub fn SORT(storage: *Storage) void {
     storage.prefetch();
 }
 
-pub fn FREQ(storage: *Storage, arg: []const u8) ![]const u8 {
+pub fn FREQ(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
     if (kvFormat(arg)) |args| {
@@ -294,10 +295,10 @@ pub fn FREQ(storage: *Storage, arg: []const u8) ![]const u8 {
         obj.metadata.access_times = value;
     } else |_| obj = storage.get(arg) orelse return error.KeyNotFound;
 
-    return std.fmt.allocPrint(storage.allocator, "{d}", .{obj.metadata.access_times});
+    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{obj.metadata.access_times}), true };
 }
 
-pub fn LAST(storage: *Storage, arg: []const u8) ![]const u8 {
+pub fn LAST(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
     if (kvFormat(arg)) |args| {
@@ -309,10 +310,10 @@ pub fn LAST(storage: *Storage, arg: []const u8) ![]const u8 {
         obj.metadata.last_access = value;
     } else |_| obj = storage.get(arg) orelse return error.KeyNotFound;
 
-    return std.fmt.allocPrint(storage.allocator, "{d}", .{obj.metadata.last_access});
+    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{obj.metadata.last_access}), true };
 }
 
-pub fn IDLE(storage: *Storage, key: []const u8) ![]const u8 {
+pub fn IDLE(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
     const obj = storage.get(key) orelse return error.KeyNotFound;
     const idle = std.math.sub(
         i64,
@@ -320,27 +321,27 @@ pub fn IDLE(storage: *Storage, key: []const u8) ![]const u8 {
         obj.metadata.last_access,
     ) catch return error.InvalidMetadata;
 
-    return std.fmt.allocPrint(storage.allocator, "{d}", .{idle});
+    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{idle}), true };
 }
 
-pub fn LEN(storage: *Storage, key: []const u8) ![]const u8 {
+pub fn LEN(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
     const obj = storage.get(key) orelse return error.KeyNotFound;
     const size = if (obj.field == .string) obj.field.string.len else 8;
 
-    return std.fmt.allocPrint(storage.allocator, "{d}", .{size});
+    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{size}), true };
 }
 
-pub fn SIZE(storage: *Storage, key: []const u8) ![]const u8 {
+pub fn SIZE(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
     const obj = storage.get(key) orelse return error.KeyNotFound;
 
-    var size: u64 = 56;
+    var size: u64 = 56; // min size for a object
     size += obj.key.len;
     size += if (obj.field == .string) obj.field.string.len else 8;
 
-    return std.fmt.allocPrint(storage.allocator, "{d}", .{size});
+    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{size}), true };
 }
 
-pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) ![]const u8 {
+pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
     const value: u64 =
         if (utils.advancedCompare(arg, "live"))
             profiler.live_bytes
@@ -365,7 +366,7 @@ pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) !
             break :blk 0;
         };
 
-    return std.fmt.allocPrint(allocator, "{d}", .{value});
+    return .{ try std.fmt.allocPrint(allocator, "{d}", .{value}), true };
 }
 
 pub fn DB(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
@@ -374,19 +375,15 @@ pub fn DB(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
     else if (utils.advancedCompare(arg, "cap"))
         .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.conf.db_cap.?}), true }
     else if (utils.advancedCompare(arg, "size"))
-        .{ try std.fmt.allocPrint(
-            storage.allocator,
-            "{d}",
-            .{storage.conf.db_cap.? - storage.store_cap},
-        ), true }
+        .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.conf.db_cap.? - storage.store_cap}), true }
     else
         return error.UnknownArgument;
 }
 
-pub fn DUMP(storage: *Storage, key: []const u8) ![]const u8 {
+pub fn DUMP(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
     var obj = storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
-    return obj.serialize(storage.allocator);
+    return .{ try obj.serialize(storage.allocator), true };
 }
 
 pub noinline fn RESTORE(storage: *Storage, obj: []const u8) !void {
@@ -410,6 +407,8 @@ pub noinline fn ERASE(storage: *Storage) !void {
 }
 
 pub fn DEL(storage: *Storage, key: []const u8) !void {
+    @branchHint(.likely);
+
     const index = storage.search(key) orelse return error.KeyNotFound;
     try storage.removeAtIndex(index);
 }

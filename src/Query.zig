@@ -84,8 +84,9 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     return q;
 }
 
-/// Resolves query.
-/// Returns response text and allocatedFromHeap bool.
+/// Resolves query and returns response with
+/// bool which indicates whether the response
+/// was allocated in the heap.
 pub fn resolve(
     self: Self,
     storage: *Storage,
@@ -93,52 +94,37 @@ pub fn resolve(
     profiler: *Profiler,
 ) ResolveError!struct { []const u8, bool } {
     switch (self.command) {
+        // testing commands
+        .PING => return .{ "pong", false },
+
         // commands with string return type
-        .PING => return .{ db.PING(), false },
-
-        .GET => {
-            @branchHint(.likely);
-            return .{ try db.GET(storage, self.args), true };
-        },
-        .TYPE => return .{ try db.TYPE(storage, self.args), false },
-        .CHECK => return .{ db.CHECK(storage, self.args), true },
-        .COUNT => return .{ try db.COUNT(storage), true },
-        .LIST => return .{ try db.LIST(storage), true },
-
-        .FREQ => return .{ try db.FREQ(storage, self.args), true },
-        .LAST => return .{ try db.LAST(storage, self.args), true },
-        .IDLE => return .{ try db.IDLE(storage, self.args), true },
-        .LEN => return .{ try db.LEN(storage, self.args), true },
-        .SIZE => return .{ try db.SIZE(storage, self.args), true },
-        .MEM => return .{ try db.MEM(storage.allocator, profiler, self.args), true },
-        .DB => return try db.DB(storage, self.args),
-
-        .DUMP => return .{ try db.DUMP(storage, self.args), true },
+        .GET => return db.GET(storage, self.args),
+        .TYPE => return db.TYPE(storage, self.args),
+        .CHECK => return db.CHECK(storage, self.args),
+        .COUNT => return db.COUNT(storage),
+        .LIST => return db.LIST(storage),
+        .FREQ => return db.FREQ(storage, self.args),
+        .LAST => return db.LAST(storage, self.args),
+        .IDLE => return db.IDLE(storage, self.args),
+        .LEN => return db.LEN(storage, self.args),
+        .SIZE => return db.SIZE(storage, self.args),
+        .MEM => return db.MEM(storage.allocator, profiler, self.args),
+        .DB => return db.DB(storage, self.args),
+        .DUMP => return db.DUMP(storage, self.args),
 
         // commands with void return type
-        .SET => {
-            @branchHint(.likely);
-            try db.SET(storage, self.args);
-        },
-        .UPDATE => {
-            @branchHint(.likely);
-            try db.UPDATE(storage, self.args);
-        },
+        .SET => try db.SET(storage, self.args),
+        .UPDATE => try db.UPDATE(storage, self.args),
         .RENAME => try db.RENAME(storage, self.args),
-
         .TOUCH => try db.TOUCH(storage, self.args),
         .HEAD => try db.HEAD(storage, self.args),
         .TAIL => try db.TAIL(storage, self.args),
         .SHEAD => try db.SHEAD(storage, self.args),
         .STAIL => try db.STAIL(storage, self.args),
         .SORT => db.SORT(storage),
-
         .RESTORE => try db.RESTORE(storage, self.args),
         .ERASE => try db.ERASE(storage),
-        .DEL => {
-            @branchHint(.likely);
-            try db.DEL(storage, self.args);
-        },
+        .DEL => try db.DEL(storage, self.args),
         .SAVE => try db.SAVE(storage, logger),
         .COPY => try db.COPY(storage, self.args),
 
