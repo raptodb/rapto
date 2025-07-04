@@ -64,6 +64,18 @@ pub inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u
     return .{ args[0..sep], args[sep + 1 ..] };
 }
 
+test "key value format" {
+    const key1, const value1 = try kvFormat("key value");
+    try std.testing.expectEqualStrings(key1, "key");
+    try std.testing.expectEqualStrings(value1, "value");
+
+    const key2, const value2 = try kvFormat("key11 Value");
+    try std.testing.expectEqualStrings(key2, "key11");
+    try std.testing.expectEqualStrings(value2, "Value");
+
+    try std.testing.expect(kvFormat("key") == error.MissingTokens);
+}
+
 test "advanced compare" {
     try std.testing.expect(advancedCompare("abc", "abc"));
     try std.testing.expect(!advancedCompare("abc", "abC"));
