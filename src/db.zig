@@ -419,7 +419,8 @@ pub noinline fn SAVE(storage: *Storage, logger: *log.Logger) !void {
 
 pub fn COPY(storage: *Storage, args: []const u8) !void {
     const key, const dst = try kvFormat(args);
-    const rawkey = try DUMP(storage, key);
+    const rawkey, const heap_allocated = try DUMP(storage, key);
+    defer if (heap_allocated) storage.allocator.free(rawkey);
 
     var d = Object.deserialize(storage.allocator, rawkey) catch return error.InvalidObject;
     d.key = try storage.allocator.dupe(u8, dst);
