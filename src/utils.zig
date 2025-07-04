@@ -58,6 +58,12 @@ pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool
     else return std.mem.eql(u8, a, b);
 }
 
+/// Split a text with space separator.
+pub inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u8, []const u8 } {
+    const sep = std.mem.indexOfScalar(u8, args, ' ') orelse return error.MissingTokens;
+    return .{ args[0..sep], args[sep + 1 ..] };
+}
+
 test "advanced compare" {
     try std.testing.expect(advancedCompare("abc", "abc"));
     try std.testing.expect(!advancedCompare("abc", "abC"));

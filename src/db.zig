@@ -43,11 +43,9 @@ const Storage = @import("storage.zig").Storage;
 const Object = @import("object.zig").Object;
 const FieldType = @import("object.zig").FieldType;
 
-/// Split a text with space separator.
-inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u8, []const u8 } {
-    const sep = std.mem.indexOfScalar(u8, args, ' ') orelse return error.MissingTokens;
-    return .{ args[0..sep], args[sep + 1 ..] };
-}
+const Self = @This();
+
+storage: *Storage,
 
 /// List of Rapto commands.
 /// Sectioned by functionality.
@@ -104,26 +102,10 @@ pub const Commands = enum(u8) {
     }
 };
 
-test "command parsing" {
-    try std.testing.expect(Commands.parse("GET") == .GET);
-    try std.testing.expect(Commands.parse("TYPE") == .TYPE);
-    try std.testing.expect(Commands.parse("COPY") == .COPY);
-    try std.testing.expect(Commands.parse("STAIL") == .STAIL);
-
-    try std.testing.expect(Commands.parse("Save") != .SAVE);
-    try std.testing.expect(Commands.parse("touch") != .TOUCH);
-    try std.testing.expect(Commands.parse("") == null);
-    try std.testing.expect(Commands.parse("notacommand") == null);
-}
-
-const Self = @This();
-
-storage: *Storage,
-
 pub fn SET(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
-    const key, const value = try kvFormat(args);
+    const key, const value = try utils.kvFormat(args);
     const value_type: FieldType = blk: {
         // check if value is string if
         // it is encapsulated with ""
@@ -162,7 +144,7 @@ pub fn SET(self: Self, args: []const u8) !void {
 pub fn UPDATE(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
-    const key, const string_value = try kvFormat(args);
+    const key, const string_value = try utils.kvFormat(args);
     const value = std.fmt.parseFloat(f64, string_value) catch return error.MismatchType;
 
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
@@ -180,7 +162,7 @@ pub fn UPDATE(self: Self, args: []const u8) !void {
 }
 
 pub fn RENAME(self: Self, args: []const u8) !void {
-    const old_key, const new_key = try kvFormat(args);
+    const old_key, const new_key = try utils.kvFormat(args);
 
     // new key must does not exist
     if (self.storage.search(new_key) != null) return error.KeyReplacementExist;
@@ -290,7 +272,7 @@ pub fn SORT(self: Self) void {
 pub fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
-    if (kvFormat(arg)) |args| {
+    if (utils.kvFormat(arg)) |args| {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
@@ -305,7 +287,7 @@ pub fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
 pub fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
-    if (kvFormat(arg)) |args| {
+    if (utils.kvFormat(arg)) |args| {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
@@ -422,7 +404,7 @@ pub noinline fn SAVE(self: Self, logger: *log.Logger) !void {
 }
 
 pub fn COPY(self: Self, args: []const u8) !void {
-    const key, const dst = try kvFormat(args);
+    const key, const dst = try utils.kvFormat(args);
     const rawkey, const heap_allocated = try self.DUMP(key);
     defer if (heap_allocated) self.storage.allocator.free(rawkey);
 
@@ -436,6 +418,18 @@ pub fn COPY(self: Self, args: []const u8) !void {
     };
 
     self.storage.store.items[i].metadata = d.metadata;
+}
+
+test "command parsing" {
+    try std.testing.expect(Commands.parse("GET") == .GET);
+    try std.testing.expect(Commands.parse("TYPE") == .TYPE);
+    try std.testing.expect(Commands.parse("COPY") == .COPY);
+    try std.testing.expect(Commands.parse("STAIL") == .STAIL);
+
+    try std.testing.expect(Commands.parse("Save") != .SAVE);
+    try std.testing.expect(Commands.parse("touch") != .TOUCH);
+    try std.testing.expect(Commands.parse("") == null);
+    try std.testing.expect(Commands.parse("notacommand") == null);
 }
 
 test "reftest" {
