@@ -300,7 +300,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
                         // all handled
                         else => unreachable,
-                    } catch |e| break :blk e;
+                    } catch |err| break :blk err;
 
                     // default response for void
                     // return type commands
