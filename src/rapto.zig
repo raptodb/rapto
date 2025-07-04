@@ -128,8 +128,9 @@ fn loadStorageFile(storage: *Storage) Storage.LoadError!struct { u64, f64 } {
 
 /// Procedure of normal quitting.
 fn exitProcedure(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
-    snap.snap(storage, &logger, false) catch {};
+    @branchHint(.cold);
 
+    snap.snap(storage, &logger, false) catch {};
     // send quit to main putting null client on queue
     queue.put(storage.allocator, .{}) catch std.process.abort();
 }
@@ -239,7 +240,6 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
             defer task.free(allocator);
 
             if (task.command == .DOWN) {
-                @branchHint(.cold);
                 exitProcedure(&storage, &queue);
                 break;
             }
