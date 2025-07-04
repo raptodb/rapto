@@ -345,9 +345,7 @@ pub fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
     return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{size}), true };
 }
 
-pub fn MEM(self: Self, allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
-    _ = self;
-
+pub fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
     const value: u64 =
         if (utils.advancedCompare(arg, "live"))
             profiler.live_bytes
@@ -372,7 +370,7 @@ pub fn MEM(self: Self, allocator: std.mem.Allocator, profiler: *Profiler, arg: [
             break :blk 0;
         };
 
-    return .{ try std.fmt.allocPrint(allocator, "{d}", .{value}), true };
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{value}), true };
 }
 
 pub fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {

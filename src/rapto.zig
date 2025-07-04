@@ -276,7 +276,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
                 .IDLE => db.IDLE(task.args),
                 .LEN => db.LEN(task.args),
                 .SIZE => db.SIZE(task.args),
-                .MEM => db.MEM(allocator, profiler, task.args),
+                .MEM => db.MEM(profiler, task.args),
                 .DB => db.DB(task.args),
                 .DUMP => db.DUMP(task.args),
 
