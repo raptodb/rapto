@@ -53,19 +53,6 @@ command: db.Commands = undefined,
 args: []const u8 = undefined,
 
 pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
-pub const ResolveError = error{
-    MissingTokens,
-    TypeOverflow,
-    KeyNotFound,
-    KeyReplacementExist,
-    MismatchType,
-    SaveFailed,
-    InvalidObject,
-    InvalidMetadata,
-    NoKeysFound,
-    UnknownArgument,
-    ExcedeedSpaceLimit,
-} || signal.SignalError || Storage.PutError;
 
 /// Parses raw query to valid query. It divide command with arguments.
 pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
@@ -82,57 +69,6 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
 
     return q;
-}
-
-/// Resolves query and returns response with
-/// bool which indicates whether the response
-/// was allocated in the heap.
-pub fn resolve(
-    self: Self,
-    storage: *Storage,
-    logger: *log.Logger,
-    profiler: *Profiler,
-) ResolveError!struct { []const u8, bool } {
-    switch (self.command) {
-        // testing commands
-        .PING => return .{ "pong", false },
-
-        // commands with string return type
-        .GET => return db.GET(storage, self.args),
-        .TYPE => return db.TYPE(storage, self.args),
-        .CHECK => return db.CHECK(storage, self.args),
-        .COUNT => return db.COUNT(storage),
-        .LIST => return db.LIST(storage),
-        .FREQ => return db.FREQ(storage, self.args),
-        .LAST => return db.LAST(storage, self.args),
-        .IDLE => return db.IDLE(storage, self.args),
-        .LEN => return db.LEN(storage, self.args),
-        .SIZE => return db.SIZE(storage, self.args),
-        .MEM => return db.MEM(storage.allocator, profiler, self.args),
-        .DB => return db.DB(storage, self.args),
-        .DUMP => return db.DUMP(storage, self.args),
-
-        // commands with void return type
-        .SET => try db.SET(storage, self.args),
-        .UPDATE => try db.UPDATE(storage, self.args),
-        .RENAME => try db.RENAME(storage, self.args),
-        .TOUCH => try db.TOUCH(storage, self.args),
-        .HEAD => try db.HEAD(storage, self.args),
-        .TAIL => try db.TAIL(storage, self.args),
-        .SHEAD => try db.SHEAD(storage, self.args),
-        .STAIL => try db.STAIL(storage, self.args),
-        .SORT => db.SORT(storage),
-        .RESTORE => try db.RESTORE(storage, self.args),
-        .ERASE => try db.ERASE(storage),
-        .DEL => try db.DEL(storage, self.args),
-        .SAVE => try db.SAVE(storage, logger),
-        .COPY => try db.COPY(storage, self.args),
-
-        // handled out of this function (as DOWN)
-        else => unreachable,
-    }
-
-    return .{ "OK", false };
 }
 
 /// Deallocates query.

@@ -116,7 +116,11 @@ test "command parsing" {
     try std.testing.expect(Commands.parse("notacommand") == null);
 }
 
-pub fn SET(storage: *Storage, args: []const u8) !void {
+const Self = @This();
+
+storage: *Storage,
+
+pub fn SET(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
     const key, const value = try kvFormat(args);
@@ -145,23 +149,23 @@ pub fn SET(storage: *Storage, args: []const u8) !void {
     switch (value_type) {
         .integer => {
             const fvalue = std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
-            _ = try storage.put(.integer, key, fvalue);
+            _ = try self.storage.put(.integer, key, fvalue);
         },
         .decimal => {
             const fvalue = std.fmt.parseFloat(f64, value) catch return error.MismatchType;
-            _ = try storage.put(.decimal, key, fvalue);
+            _ = try self.storage.put(.decimal, key, fvalue);
         },
-        .string => _ = try storage.put(.string, key, value[1 .. value.len - 1]),
+        .string => _ = try self.storage.put(.string, key, value[1 .. value.len - 1]),
     }
 }
 
-pub fn UPDATE(storage: *Storage, args: []const u8) !void {
+pub fn UPDATE(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
     const key, const string_value = try kvFormat(args);
     const value = std.fmt.parseFloat(f64, string_value) catch return error.MismatchType;
 
-    const obj = storage.get(key) orelse return error.KeyNotFound;
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
     if (obj.field == .string) return error.MismatchType;
 
@@ -175,173 +179,175 @@ pub fn UPDATE(storage: *Storage, args: []const u8) !void {
     obj.metadata.update();
 }
 
-pub fn RENAME(storage: *Storage, args: []const u8) !void {
+pub fn RENAME(self: Self, args: []const u8) !void {
     const old_key, const new_key = try kvFormat(args);
 
     // new key must does not exist
-    if (storage.search(new_key) != null) return error.KeyReplacementExist;
+    if (self.storage.search(new_key) != null) return error.KeyReplacementExist;
 
-    if (storage.search(old_key)) |i| {
-        const obj = &storage.store.items[i];
+    if (self.storage.search(old_key)) |i| {
+        const obj = &self.storage.store.items[i];
 
         if (obj.key.len != new_key.len)
-            obj.key = try storage.allocator.realloc(obj.key, new_key.len);
+            obj.key = try self.storage.allocator.realloc(obj.key, new_key.len);
 
         @memcpy(obj.key, new_key);
     } else return error.KeyNotFound;
 }
 
-pub fn GET(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
+pub fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     @branchHint(.likely);
 
-    const obj = storage.get(key) orelse return error.KeyNotFound;
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
 
     const value = switch (obj.field) {
-        .integer => |value| std.fmt.allocPrint(storage.allocator, "{d}", .{value}),
+        .integer => |value| std.fmt.allocPrint(self.storage.allocator, "{d}", .{value}),
         .decimal => |value| blk: {
             break :blk if (@mod(value, 1.0) == 0.0)
-                std.fmt.allocPrint(storage.allocator, "{d:.1}", .{value})
+                std.fmt.allocPrint(self.storage.allocator, "{d:.1}", .{value})
             else
-                std.fmt.allocPrint(storage.allocator, "{d}", .{value});
+                std.fmt.allocPrint(self.storage.allocator, "{d}", .{value});
         },
         // if field is string, encapsulates it with ""
-        .string => |value| std.fmt.allocPrint(storage.allocator, "\"{s}\"", .{value}),
+        .string => |value| std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{value}),
     };
 
     return .{ value catch return error.OutOfMemory, true };
 }
 
-pub fn TYPE(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
-    const obj = storage.get(key) orelse return error.KeyNotFound;
+pub fn TYPE(self: Self, key: []const u8) !struct { []const u8, bool } {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
     return .{ @tagName(obj.field), false };
 }
 
-pub fn CHECK(storage: *Storage, key: []const u8) struct { []const u8, bool } {
-    return .{ if (storage.search(key) == null) "0" else "1", false };
+pub fn CHECK(self: Self, key: []const u8) struct { []const u8, bool } {
+    return .{ if (self.storage.search(key) == null) "0" else "1", false };
 }
 
-pub fn COUNT(storage: *Storage) !struct { []const u8, bool } {
-    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.store.items.len}), true };
+pub fn COUNT(self: Self) !struct { []const u8, bool } {
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{self.storage.store.items.len}), true };
 }
 
-pub fn LIST(storage: *Storage) !struct { []const u8, bool } {
-    var keys = std.ArrayListUnmanaged([]const u8).initCapacity(storage.allocator, 0) catch unreachable;
-    defer keys.deinit(storage.allocator);
+pub fn LIST(self: Self) !struct { []const u8, bool } {
+    var keys = std.ArrayListUnmanaged([]const u8).initCapacity(self.storage.allocator, 0) catch unreachable;
+    defer keys.deinit(self.storage.allocator);
 
     // in order of priority
-    var i: u64 = storage.store.items.len;
+    var i: u64 = self.storage.store.items.len;
     while (i > 0) {
         i -= 1;
-        try keys.append(storage.allocator, storage.store.items[i].key);
+        try keys.append(self.storage.allocator, self.storage.store.items[i].key);
     }
 
     return if (keys.items.len == 0)
         error.NoKeysFound
     else
-        .{ try std.mem.join(storage.allocator, " ", keys.items), false };
+        .{ try std.mem.join(self.storage.allocator, " ", keys.items), false };
 }
 
-pub fn TOUCH(storage: *Storage, key: []const u8) !void {
-    const i = storage.search(key) orelse return error.KeyNotFound;
-    storage.store.items[i].metadata.update();
+pub fn TOUCH(self: Self, key: []const u8) !void {
+    const i = self.storage.search(key) orelse return error.KeyNotFound;
+    self.storage.store.items[i].metadata.update();
 }
 
-pub fn HEAD(storage: *Storage, key: []const u8) !void {
-    const obj = storage.get(key) orelse return error.KeyNotFound;
-    const head = &storage.store.items[storage.store.items.len - 1];
+pub fn HEAD(self: Self, key: []const u8) !void {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
+    const head = &self.storage.store.items[self.storage.store.items.len - 1];
 
     std.mem.swap(Object, obj, head);
 }
 
-pub fn TAIL(storage: *Storage, key: []const u8) !void {
-    const obj = storage.get(key) orelse return error.KeyNotFound;
-    const head = &storage.store.items[0];
+pub fn TAIL(self: Self, key: []const u8) !void {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
+    const head = &self.storage.store.items[0];
 
     std.mem.swap(Object, obj, head);
 }
 
-pub fn SHEAD(storage: *Storage, key: []const u8) !void {
-    const index = storage.search(key) orelse return error.KeyNotFound;
-    const obj = storage.store.orderedRemove(index);
+pub fn SHEAD(self: Self, key: []const u8) !void {
+    const index = self.storage.search(key) orelse return error.KeyNotFound;
+    const obj = self.storage.store.orderedRemove(index);
 
     // move to head
-    try storage.store.ensureTotalCapacityPrecise(storage.allocator, storage.store.items.len + 1);
-    storage.store.insertAssumeCapacity(storage.store.items.len, obj);
+    try self.storage.store.ensureTotalCapacityPrecise(self.storage.allocator, self.storage.store.items.len + 1);
+    self.storage.store.insertAssumeCapacity(self.storage.store.items.len, obj);
 }
 
-pub fn STAIL(storage: *Storage, key: []const u8) !void {
-    const index = storage.search(key) orelse return error.KeyNotFound;
-    const obj = storage.store.orderedRemove(index);
+pub fn STAIL(self: Self, key: []const u8) !void {
+    const index = self.storage.search(key) orelse return error.KeyNotFound;
+    const obj = self.storage.store.orderedRemove(index);
 
     // move to tail
-    try storage.store.ensureTotalCapacityPrecise(storage.allocator, storage.store.items.len + 1);
-    storage.store.insertAssumeCapacity(0, obj);
+    try self.storage.store.ensureTotalCapacityPrecise(self.storage.allocator, self.storage.store.items.len + 1);
+    self.storage.store.insertAssumeCapacity(0, obj);
 }
 
-pub fn SORT(storage: *Storage) void {
-    storage.prefetch();
+pub fn SORT(self: Self) void {
+    self.storage.prefetch();
 }
 
-pub fn FREQ(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
+pub fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
     if (kvFormat(arg)) |args| {
         const key, const string_value = args;
 
-        obj = storage.get(key) orelse return error.KeyNotFound;
+        obj = self.storage.get(key) orelse return error.KeyNotFound;
 
         const value = std.fmt.parseInt(i64, string_value, 10) catch return error.MismatchType;
         obj.metadata.access_times = value;
-    } else |_| obj = storage.get(arg) orelse return error.KeyNotFound;
+    } else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
 
-    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{obj.metadata.access_times}), true };
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{obj.metadata.access_times}), true };
 }
 
-pub fn LAST(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
+pub fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
     if (kvFormat(arg)) |args| {
         const key, const string_value = args;
 
-        obj = storage.get(key) orelse return error.KeyNotFound;
+        obj = self.storage.get(key) orelse return error.KeyNotFound;
 
         const value = std.fmt.parseInt(i64, string_value, 10) catch return error.MismatchType;
         obj.metadata.last_access = value;
-    } else |_| obj = storage.get(arg) orelse return error.KeyNotFound;
+    } else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
 
-    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{obj.metadata.last_access}), true };
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{obj.metadata.last_access}), true };
 }
 
-pub fn IDLE(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
-    const obj = storage.get(key) orelse return error.KeyNotFound;
+pub fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
     const idle = std.math.sub(
         i64,
         std.time.microTimestamp(),
         obj.metadata.last_access,
     ) catch return error.InvalidMetadata;
 
-    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{idle}), true };
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{idle}), true };
 }
 
-pub fn LEN(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
-    const obj = storage.get(key) orelse return error.KeyNotFound;
+pub fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
     const size = if (obj.field == .string) obj.field.string.len else 8;
 
-    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{size}), true };
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{size}), true };
 }
 
-pub fn SIZE(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
-    const obj = storage.get(key) orelse return error.KeyNotFound;
+pub fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
     var size: u64 = 56; // min size for a object
     size += obj.key.len;
     size += if (obj.field == .string) obj.field.string.len else 8;
 
-    return .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{size}), true };
+    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{size}), true };
 }
 
-pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
+pub fn MEM(self: Self, allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
+    _ = self;
+
     const value: u64 =
         if (utils.advancedCompare(arg, "live"))
             profiler.live_bytes
@@ -369,69 +375,69 @@ pub fn MEM(allocator: std.mem.Allocator, profiler: *Profiler, arg: []const u8) !
     return .{ try std.fmt.allocPrint(allocator, "{d}", .{value}), true };
 }
 
-pub fn DB(storage: *Storage, arg: []const u8) !struct { []const u8, bool } {
+pub fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
     return if (utils.advancedCompare(arg, "name"))
-        .{ storage.conf.name.?, false }
+        .{ self.storage.conf.name.?, false }
     else if (utils.advancedCompare(arg, "cap"))
-        .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.conf.db_cap.?}), true }
+        .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{self.storage.conf.db_cap.?}), true }
     else if (utils.advancedCompare(arg, "size"))
-        .{ try std.fmt.allocPrint(storage.allocator, "{d}", .{storage.conf.db_cap.? - storage.store_cap}), true }
+        .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{self.storage.conf.db_cap.? - self.storage.store_cap}), true }
     else
         return error.UnknownArgument;
 }
 
-pub fn DUMP(storage: *Storage, key: []const u8) !struct { []const u8, bool } {
-    var obj = storage.get(key) orelse return error.KeyNotFound;
+pub fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
+    var obj = self.storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
-    return .{ try obj.serialize(storage.allocator), true };
+    return .{ try obj.serialize(self.storage.allocator), true };
 }
 
-pub noinline fn RESTORE(storage: *Storage, obj: []const u8) !void {
-    const d = Object.deserialize(storage.allocator, obj) catch return error.InvalidObject;
+pub noinline fn RESTORE(self: Self, obj: []const u8) !void {
+    const d = Object.deserialize(self.storage.allocator, obj) catch return error.InvalidObject;
 
     const i = switch (d.field) {
-        .integer => |value| try storage.put(.integer, d.key, value),
-        .decimal => |value| try storage.put(.decimal, d.key, value),
-        .string => |value| try storage.put(.string, d.key, value),
+        .integer => |value| try self.storage.put(.integer, d.key, value),
+        .decimal => |value| try self.storage.put(.decimal, d.key, value),
+        .string => |value| try self.storage.put(.string, d.key, value),
     };
 
-    storage.store.items[i].metadata = d.metadata;
+    self.storage.store.items[i].metadata = d.metadata;
 }
 
-pub noinline fn ERASE(storage: *Storage) !void {
-    var i: usize = storage.store.items.len;
+pub noinline fn ERASE(self: Self) !void {
+    var i: usize = self.storage.store.items.len;
     while (i > 0) {
         i -= 1;
-        try storage.removeAtIndex(i);
+        try self.storage.removeAtIndex(i);
     }
 }
 
-pub fn DEL(storage: *Storage, key: []const u8) !void {
+pub fn DEL(self: Self, key: []const u8) !void {
     @branchHint(.likely);
 
-    const index = storage.search(key) orelse return error.KeyNotFound;
-    try storage.removeAtIndex(index);
+    const index = self.storage.search(key) orelse return error.KeyNotFound;
+    try self.storage.removeAtIndex(index);
 }
 
-pub noinline fn SAVE(storage: *Storage, logger: *log.Logger) !void {
-    snap.snap(storage, logger, false) catch return error.SaveFailed;
+pub noinline fn SAVE(self: Self, logger: *log.Logger) !void {
+    snap.snap(self.storage, logger, false) catch return error.SaveFailed;
 }
 
-pub fn COPY(storage: *Storage, args: []const u8) !void {
+pub fn COPY(self: Self, args: []const u8) !void {
     const key, const dst = try kvFormat(args);
-    const rawkey, const heap_allocated = try DUMP(storage, key);
-    defer if (heap_allocated) storage.allocator.free(rawkey);
+    const rawkey, const heap_allocated = try self.DUMP(key);
+    defer if (heap_allocated) self.storage.allocator.free(rawkey);
 
-    var d = Object.deserialize(storage.allocator, rawkey) catch return error.InvalidObject;
-    d.key = try storage.allocator.dupe(u8, dst);
+    var d = Object.deserialize(self.storage.allocator, rawkey) catch return error.InvalidObject;
+    d.key = try self.storage.allocator.dupe(u8, dst);
 
     const i = switch (d.field) {
-        .integer => |value| try storage.put(.integer, d.key, value),
-        .decimal => |value| try storage.put(.decimal, d.key, value),
-        .string => |value| try storage.put(.string, d.key, value),
+        .integer => |value| try self.storage.put(.integer, d.key, value),
+        .decimal => |value| try self.storage.put(.decimal, d.key, value),
+        .string => |value| try self.storage.put(.string, d.key, value),
     };
 
-    storage.store.items[i].metadata = d.metadata;
+    self.storage.store.items[i].metadata = d.metadata;
 }
 
 test "reftest" {

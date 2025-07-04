@@ -36,7 +36,7 @@ const std = @import("std");
 
 const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
 
-const ResolveError = @import("Query.zig").ResolveError;
+const ResolveError = @import("rapto.zig").ResolveError;
 const ParseQueryError = @import("Query.zig").ParseQueryError;
 const OptionsError = @import("options.zig").OptionsError;
 const ClientError = @import("server.zig").Server.ClientError;

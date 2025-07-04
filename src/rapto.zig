@@ -45,6 +45,7 @@ const signal = @import("signal.zig");
 const utils = @import("utils.zig");
 const ree = @import("ree.zig");
 const socket = @import("socket.zig");
+const cmds = @import("db.zig");
 
 const Zprof = @import("zprof.zig").Zprof;
 const Profiler = @import("zprof.zig").Profiler;
@@ -53,6 +54,26 @@ const Client = @import("server.zig").Client;
 const Storage = @import("storage.zig").Storage;
 const Query = @import("Query.zig");
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
+
+pub const ServerSessionError = error{
+    NoCapacity,
+    CorruptedStat,
+    ThreadError,
+    OpenError,
+} || Server.BindError || Storage.LoadError || signal.SignalError || socket.Stream.WriteError;
+pub const ResolveError = error{
+    MissingTokens,
+    TypeOverflow,
+    KeyNotFound,
+    KeyReplacementExist,
+    MismatchType,
+    SaveFailed,
+    InvalidObject,
+    InvalidMetadata,
+    NoKeysFound,
+    UnknownArgument,
+    ExcedeedSpaceLimit,
+} || signal.SignalError || Storage.PutError;
 
 /// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
 const spawn = struct {
@@ -152,12 +173,6 @@ fn footerActions(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
     }
 }
 
-pub const ServerSessionError = error{
-    NoCapacity,
-    CorruptedStat,
-    ThreadError,
-    OpenError,
-} || Server.BindError || Storage.LoadError || signal.SignalError || socket.Stream.WriteError;
 fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSessionError!void {
     // try to get storage file.
     // if does not exist, creates it
@@ -182,6 +197,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // initialize storage
     var storage = Storage.init(allocator, storage_file, conf);
     defer storage.deinit();
+    const db = cmds{ .storage = &storage };
 
     // create queue for queries
     var queue = ThreadSafeQueue(Query){};
@@ -235,23 +251,72 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     logger.info("Started server addr={}; LISTENING...", .{conf.addr.?});
 
     while (true) {
+        // waits a query from shared queue with
+        // client handlers, when query is occurred
+        // returns task with query and client information
         const task = queue.waitAndPop(allocator);
         if (task.client) |client| {
             defer task.free(allocator);
 
-            if (task.command == .DOWN) {
-                exitProcedure(&storage, &queue);
-                break;
-            }
+            // this block resolves query and returns response with
+            // bool which indicates whether the response
+            // was allocated in the heap.
+            const content: ResolveError!struct { []const u8, bool } = switch (task.command) {
+                // testing commands
+                .PING => .{ "pong", false },
 
-            const resp, const is_heap = task.resolve(
-                &storage,
-                &logger,
-                profiler,
-            ) catch |err| .{ ree.expandResolveError(err), false };
-            defer if (is_heap) allocator.free(resp);
+                // commands with string return type
+                .GET => db.GET(task.args),
+                .TYPE => db.TYPE(task.args),
+                .CHECK => db.CHECK(task.args),
+                .COUNT => db.COUNT(),
+                .LIST => db.LIST(),
+                .FREQ => db.FREQ(task.args),
+                .LAST => db.LAST(task.args),
+                .IDLE => db.IDLE(task.args),
+                .LEN => db.LEN(task.args),
+                .SIZE => db.SIZE(task.args),
+                .MEM => db.MEM(allocator, profiler, task.args),
+                .DB => db.DB(task.args),
+                .DUMP => db.DUMP(task.args),
 
-            client.stream.write(resp) catch {};
+                // commands with void return type
+                else => |void_command| blk: {
+                    _ = switch (void_command) {
+                        .SET => db.SET(task.args),
+                        .UPDATE => db.UPDATE(task.args),
+                        .RENAME => db.RENAME(task.args),
+                        .TOUCH => db.TOUCH(task.args),
+                        .HEAD => db.HEAD(task.args),
+                        .TAIL => db.TAIL(task.args),
+                        .SHEAD => db.SHEAD(task.args),
+                        .STAIL => db.STAIL(task.args),
+                        .SORT => db.SORT(),
+                        .RESTORE => db.RESTORE(task.args),
+                        .ERASE => db.ERASE(),
+                        .DEL => db.DEL(task.args),
+                        .SAVE => db.SAVE(&logger),
+                        .COPY => db.COPY(task.args),
+
+                        // all handled
+                        else => unreachable,
+                    } catch |e| break :blk e;
+
+                    // default response for void
+                    // return type commands
+                    break :blk .{ "OK", false };
+                },
+
+                // shutdowns the server
+                .DOWN => {
+                    exitProcedure(&storage, &queue);
+                    break;
+                },
+            };
+            const response, const heap_allocated = content catch |err| .{ ree.expandResolveError(err), false };
+            defer if (heap_allocated) allocator.free(response);
+
+            client.stream.write(response) catch {};
 
             // increment counter of storage modifies
             if (conf.save != null)
