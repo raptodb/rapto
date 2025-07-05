@@ -47,61 +47,6 @@ const Self = @This();
 
 storage: *Storage,
 
-/// List of Rapto commands.
-/// Sectioned by functionality.
-pub const Commands = enum(u8) {
-    PING,
-
-    SET,
-    UPDATE,
-    RENAME,
-
-    GET,
-    TYPE,
-    CHECK,
-    COUNT,
-    LIST,
-
-    TOUCH,
-    HEAD,
-    TAIL,
-    SHEAD,
-    STAIL,
-    SORT,
-
-    FREQ,
-    LAST,
-    IDLE,
-    LEN,
-    SIZE,
-    MEM,
-    DB,
-
-    DUMP,
-    RESTORE,
-    ERASE,
-    DEL,
-    SAVE,
-    COPY,
-
-    DOWN,
-
-    /// Quantity of commands possible.
-    const qty: u8 = 29;
-
-    /// Parses text command to enum.
-    pub fn parse(noalias command: []const u8) ?Commands {
-        var i: u8 = 0;
-        while (i < qty) : (i += 1) {
-            const tag = @as(Commands, @enumFromInt(i));
-            if (utils.advancedCompare(command, @tagName(tag)))
-                return tag;
-        }
-
-        return null;
-    }
-};
-
 pub fn SET(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
@@ -418,18 +363,6 @@ pub fn COPY(self: Self, args: []const u8) !void {
     };
 
     self.storage.store.items[i].metadata = d.metadata;
-}
-
-test "command parsing" {
-    try std.testing.expect(Commands.parse("GET") == .GET);
-    try std.testing.expect(Commands.parse("TYPE") == .TYPE);
-    try std.testing.expect(Commands.parse("COPY") == .COPY);
-    try std.testing.expect(Commands.parse("STAIL") == .STAIL);
-
-    try std.testing.expect(Commands.parse("Save") != .SAVE);
-    try std.testing.expect(Commands.parse("touch") != .TOUCH);
-    try std.testing.expect(Commands.parse("") == null);
-    try std.testing.expect(Commands.parse("notacommand") == null);
 }
 
 test "reftest" {

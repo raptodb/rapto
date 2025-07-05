@@ -45,11 +45,66 @@ const Client = @import("server.zig").Client;
 
 const Self = @This();
 
+/// List of Rapto commands.
+/// Sectioned by functionality.
+pub const Command = enum(u8) {
+    PING,
+
+    SET,
+    UPDATE,
+    RENAME,
+
+    GET,
+    TYPE,
+    CHECK,
+    COUNT,
+    LIST,
+
+    TOUCH,
+    HEAD,
+    TAIL,
+    SHEAD,
+    STAIL,
+    SORT,
+
+    FREQ,
+    LAST,
+    IDLE,
+    LEN,
+    SIZE,
+    MEM,
+    DB,
+
+    DUMP,
+    RESTORE,
+    ERASE,
+    DEL,
+    SAVE,
+    COPY,
+
+    DOWN,
+
+    /// Quantity of commands possible.
+    const qty: u8 = 29;
+
+    /// Parses text command to enum.
+    pub fn parse(noalias command: []const u8) ?Command {
+        var i: u8 = 0;
+        while (i < qty) : (i += 1) {
+            const tag = @as(Command, @enumFromInt(i));
+            if (utils.advancedCompare(command, @tagName(tag)))
+                return tag;
+        }
+
+        return null;
+    }
+};
+
 /// Client that make query.
 client: ?*Client = null,
 
 raw_query: []const u8 = undefined,
-command: db.Commands = undefined,
+command: Command = undefined,
 args: []const u8 = undefined,
 
 pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
@@ -65,7 +120,7 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
 
     var q = Self{ .client = client };
     q.raw_query = raw_query;
-    q.command = db.Commands.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
+    q.command = Command.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
 
     return q;
@@ -76,10 +131,22 @@ pub fn free(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.raw_query);
 }
 
+test "command parsing" {
+    try std.testing.expect(Command.parse("GET") == .GET);
+    try std.testing.expect(Command.parse("TYPE") == .TYPE);
+    try std.testing.expect(Command.parse("COPY") == .COPY);
+    try std.testing.expect(Command.parse("STAIL") == .STAIL);
+
+    try std.testing.expect(Command.parse("Save") != .SAVE);
+    try std.testing.expect(Command.parse("touch") != .TOUCH);
+    try std.testing.expect(Command.parse("") == null);
+    try std.testing.expect(Command.parse("notacommand") == null);
+}
+
 test "parse query" {
     const q = try parseQuery(undefined, "PING abc def");
 
-    try std.testing.expect(db.Commands.PING == q.command);
+    try std.testing.expect(q.command == .PING);
     try std.testing.expectEqualSlices(u8, "abc def", q.args);
     try std.testing.expectEqualSlices(u8, "PING abc def", q.raw_query);
 }
