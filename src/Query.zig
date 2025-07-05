@@ -127,7 +127,7 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
 }
 
 /// Deallocates query.
-pub fn free(self: Self, allocator: std.mem.Allocator) void {
+pub inline fn free(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.raw_query);
 }
 
