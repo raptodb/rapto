@@ -177,7 +177,7 @@ pub const Storage = struct {
     /// Retrieves object from the store using the specified key.
     /// When key is found, promote.
     /// If key does not exist, returns null.
-    pub fn get(self: *Self, noalias key: []const u8) ?*Object {
+    pub inline fn get(self: *Self, noalias key: []const u8) ?*Object {
         const index = self.search(key) orelse return null;
         return &self.store.items[index];
     }
