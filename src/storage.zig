@@ -292,7 +292,7 @@ pub const Storage = struct {
 
     /// Appends new object at head of the list.
     /// Returns the index of object.
-    pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) u64 {
+    pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) !u64 {
         // create new object
         var obj = try Object.set(self.allocator, field_type, key, value);
         errdefer obj.deinit(self.allocator);
