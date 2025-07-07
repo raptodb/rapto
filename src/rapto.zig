@@ -210,7 +210,10 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
         const obj_count: u64, const since: f64 = try loadStorageFile(&storage);
 
-        logger.info("Loaded and optimized {d} items in {d:.6}s.", .{ obj_count, since });
+        if (obj_count == 0)
+            logger.info("No items to load.", .{})
+        else
+            logger.info("Loaded {d} items in {d:.6}s.", .{ obj_count, since });
     }
     // if database not exist do nothing.
     // database is created
