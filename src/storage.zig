@@ -190,26 +190,20 @@ pub const Storage = struct {
         if (self.search(key)) |i| {
             var obj = &self.store.items[i];
 
-            // update value
-            if (field_type == obj.field) {
-                @branchHint(.likely);
+            // updates value if the field type
+            // is the same, else overwrites object
+            // saving the same metadata
+            if (field_type == obj.field) obj.field = switch (field_type) {
+                .integer => .{ .integer = value },
+                .decimal => .{ .decimal = value },
+                .string => blk: {
+                    if (value.len != obj.field.string.len)
+                        obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
 
-                obj.field = switch (field_type) {
-                    .integer => .{ .integer = value },
-                    .decimal => .{ .decimal = value },
-                    .string => blk: {
-                        if (value.len != obj.field.string.len)
-                            obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
-
-                        @memcpy(obj.field.string, value);
-                        break :blk .{ .string = obj.field.string };
-                    },
-                };
-            }
-
-            // if value has different type,
-            // set new object passing metadata
-            else {
+                    @memcpy(obj.field.string, value);
+                    break :blk .{ .string = obj.field.string };
+                },
+            } else {
                 // restore size without this object,
                 // then add size with updated object
                 try self.addCapacity(self.store.items[i].getSize());
@@ -219,6 +213,7 @@ pub const Storage = struct {
                 metadata.update();
 
                 self.store.items[i].deinit(self.allocator);
+
                 self.store.items[i] = try Object.set(self.allocator, field_type, key, value);
                 self.store.items[i].metadata = metadata;
 
@@ -229,20 +224,7 @@ pub const Storage = struct {
             return i;
         }
 
-        // create new object
-        var obj = try Object.set(self.allocator, field_type, key, value);
-        errdefer obj.deinit(self.allocator);
-
-        // update store capacity
-        try self.removeCapacity(obj.getSize());
-
-        // add to list growing memory 1 at a time
-        try self.store.ensureTotalCapacityPrecise(self.allocator, self.store.items.len + 1);
-        self.store.appendAssumeCapacity(obj);
-
-        // promote skipped because the array is reversed.
-        // now the obj is already on the head.
-        return self.store.items.len - 1;
+        return self.append(field_type, key, value);
     }
 
     /// Removes item from index from store.
@@ -306,6 +288,25 @@ pub const Storage = struct {
     pub inline fn removeCapacity(self: *Self, size: u64) error{ExcedeedSpaceLimit}!void {
         const v = std.math.sub(u64, self.store_cap, size);
         self.store_cap = v catch return error.ExcedeedSpaceLimit;
+    }
+
+    /// Appends new object at head of the list.
+    /// Returns the index of object.
+    pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) u64 {
+        // create new object
+        var obj = try Object.set(self.allocator, field_type, key, value);
+        errdefer obj.deinit(self.allocator);
+
+        // update store capacity
+        try self.removeCapacity(obj.getSize());
+
+        // add to list growing memory 1 at a time
+        try self.store.ensureTotalCapacityPrecise(self.allocator, self.store.items.len + 1);
+        self.store.appendAssumeCapacity(obj);
+
+        // promote skipped because the array is reversed.
+        // now the obj is already on the head.
+        return self.store.items.len - 1;
     }
 
     /// Deinits storage.
