@@ -92,11 +92,10 @@ pub const Server = struct {
     pub fn bind(
         allocator: std.mem.Allocator,
         logger: *log.Logger,
-        address: std.net.Ip4Address,
         queue: *ThreadSafeQueue(Query),
         conf: *RaptoConfig,
     ) BindError!Self {
-        var at_addr = std.net.Address{ .in = address };
+        var at_addr = std.net.Address{ .in = conf.addr.? };
         const server = at_addr.listen(.{}) catch return error.BindError;
 
         return Self{
