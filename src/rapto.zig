@@ -216,7 +216,10 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // try to get storage file and compute capacity.
     // if does not exist, creates it
     const storage = try getStorage(allocator, conf);
-    defer storage.deinit();
+    defer {
+        storage.file.close();
+        storage.deinit();
+    }
 
     var modc = std.atomic.Value(u64).init(0);
     // if autosnap is enabled starts
