@@ -75,6 +75,7 @@ pub const ResolveError = error{
     ExcedeedSpaceLimit,
 } || signal.SignalError || Storage.PutError;
 
+var logger: log.Logger = undefined;
 var profiler: *Profiler = undefined;
 var quit: bool = false;
 
@@ -114,33 +115,62 @@ pub const RaptoConfig = struct {
 };
 
 /// Opens a file, if does not exist, creates it.
-/// Returns `opened` and `std.fs.File`.
-fn getStorageFile(path: []const u8) !struct { bool, std.fs.File } {
-    return if (std.fs.cwd().openFile(path, .{ .mode = .read_write })) |f|
-        .{ true, f }
-    else |err| if (err == error.FileNotFound)
-        .{ false, try std.fs.cwd().createFile(path, .{ .read = true }) }
-    else
-        err;
-}
+/// After, if file exist loads and prefetchs items to RAM.
+/// Returns capacity of storage and `std.fs.File`.
+inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
+    var cap: u64 = 0;
+    var exist: bool = true;
 
-/// Loads items from storage file to RAM and prefetching it.
-/// Can return count of objects loaded and time elapsed in seconds.
-fn loadStorageFile(storage: *Storage) Storage.LoadError!struct { u64, f64 } {
-    var elap = std.time.Timer.start() catch unreachable;
+    const file: std.fs.File = if (std.fs.cwd().openFile(conf.db_path.?, .{ .mode = .read_write })) |f| blk: {
+        const stat = f.stat() catch return error.CorruptedStat;
+        // replace database capacity from
+        // file size if it is greater.
+        cap = @max(stat.size, conf.db_cap.?);
+        if (cap == 0) return error.NoCapacity;
 
-    // load items to RAM
-    const obj_count = try storage.load();
+        break :blk f;
+    } else |err| if (err == error.FileNotFound) blk: {
+        if (conf.db_cap.? == 0) {
+            // try to remove created file
+            std.fs.cwd().deleteFile(conf.db_path.?) catch {};
+            return error.NoCapacity;
+        }
 
-    // prefetching storage with sorting
-    storage.prefetch();
+        exist = false;
+        break :blk std.fs.cwd().createFile(conf.db_path.?, .{ .read = true }) catch return error.OpenError;
+    } else return error.OpenError;
 
-    const since = @as(f64, @floatFromInt(elap.read())) / std.time.ns_per_s;
-    return .{ obj_count, since };
+    // initialize storage
+    var storage = Storage.init(allocator, file, conf);
+
+    // if database exist load items
+    // and prefetch from RAM
+    if (exist) {
+        logger.info("Opened storage file '{s}'. Loading and prefetching have started.", .{conf.db_path.?});
+
+        var elap = std.time.Timer.start() catch unreachable;
+
+        // load items to RAM
+        const obj_count = try storage.load();
+        // prefetching storage with sorting
+        storage.prefetch();
+
+        const since = @as(f64, @floatFromInt(elap.read())) / std.time.ns_per_s;
+
+        if (obj_count == 0)
+            logger.info("No items to load.", .{})
+        else
+            logger.info("Loaded {d} items in {d:.6}s.", .{ obj_count, since });
+    }
+    // if database not exist do nothing.
+    // database is created
+    else logger.info("Created storage file '{s}'.", .{conf.db_path.?});
+
+    return &storage;
 }
 
 /// Procedure of normal quitting.
-fn exitProcedure(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
+inline fn exitProcedure(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
     @branchHint(.cold);
 
     snap.snap(storage, &logger, false) catch {};
@@ -165,58 +195,13 @@ fn footerActions(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
     }
 }
 
-fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSessionError!void {
-    // try to get storage file.
-    // if does not exist, creates it
-    const exist, const storage_file = getStorageFile(conf.db_path.?) catch return error.OpenError;
-    defer storage_file.close();
-
-    // check if storage file is already created
-    if (exist) {
-        const stat = storage_file.stat() catch return error.CorruptedStat;
-
-        // replace database capacity from
-        // file size if it is greater.
-        conf.db_cap = @max(stat.size, conf.db_cap.?);
-    } else if (conf.db_cap == null) {
-        // try to remove created file
-        std.fs.cwd().deleteFile(conf.db_path.?) catch {};
-        return error.NoCapacity;
-    }
-    // adjust bytes in correlation of item size
-    if (conf.db_cap.? == 0) return error.NoCapacity;
-
-    // initialize storage
-    var storage = Storage.init(allocator, storage_file, conf);
-    defer storage.deinit();
-    const db = cmds{ .storage = &storage };
-
-    // create queue for queries
-    var queue = ThreadSafeQueue(Query){};
-    defer queue.deinit(allocator);
-
-    // if database exist load items
-    // and prefetch from RAM
-    if (exist) {
-        logger.info("Opened storage file '{s}'. Loading and prefetching have started.", .{conf.db_path.?});
-
-        const obj_count: u64, const since: f64 = try loadStorageFile(&storage);
-
-        if (obj_count == 0)
-            logger.info("No items to load.", .{})
-        else
-            logger.info("Loaded {d} items in {d:.6}s.", .{ obj_count, since });
-    }
-    // if database not exist do nothing.
-    // database is created
-    else logger.info("Created storage file '{s}'.", .{conf.db_path.?});
-
-    var modc = std.atomic.Value(u64).init(0);
-
+/// Starts autosnap if it is enalbled.
+/// Logs configs about autosnap.
+inline fn startAutosnap(storage: *Storage, save_info: ?snap.AutosnapConf, modc: *std.atomic.Value(u64)) !void {
     // if save is enabled, start Auto-snap
     // with configuration
-    if (conf.save) |*save| {
-        const t0 = try spawn(snap.autosnap, .{ &storage, &logger, save, &modc });
+    if (save_info) |*save| {
+        const t0 = try utils.spawn(snap.autosnap, .{ storage, &logger, save, modc });
         t0.detach();
 
         logger.info("Auto-snap enabled with delay={d} count={d}.", .{ save.delay, save.count });
@@ -225,16 +210,31 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // to say that Auto-snap is disabled.
     // items will not be saved persistently.
     else logger.warning("Auto-snap disabled.", .{});
+}
 
+fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSessionError!void {
+    // try to get storage file and compute capacity.
+    // if does not exist, creates it
+    const storage = try getStorage(allocator, conf);
+    defer storage.deinit();
+
+    var modc = std.atomic.Value(u64).init(0);
+    // if autosnap is enabled starts
+    // thread with auto save config
+    try startAutosnap(storage, conf.save, &modc);
+
+    // create queue for queries
+    var queue = ThreadSafeQueue(Query){};
+    defer queue.deinit(allocator);
     // bind server
-    var session = try Server.bind(allocator, &logger, conf.addr.?, &queue, conf);
+    var session = try Server.bind(allocator, &logger, &queue, conf);
     defer session.deinit();
-    // listen server
-    const t1 = try spawn(Server.listen, .{&session});
+    // listen connections
+    const t1 = try utils.spawn(Server.listen, .{&session});
     t1.detach();
 
     // start handler for actions
-    const t2 = try spawn(footerActions, .{ &storage, &queue });
+    const t2 = try utils.spawn(footerActions, .{ storage, &queue });
     t2.detach();
     // enable footer for server,
     // if conf is set, footer is enabled
@@ -245,6 +245,8 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
     logger.info("Started server addr={}; LISTENING...", .{conf.addr.?});
 
+    // setup db commands with same parameter storage
+    const db = cmds{ .storage = storage };
     while (true) {
         // waits a query from shared queue with
         // client handlers, when query is occurred
@@ -304,7 +306,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
                 // shutdowns the server
                 .DOWN => {
-                    exitProcedure(&storage, &queue);
+                    exitProcedure(storage, &queue);
                     break;
                 },
             };
@@ -337,7 +339,6 @@ pub fn main() void {
     // this allocator is wrapped with tracker Zprof
     const zprof = Zprof.init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
     defer zprof.deinit();
-
     profiler = &zprof.profiler;
     const allocator = zprof.allocator;
 
@@ -370,6 +371,8 @@ pub fn main() void {
 
     // handle server
     if (conf.mode == .server) {
+        @branchHint(.likely);
+
         defer {
             std.time.sleep(1 * std.time.ns_per_s);
             logger.info("Quitted.", .{});
