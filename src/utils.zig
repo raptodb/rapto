@@ -64,6 +64,13 @@ pub inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u
     return .{ args[0..sep], args[sep + 1 ..] };
 }
 
+/// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
+pub const spawn = struct {
+    fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
+        return std.Thread.spawn(.{}, func, args) catch return error.ThreadError;
+    }
+}.inner;
+
 test "key value format" {
     const key1, const value1 = try kvFormat("key value");
     try std.testing.expectEqualStrings(key1, "key");

@@ -75,14 +75,6 @@ pub const ResolveError = error{
     ExcedeedSpaceLimit,
 } || signal.SignalError || Storage.PutError;
 
-/// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
-const spawn = struct {
-    fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
-        return std.Thread.spawn(.{}, func, args) catch return error.ThreadError;
-    }
-}.inner;
-
-pub var logger: log.Logger = undefined;
 var profiler: *Profiler = undefined;
 var quit: bool = false;
 
