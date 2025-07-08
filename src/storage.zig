@@ -311,9 +311,11 @@ pub const Storage = struct {
         return self.store.items.len - 1;
     }
 
-    /// Deinits storage.
+    /// Close file and deinits storage.
     /// Deallocates every key.
     pub fn deinit(self: *Self) void {
+        self.file.close();
+
         // deallocate every key
         for (self.store.items) |*obj|
             obj.deinit(self.allocator);
