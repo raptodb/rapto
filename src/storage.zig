@@ -280,11 +280,13 @@ pub const Storage = struct {
         std.sort.insertion(Object, self.store.items, {}, comptime compareLRU);
     }
 
+    /// Adds capacity when an item is freed.
     pub inline fn addCapacity(self: *Self, size: u64) error{ExcedeedSpaceLimit}!void {
         const v = std.math.add(u64, self.store_cap, size);
         self.store_cap = v catch return error.ExcedeedSpaceLimit;
     }
 
+    /// Removes capacity when an item is added.
     pub inline fn removeCapacity(self: *Self, size: u64) error{ExcedeedSpaceLimit}!void {
         const v = std.math.sub(u64, self.store_cap, size);
         self.store_cap = v catch return error.ExcedeedSpaceLimit;
