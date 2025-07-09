@@ -329,6 +329,11 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 }
 
 pub fn main() void {
+    // check memory leaks
+    defer if (DEBUG_MODE_MEMORY) {
+        std.debug.assert(!profiler.hasLeaks());
+    };
+
     // start handler for signals
     signal.hsignal();
 
@@ -400,13 +405,6 @@ pub fn main() void {
     // already handled with error
     // on options parser
     else unreachable;
-
-    if (DEBUG_MODE_MEMORY) {
-        // check memory leak,
-        // 53 bytes will be freed
-        // out of this branch.
-        std.debug.assert(profiler.live_bytes == 53);
-    }
 }
 
 test "reftest" {
