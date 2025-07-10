@@ -313,7 +313,11 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
                     break;
                 },
             };
-            const response, const heap_allocated = content catch |err| .{ ree.expandResolveError(err), false };
+
+            const response, const heap_allocated = content catch |err| blk: {
+                @branchHint(.unlikely);
+                break :blk .{ ree.expandResolveError(err), false };
+            };
             defer if (heap_allocated) allocator.free(response);
 
             client.stream.write(response) catch {};
@@ -361,6 +365,8 @@ pub fn main() void {
     errdefer args.deinit();
 
     var conf = options.parseOptions(allocator, &args) catch |err| {
+        @branchHint(.unlikely);
+
         const msg = switch (err) {
             error.HelpFlag => return logger.stdout.print("{s}", .{options.usage()}) catch {},
             error.OutOfMemory => signal.OOM(),
@@ -390,6 +396,8 @@ pub fn main() void {
         logger.info("Server db={s} pid={d} addr={}", .{ conf.name.?, std.os.linux.getpid(), conf.addr.? });
 
         serverSession(allocator, &conf) catch |err| {
+            @branchHint(.unlikely);
+
             const msg = switch (err) {
                 error.OutOfMemory => signal.OOM(),
                 else => ree.expandServerSessionError(err),

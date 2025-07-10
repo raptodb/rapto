@@ -142,9 +142,10 @@ pub const Server = struct {
         client.stream.setWriteDeadline(DEADLINE_MS) catch return;
 
         self.handleClient(client) catch |err| {
+            @branchHint(.unlikely);
+
             const msg = switch (err) {
                 error.OutOfMemory => signal.OOM(),
-
                 // already disconnected (likely deinit)
                 error.NotOpenForReading, error.NotOpenForWriting => return,
                 else => ree.expandClientError(err),
@@ -189,6 +190,8 @@ pub const Server = struct {
             const recvd = client.stream.read(self.allocator);
 
             if (recvd) |raw_query| {
+                @branchHint(.likely);
+
                 // parseQuery make no allocation,
                 // free only if error is occurred
                 errdefer self.allocator.free(raw_query);
@@ -198,6 +201,8 @@ pub const Server = struct {
                     // useful to return the response.
                     try self.queue.put(self.allocator, query);
                 } else |err| {
+                    @branchHint(.unlikely);
+
                     client.stream.write(ree.expandQueryParsingError(err)) catch {};
                     continue;
                 }

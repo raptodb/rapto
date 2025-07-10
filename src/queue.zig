@@ -34,6 +34,8 @@
 
 const std = @import("std");
 
+/// Thread safe queue with mutex locking
+/// and thread conditions. Hightly optimized.
 pub fn ThreadSafeQueue(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -42,6 +44,7 @@ pub fn ThreadSafeQueue(comptime T: type) type {
         mutex: std.Thread.Mutex = .{},
         cond: std.Thread.Condition = .{},
 
+        /// Puts an item on queue.
         pub fn put(self: *Self, allocator: std.mem.Allocator, item: T) error{OutOfMemory}!void {
             self.mutex.lock();
             defer self.mutex.unlock();
@@ -50,12 +53,16 @@ pub fn ThreadSafeQueue(comptime T: type) type {
             self.cond.signal();
         }
 
+        /// Wait any item on queue, after waiting
+        /// returns it.
         pub fn waitAndPop(self: *Self, allocator: std.mem.Allocator) T {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            while (self.queue.items.len == 0)
+            while (self.queue.items.len == 0) {
+                @branchHint(.unlikely);
                 self.cond.wait(&self.mutex);
+            }
 
             const item = self.queue.orderedRemove(0);
             defer self.queue.shrinkAndFree(allocator, self.queue.items.len);
@@ -63,12 +70,14 @@ pub fn ThreadSafeQueue(comptime T: type) type {
             return item;
         }
 
+        /// Deinits queue and deallocates
+        /// all unpopped items.
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             self.queue.deinit(allocator);
             self.* = undefined;
         }
 
-        /// Appends to queue growing memory by 1
+        /// Appends to queue growing memory by 1.
         inline fn append(self: *Self, allocator: std.mem.Allocator, item: T) error{OutOfMemory}!void {
             try self.queue.ensureTotalCapacityPrecise(allocator, self.queue.items.len + 1);
             self.queue.appendAssumeCapacity(item);

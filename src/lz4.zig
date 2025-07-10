@@ -9,6 +9,7 @@ extern fn LZ4_compress_default(src: [*]const u8, dst: [*]u8, src_size: c_int, ds
 extern fn LZ4_decompress_safe(src: [*]const u8, dst: [*]u8, compressed_size: c_int, dst_capacity: c_int) c_int;
 extern fn LZ4_compressBound(src_size: c_int) c_int;
 
+/// Compresses string with LZ4 algorithm.
 pub fn compress(allocator: std.mem.Allocator, noalias src: []const u8) error{OutOfMemory}![]u8 {
     const compr_len = LZ4_compressBound(@as(c_int, @intCast(src.len)));
 
@@ -21,14 +22,20 @@ pub fn compress(allocator: std.mem.Allocator, noalias src: []const u8) error{Out
         @intCast(src.len),
         @intCast(buf.len),
     );
-    if (compr_len != len)
+
+    if (compr_len != len) {
+        @branchHint(.likely);
         return allocator.realloc(buf, @intCast(len));
+    }
 
     return buf;
 }
 
+/// Decompresses string with LZ4 algorithm.
+/// It can fail with DecompressionFail error.
+/// Allocates 255 times string to ensure max decompression.
 pub fn decompress(allocator: std.mem.Allocator, noalias src: []const u8) error{ OutOfMemory, DecompressionFail }![]u8 {
-    // allocate buffer with 1:255 ratio to ensure max decompression safety
+    // allocates buffer with 1:255 ratio to ensure max decompression safety
     const buf = try allocator.alloc(u8, src.len * 255);
     errdefer allocator.free(buf);
 
@@ -38,7 +45,11 @@ pub fn decompress(allocator: std.mem.Allocator, noalias src: []const u8) error{ 
         @intCast(src.len),
         @intCast(buf.len),
     );
-    if (len < 1) return error.DecompressionFail;
+
+    if (len < 1) {
+        @branchHint(.unlikely);
+        return error.DecompressionFail;
+    }
 
     return allocator.realloc(buf, @intCast(len));
 }

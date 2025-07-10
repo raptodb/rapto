@@ -92,6 +92,7 @@ pub fn hsignal() void {
 /// OOM is runned when there is no RAM space.
 /// This invoke signal handler with OOM mark.
 pub inline fn OOM() noreturn {
+    @branchHint(.cold);
     ABRT_ctx = .OOM;
     std.posix.abort();
 }
@@ -100,6 +101,7 @@ pub inline fn OOM() noreturn {
 /// OOD is runned when there is no disk space.
 /// This invoke signal handler with OOD mark.
 pub inline fn OOD() noreturn {
+    @branchHint(.cold);
     ABRT_ctx = .OOD;
     std.posix.abort();
 }

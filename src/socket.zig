@@ -79,18 +79,26 @@ pub const Stream = struct {
     pub fn read(self: *Self, allocator: std.mem.Allocator) ReadError![]u8 {
         var buflen: [8]u8 = undefined;
         const bufsize = try self.reader.readAll(&buflen);
-        if (bufsize == 0) return error.ConnectionResetByPeer;
-        if (bufsize != 8) return error.EndOfStream;
 
-        var len = std.mem.readInt(u64, &buflen, .little);
-        if (len == 0 or len > MAXFLOW)
-            return error.InvalidLength;
+        switch (bufsize) {
+            8 => {
+                @branchHint(.likely);
 
-        const buf: []u8 = try allocator.alloc(u8, len);
-        // receive buf according to length
-        len = try self.reader.readAll(buf);
+                var len = std.mem.readInt(u64, &buflen, .little);
+                if (len == 0 or len > MAXFLOW) {
+                    @branchHint(.unlikely);
+                    return error.InvalidLength;
+                }
 
-        return buf[0..len];
+                const buf: []u8 = try allocator.alloc(u8, len);
+                // receive buf according to length
+                len = try self.reader.readAll(buf);
+
+                return buf[0..len];
+            },
+            0 => return error.ConnectionResetByPeer,
+            else => return error.EndOfStream,
+        }
     }
 
     /// Writes to stream.

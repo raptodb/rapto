@@ -110,12 +110,10 @@ pub const Storage = struct {
                 defer self.allocator.free(data);
 
                 // add this object to store
-                var obj = Object.deserialize(self.allocator, data) catch |err| switch (err) {
-                    error.OutOfMemory => {
-                        @branchHint(.unlikely);
-                        return error.OutOfMemory;
-                    },
-                    else => break,
+                var obj = Object.deserialize(self.allocator, data) catch |err| {
+                    @branchHint(.unlikely);
+                    if (err != error.OutOfMemory) break;
+                    return error.OutOfMemory;
                 };
                 errdefer obj.deinit(self.allocator);
 
@@ -129,11 +127,11 @@ pub const Storage = struct {
             // rare branch: OOM or object
             // corrupted (caused by decompression fail)
             else |err| {
-                // branch is cold assuming space limit
+                // branch is unlikely assuming space limit
                 // is inferior to that to reach OOM,
                 // which has already been checked before decompression,
                 // also the decompression error is rare
-                @branchHint(.cold);
+                @branchHint(.unlikely);
                 if (err == error.OutOfMemory) return error.OutOfMemory;
             }
         }
@@ -165,10 +163,14 @@ pub const Storage = struct {
             defer self.allocator.free(compressed);
 
             // append size and serialized Object to file
-            writer.writeInt(u64, compressed.len, comptime .little) catch |err|
+            writer.writeInt(u64, compressed.len, comptime .little) catch |err| {
+                @branchHint(.unlikely);
                 if (err == error.NoSpaceLeft) return error.OutOfDisk;
-            writer.writeAll(compressed) catch |err|
+            };
+            writer.writeAll(compressed) catch |err| {
+                @branchHint(.unlikely);
                 if (err == error.NoSpaceLeft) return error.OutOfDisk;
+            };
         }
 
         self.file.sync() catch return error.FileSync;
@@ -193,16 +195,20 @@ pub const Storage = struct {
             // updates value if the field type
             // is the same, else overwrites object
             // saving the same metadata
-            if (field_type == obj.field) obj.field = switch (field_type) {
-                .integer => .{ .integer = value },
-                .decimal => .{ .decimal = value },
-                .string => blk: {
-                    if (value.len != obj.field.string.len)
-                        obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
+            if (field_type == obj.field) {
+                @branchHint(.likely);
 
-                    @memcpy(obj.field.string, value);
-                    break :blk .{ .string = obj.field.string };
-                },
+                obj.field = switch (field_type) {
+                    .integer => .{ .integer = value },
+                    .decimal => .{ .decimal = value },
+                    .string => blk: {
+                        if (value.len != obj.field.string.len)
+                            obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
+
+                        @memcpy(obj.field.string, value);
+                        break :blk .{ .string = obj.field.string };
+                    },
+                };
             } else {
                 // restore size without this object,
                 // then add size with updated object
@@ -249,7 +255,7 @@ pub const Storage = struct {
             i -= 1;
 
             const obj = &self.store.items[i];
-            if (utils.advancedCompare(obj.key, key))
+            if (utils.advancedCompare(obj.key, key)) 
                 return self.promote(i);
         }
 

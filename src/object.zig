@@ -36,6 +36,7 @@ const std = @import("std");
 
 const signal = @import("signal.zig");
 
+/// Type of field as enum.
 pub const FieldType = enum(u8) {
     integer,
     decimal,
@@ -55,7 +56,6 @@ pub const Object = struct {
     /// of more complex contents.
     /// Decimal and integer fields are used for
     /// fast math operations.
-    ///
     field: union(FieldType) {
         /// Integer value
         integer: i64,
@@ -201,7 +201,7 @@ pub const Object = struct {
     }
 
     /// Returns size of serialized object
-    pub fn getSize(self: *Self) u64 {
+    pub inline fn getSize(self: *Self) u64 {
         // field size is present if field type is string
         const fieldsize: u64 = if (self.field == .string) 8 else 0;
         const fieldlen = switch (self.field) {
