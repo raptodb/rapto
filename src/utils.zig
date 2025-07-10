@@ -34,7 +34,47 @@
 
 const std = @import("std");
 
-/// Default hash algorithm with xxHash3
+const FieldType = @import("object.zig").FieldType;
+
+/// Custom integer parsing with
+/// default i64 type and MismatchType error.
+pub inline fn parseIntegerType(value: []const u8) error{MismatchType}!i64 {
+    return std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
+}
+
+/// Custom decimal parsing with
+/// default f64 type and MismatchType error.
+pub inline fn parseDecimalType(value: []const u8) error{MismatchType}!f64 {
+    return std.fmt.parseFloat(f64, value) catch return error.MismatchType;
+}
+
+/// Custom string parsing with MismatchType
+/// error. Removes incapsulation of "" and returns it slice.
+pub inline fn parseStringType(value: []const u8) []const u8 {
+    return value[1 .. value.len - 1];
+}
+
+/// Parses enum value type from string.
+pub fn valueTypeFromSerialized(noalias value: []const u8) error{TypeOverflow}!FieldType {
+    // check if value is string if
+    // it is encapsulated with ""
+    if (std.mem.startsWith(u8, value, "\"") and std.mem.endsWith(u8, value, "\"")) {
+        if (value.len > std.math.maxInt(u32)) {
+            @branchHint(.unlikely);
+            return error.TypeOverflow;
+        }
+
+        return .string;
+    }
+    // check if value is decimal if
+    // contains a dot
+    else if (std.mem.indexOfScalar(u8, value, '.') != null)
+        return .decimal;
+    // probably a integer
+    return .integer;
+}
+
+/// Default hash algorithm with xxHash3.
 inline fn hash(noalias value: []const u8) u64 {
     return std.hash.XxHash3.hash(0, value);
 }

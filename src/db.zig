@@ -47,54 +47,25 @@ const Self = @This();
 
 storage: *Storage,
 
-pub fn SET(self: Self, args: []const u8) !void {
+pub noinline fn SET(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
     const key, const value = try utils.kvFormat(args);
-    const value_type: FieldType = blk: {
-        // check if value is string if
-        // it is encapsulated with ""
-        if (std.mem.startsWith(u8, value, "\"") and std.mem.endsWith(u8, value, "\"")) {
-            if (value.len > std.math.maxInt(u32)) {
-                @branchHint(.cold);
-                return error.TypeOverflow;
-            }
 
-            break :blk .string;
-        }
-
-        // check if value is decimal if
-        // contains a dot
-        else if (std.mem.indexOfScalar(u8, value, '.') != null) {
-            break :blk .decimal;
-        }
-
-        // probably a integer
-        break :blk .integer;
-    };
-
-    switch (value_type) {
-        .integer => {
-            const fvalue = std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
-            _ = try self.storage.put(.integer, key, fvalue);
-        },
-        .decimal => {
-            const fvalue = std.fmt.parseFloat(f64, value) catch return error.MismatchType;
-            _ = try self.storage.put(.decimal, key, fvalue);
-        },
-        .string => _ = try self.storage.put(.string, key, value[1 .. value.len - 1]),
+    switch (try utils.valueTypeFromSerialized(value)) {
+        .integer => _ = try self.storage.put(.integer, key, try utils.parseIntegerType(value)),
+        .decimal => _ = try self.storage.put(.decimal, key, try utils.parseDecimalType(value)),
+        .string => _ = try self.storage.put(.string, key, utils.parseStringType(value)),
     }
 }
 
-pub fn UPDATE(self: Self, args: []const u8) !void {
+pub noinline fn UPDATE(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
     const key, const string_value = try utils.kvFormat(args);
-    const value = std.fmt.parseFloat(f64, string_value) catch return error.MismatchType;
+    const value = try utils.parseDecimalType(string_value);
 
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
-
-    if (obj.field == .string) return error.MismatchType;
 
     if (@mod(value, 1.0) == 0.0 and obj.field == .integer)
         obj.field.integer +|= @intFromFloat(value)
@@ -106,7 +77,7 @@ pub fn UPDATE(self: Self, args: []const u8) !void {
     obj.metadata.update();
 }
 
-pub fn RENAME(self: Self, args: []const u8) !void {
+pub noinline fn RENAME(self: Self, args: []const u8) !void {
     const old_key, const new_key = try utils.kvFormat(args);
 
     // new key must does not exist
@@ -122,41 +93,53 @@ pub fn RENAME(self: Self, args: []const u8) !void {
     } else return error.KeyNotFound;
 }
 
-pub fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub noinline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     @branchHint(.likely);
 
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
 
-    const value = switch (obj.field) {
-        .integer => |value| std.fmt.allocPrint(self.storage.allocator, "{d}", .{value}),
+    if (obj.field == .string) {
+        const value = std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string});
+        return .{ value catch return error.OutOfMemory, true };
+    }
+
+    // preallocated buffer on stack
+    // with max size for {i64, f64}
+    // converted in u8 array
+    var buf: [25]u8 = undefined;
+    const slice = switch (obj.field) {
+        .integer => |value| std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable,
         .decimal => |value| blk: {
             break :blk if (@mod(value, 1.0) == 0.0)
-                std.fmt.allocPrint(self.storage.allocator, "{d:.1}", .{value})
+                std.fmt.bufPrint(&buf, "{d:.1}", .{value}) catch unreachable
             else
-                std.fmt.allocPrint(self.storage.allocator, "{d}", .{value});
+                std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
         },
-        // if field is string, encapsulates it with ""
-        .string => |value| std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{value}),
+
+        // string already handled
+        else => unreachable,
     };
 
-    return .{ value catch return error.OutOfMemory, true };
+    return .{ slice, false };
 }
 
-pub fn TYPE(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub inline fn TYPE(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
     return .{ @tagName(obj.field), false };
 }
 
-pub fn CHECK(self: Self, key: []const u8) struct { []const u8, bool } {
+pub inline fn CHECK(self: Self, key: []const u8) struct { []const u8, bool } {
     return .{ if (self.storage.search(key) == null) "0" else "1", false };
 }
 
-pub fn COUNT(self: Self) !struct { []const u8, bool } {
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{self.storage.store.items.len}), true };
+pub inline fn COUNT(self: Self) !struct { []const u8, bool } {
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.store.items.len}) catch unreachable, true };
 }
 
-pub fn LIST(self: Self) !struct { []const u8, bool } {
+pub noinline fn LIST(self: Self) !struct { []const u8, bool } {
     var keys = std.ArrayListUnmanaged([]const u8).initCapacity(self.storage.allocator, 0) catch unreachable;
     defer keys.deinit(self.storage.allocator);
 
@@ -173,9 +156,9 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
         .{ try std.mem.join(self.storage.allocator, " ", keys.items), false };
 }
 
-pub fn TOUCH(self: Self, key: []const u8) !void {
-    const i = self.storage.search(key) orelse return error.KeyNotFound;
-    self.storage.store.items[i].metadata.update();
+pub inline fn TOUCH(self: Self, key: []const u8) !void {
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
+    obj.metadata.update();
 }
 
 pub fn HEAD(self: Self, key: []const u8) !void {
@@ -210,41 +193,47 @@ pub fn STAIL(self: Self, key: []const u8) !void {
     self.storage.store.insertAssumeCapacity(0, obj);
 }
 
-pub fn SORT(self: Self) void {
+pub inline fn SORT(self: Self) void {
     self.storage.prefetch();
 }
 
-pub fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
+pub noinline fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
+    // is freq is to set
     if (utils.kvFormat(arg)) |args| {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
+        obj.metadata.access_times = try utils.parseIntegerType(string_value);
+    }
+    // if freq is to get
+    else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
 
-        const value = std.fmt.parseInt(i64, string_value, 10) catch return error.MismatchType;
-        obj.metadata.access_times = value;
-    } else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
-
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{obj.metadata.access_times}), true };
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.metadata.access_times}) catch unreachable, true };
 }
 
-pub fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
+pub noinline fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
+    // if last access is to set
     if (utils.kvFormat(arg)) |args| {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
+        obj.metadata.last_access = try utils.parseIntegerType(string_value);
+    }
+    // if last access is to get
+    else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
 
-        const value = std.fmt.parseInt(i64, string_value, 10) catch return error.MismatchType;
-        obj.metadata.last_access = value;
-    } else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
-
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{obj.metadata.last_access}), true };
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.metadata.last_access}) catch unreachable, true };
 }
 
-pub fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub inline fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
     const idle = std.math.sub(
         i64,
@@ -252,27 +241,35 @@ pub fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
         obj.metadata.last_access,
     ) catch return error.InvalidMetadata;
 
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{idle}), true };
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{idle}) catch unreachable, true };
 }
 
-pub fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
     const size = if (obj.field == .string) obj.field.string.len else 8;
 
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{size}), true };
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, true };
 }
 
-pub fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub inline fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
     var size: u64 = 56; // min size for a object
     size += obj.key.len;
     size += if (obj.field == .string) obj.field.string.len else 8;
 
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{size}), true };
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, true };
 }
 
-pub fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
+pub noinline fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
+    _ = self;
+
     const value: u64 =
         if (utils.advancedCompare(arg, "live"))
             profiler.live_bytes
@@ -297,21 +294,31 @@ pub fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { []const u
             break :blk 0;
         };
 
-    return .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{value}), true };
+    // use preallocated buffer on stack
+    var buf: [20]u8 = undefined;
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable, true };
 }
 
-pub fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
-    return if (utils.advancedCompare(arg, "name"))
-        .{ self.storage.conf.name.?, false }
-    else if (utils.advancedCompare(arg, "cap"))
-        .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{self.storage.conf.db_cap.?}), true }
-    else if (utils.advancedCompare(arg, "size"))
-        .{ try std.fmt.allocPrint(self.storage.allocator, "{d}", .{self.storage.conf.db_cap.? - self.storage.store_cap}), true }
-    else
-        return error.UnknownArgument;
+pub noinline fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
+    return if (utils.advancedCompare(arg, "name")) blk: {
+        break :blk .{ self.storage.conf.name.?, false };
+    }
+    // block for preallocated
+    // buffer on stack
+    else blk: {
+        // use preallocated buffer on stack
+        var buf: [20]u8 = undefined;
+
+        break :blk if (utils.advancedCompare(arg, "cap"))
+            .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.conf.db_cap.?}) catch unreachable, true }
+        else if (utils.advancedCompare(arg, "size"))
+            .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.conf.db_cap.? - self.storage.store_cap}) catch unreachable, true }
+        else
+            error.UnknownArgument;
+    };
 }
 
-pub fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub noinline fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
     var obj = self.storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
     return .{ try obj.serialize(self.storage.allocator), true };
@@ -337,7 +344,7 @@ pub noinline fn ERASE(self: Self) !void {
     }
 }
 
-pub fn DEL(self: Self, key: []const u8) !void {
+pub inline fn DEL(self: Self, key: []const u8) !void {
     @branchHint(.likely);
 
     const index = self.storage.search(key) orelse return error.KeyNotFound;
@@ -348,7 +355,7 @@ pub noinline fn SAVE(self: Self, logger: *log.Logger) !void {
     snap.snap(self.storage, logger, false) catch return error.SaveFailed;
 }
 
-pub fn COPY(self: Self, args: []const u8) !void {
+pub noinline fn COPY(self: Self, args: []const u8) !void {
     const key, const dst = try utils.kvFormat(args);
     const rawkey, const heap_allocated = try self.DUMP(key);
     defer if (heap_allocated) self.storage.allocator.free(rawkey);
