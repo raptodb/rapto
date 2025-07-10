@@ -35,6 +35,7 @@
 test {
     // NOTE: These modules cannot be tested over semantic.
     // They require the original server boot.
+    _ = @import("db.zig");
     _ = @import("log.zig");
     _ = @import("options.zig");
     _ = @import("rapto.zig");
@@ -45,7 +46,6 @@ test {
     _ = @import("socket.zig");
 
     // Tested modules
-    _ = @import("db.zig");
     _ = @import("lz4.zig");
     _ = @import("object.zig");
     _ = @import("Query.zig");
