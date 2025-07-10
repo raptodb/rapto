@@ -255,7 +255,7 @@ pub const Storage = struct {
             i -= 1;
 
             const obj = &self.store.items[i];
-            if (utils.advancedCompare(obj.key, key)) 
+            if (utils.advancedCompare(obj.key, key))
                 return self.promote(i);
         }
 
