@@ -85,6 +85,7 @@ pub const Command = enum(u8) {
     DOWN,
 
     /// Parses text command to enum.
+    /// Consider quantity of field <= 100.
     pub inline fn parse(noalias command: []const u8) ?Command {
         return std.meta.stringToEnum(Command, command);
     }
