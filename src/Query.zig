@@ -109,7 +109,9 @@ args: []const u8 = undefined,
 
 pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
 
-/// Parses raw query to valid query. It divide command with arguments.
+/// Parses raw query to valid query. Divides the
+/// query in command and arguments, associated to
+/// client that make request.
 pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     const trimmed = std.mem.trim(u8, raw_query, " ");
     if (trimmed.len == 0) {
@@ -124,11 +126,6 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
 
     return q;
-}
-
-/// Deallocates query.
-pub inline fn free(self: Self, allocator: std.mem.Allocator) void {
-    allocator.free(self.raw_query);
 }
 
 test "command parsing" {
