@@ -79,8 +79,6 @@ pub fn expandClientError(err: ClientError) []const u8 {
     return switch (err) {
         error.UnmatchVersion => "ERR: compatible-version=" ++ RAPTO_VERSION,
         error.WouldBlock => "ERR: timeout-reached",
-
-        // stream errors
         error.ConnectionTimedOut,
         error.SocketNotConnected,
         error.ConnectionResetByPeer,
@@ -106,8 +104,6 @@ pub fn expandServerSessionError(err: ServerSessionError) []const u8 {
         error.LoadingError => "Cannot load from storage. Read error occurred.",
         error.ExcedeedSpaceLimit => "Cannot load from storage. Space limit excedeed.",
         error.OpenError => "Cannot open storage file.",
-
-        // stream errors
         error.NotOpenForWriting,
         error.ConnectionResetByPeer,
         => "Unstabilized connection.",
