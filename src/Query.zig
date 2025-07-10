@@ -84,19 +84,9 @@ pub const Command = enum(u8) {
 
     DOWN,
 
-    /// Quantity of commands possible.
-    const qty: u8 = 29;
-
     /// Parses text command to enum.
-    pub fn parse(noalias command: []const u8) ?Command {
-        var i: u8 = 0;
-        while (i < qty) : (i += 1) {
-            const tag = @as(Command, @enumFromInt(i));
-            if (utils.advancedCompare(command, @tagName(tag)))
-                return tag;
-        }
-
-        return null;
+    pub inline fn parse(noalias command: []const u8) ?Command {
+        return std.meta.stringToEnum(Command, command);
     }
 };
 
