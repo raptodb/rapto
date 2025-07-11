@@ -310,9 +310,9 @@ pub noinline fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
         var buf: [20]u8 = undefined;
 
         break :blk if (utils.advancedCompare(arg, "cap"))
-            .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.conf.db_cap.?}) catch unreachable, true }
+            .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.conf.db_size.?}) catch unreachable, false }
         else if (utils.advancedCompare(arg, "size"))
-            .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.conf.db_cap.? - self.storage.store_cap}) catch unreachable, true }
+            .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.conf.db_size.? - self.storage.store_cap}) catch unreachable, false }
         else
             error.UnknownArgument;
     };

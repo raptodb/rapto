@@ -71,7 +71,7 @@ pub const Storage = struct {
             .allocator = allocator,
             .file = file,
             .store = std.ArrayListUnmanaged(Object).initCapacity(allocator, 0) catch unreachable,
-            .store_cap = conf.db_cap.?,
+            .store_cap = conf.db_size orelse std.math.maxInt(u64),
             .conf = conf,
         };
     }
@@ -338,7 +338,7 @@ fn compareLRU(_: void, a: Object, b: Object) bool {
 }
 
 test "storage" {
-    var conf = RaptoConfig{ .db_cap = 10000 };
+    var conf = RaptoConfig{};
     var storage = Storage.init(std.testing.allocator, undefined, &conf);
     defer storage.deinit();
 

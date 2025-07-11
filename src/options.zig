@@ -136,7 +136,7 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
 
         // server exclusive parameters
         else if (std.mem.eql(u8, flag, "--db-size") and opts.mode == .server)
-            opts.db_cap = std.fmt.parseInt(u64, value, 10) catch return error.InvalidValue
+            opts.db_size = std.fmt.parseInt(u64, value, 10) catch return error.InvalidValue
         else if (std.mem.eql(u8, flag, "--db-dir") and opts.mode == .server) {
             // if directory exist, set to db_path
             if (std.fs.openDirAbsolute(value, .{})) |_|
@@ -184,9 +184,6 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
         const port: u16 = std.crypto.random.intRangeAtMost(u16, 10000, 19999);
         opts.addr = std.net.Ip4Address.parse("127.0.0.1", port) catch unreachable;
     }
-
-    // if capacity is null, set to 0
-    opts.db_cap = opts.db_cap orelse 0;
 
     // storage directory is server exclusive
     if (opts.mode == .server) {

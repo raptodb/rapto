@@ -105,7 +105,7 @@ pub const RaptoConfig = struct {
     /// will be requested this memory on RAM. If database
     /// storage file is already created omits this
     /// parameter.
-    db_cap: ?u64 = null,
+    db_size: ?u64 = null,
 
     /// Deinits config.
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
@@ -118,27 +118,30 @@ pub const RaptoConfig = struct {
 /// After, if file exist loads and prefetchs items to RAM.
 /// Returns capacity of storage and `std.fs.File`.
 inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
-    var cap: u64 = 0;
     var exist: bool = true;
 
     const file: std.fs.File = if (std.fs.cwd().openFile(conf.db_path.?, .{ .mode = .read_write })) |f| blk: {
         const stat = f.stat() catch return error.CorruptedStat;
+
         // replace database capacity from
         // file size if it is greater.
-        cap = @max(stat.size, conf.db_cap.?);
-        if (cap == 0) return error.NoCapacity;
+        // if size is not specified, Rapto uses
+        // all RAM possible
+        if (conf.db_size) |size| {
+            conf.db_size = @max(stat.size, size);
+            if (conf.db_size == 0) return error.NoCapacity;
+        }
 
         break :blk f;
     } else |err| if (err == error.FileNotFound) blk: {
-        if (conf.db_cap.? == 0) {
-            // try to remove created file
-            std.fs.cwd().deleteFile(conf.db_path.?) catch {};
-            return error.NoCapacity;
-        }
-
         exist = false;
         break :blk std.fs.cwd().createFile(conf.db_path.?, .{ .read = true }) catch return error.OpenError;
     } else return error.OpenError;
+
+    if (conf.db_size) |size|
+        logger.info("Storage size={d} file='{s}'", .{ size, conf.db_path.? })
+    else
+        logger.info("Storage size=ALLRAM file='{s}'", .{conf.db_path.?});
 
     // initialize storage
     var storage = Storage.init(allocator, file, conf);
@@ -146,7 +149,7 @@ inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage
     // if database exist load items
     // and prefetch from RAM
     if (exist) {
-        logger.info("Opened storage file '{s}'. Loading and prefetching have started.", .{conf.db_path.?});
+        logger.info("Opened storage file. Loading and prefetching have started.", .{});
 
         var elap = std.time.Timer.start() catch unreachable;
 
