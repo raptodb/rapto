@@ -319,6 +319,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
             const response, const heap_allocated = content catch |err| blk: {
                 @branchHint(.unlikely);
+                if (err == error.OutOfMemory) return error.OutOfMemory;
                 break :blk .{ ree.expandResolveError(err), false };
             };
             defer if (heap_allocated) allocator.free(response);
@@ -351,23 +352,17 @@ pub fn main() void {
     defer arena.deinit();
     var arenaAllocator = arena.allocator();
 
-    // this allocator is wrapped with tracker Zprof
-    const zprof = Zprof.init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
-    defer zprof.deinit();
-    profiler = &zprof.profiler;
-    const allocator = zprof.allocator;
-
     // setting raw term and reset on exit
     const old_termios = signal.toRawTermios();
     defer _ = std.c.tcsetattr(0, .FLUSH, &old_termios);
 
     // get logger with max level of verbosity
-    logger = log.Logger.init(allocator, .noisy);
+    logger = log.Logger.init(arenaAllocator, .noisy);
 
-    var args = std.process.argsWithAllocator(allocator) catch signal.OOM();
+    var args = std.process.argsWithAllocator(arenaAllocator) catch signal.OOM();
     errdefer args.deinit();
 
-    var conf = options.parseOptions(allocator, &args) catch |err| {
+    var conf = options.parseOptions(arenaAllocator, &args) catch |err| {
         @branchHint(.unlikely);
 
         const msg = switch (err) {
@@ -379,12 +374,29 @@ pub fn main() void {
         logger.critical("Options parser: {s}\n\n{s}", .{ msg, options.usage() });
     };
     args.deinit();
-    defer conf.deinit(allocator);
+    defer conf.deinit(arenaAllocator);
 
     // if selected verbose is different than .noisy
     // (previously initialized with it), reinit logger
     if (conf.verbose != .noisy)
-        logger = log.Logger.init(allocator, conf.verbose);
+        logger = log.Logger.init(arenaAllocator, conf.verbose);
+
+    // select capacity as ALL RAM if size
+    // is not specified, else as fixed buffer
+    profiler, const allocator, const zprof = if (conf.db_size) |size| blk: {
+        const buf: []u8 = arenaAllocator.alloc(u8, size) catch signal.OOM();
+        var fba = std.heap.FixedBufferAllocator.init(buf);
+        var fbaAllocator = fba.allocator();
+
+        // this allocator is wrapped with tracker Zprof
+        const zprof = Zprof.init(&fbaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
+        break :blk .{ &zprof.profiler, zprof.allocator, zprof };
+    } else blk: {
+        // this allocator is wrapped with tracker Zprof
+        const zprof = Zprof.init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
+        break :blk .{ &zprof.profiler, zprof.allocator, zprof };
+    };
+    defer zprof.deinit();
 
     // handle server
     if (conf.mode == .server) {

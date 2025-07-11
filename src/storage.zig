@@ -300,7 +300,7 @@ pub const Storage = struct {
 
     /// Appends new object at head of the list.
     /// Returns the index of object.
-    pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) !u64 {
+    pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
         // create new object
         var obj = try Object.set(self.allocator, field_type, key, value);
         errdefer obj.deinit(self.allocator);
@@ -308,9 +308,14 @@ pub const Storage = struct {
         // update store capacity
         try self.removeCapacity(obj.getSize());
 
-        // add to list growing memory 1 at a time
-        try self.store.ensureTotalCapacityPrecise(self.allocator, self.store.items.len + 1);
-        self.store.appendAssumeCapacity(obj);
+        // if allocator is not std.heap.FixedBufferAllocator
+        if (self.conf.db_size == null) {
+            // add to list growing memory 1 at a time
+            try self.store.ensureTotalCapacityPrecise(self.allocator, self.store.items.len + 1);
+            self.store.appendAssumeCapacity(obj);
+        }
+        // if allocator allocates in stack
+        else try self.store.append(self.allocator, obj);
 
         // promote skipped because the array is reversed.
         // now the obj is already on the head.
