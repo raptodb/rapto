@@ -93,7 +93,7 @@ pub noinline fn RENAME(self: Self, args: []const u8) !void {
     } else return error.KeyNotFound;
 }
 
-pub noinline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
+pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     @branchHint(.likely);
 
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
@@ -136,7 +136,7 @@ pub inline fn CHECK(self: Self, key: []const u8) struct { []const u8, bool } {
 pub inline fn COUNT(self: Self) !struct { []const u8, bool } {
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.store.items.len}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{self.storage.store.items.len}) catch unreachable, false };
 }
 
 pub noinline fn LIST(self: Self) !struct { []const u8, bool } {
@@ -197,7 +197,7 @@ pub inline fn SORT(self: Self) void {
     self.storage.prefetch();
 }
 
-pub noinline fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
+pub inline fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
     // is freq is to set
@@ -212,10 +212,10 @@ pub noinline fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.metadata.access_times}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.metadata.access_times}) catch unreachable, false };
 }
 
-pub noinline fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
+pub inline fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
     var obj: *Object = undefined;
 
     // if last access is to set
@@ -230,7 +230,7 @@ pub noinline fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.metadata.last_access}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.metadata.last_access}) catch unreachable, false };
 }
 
 pub inline fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
@@ -243,7 +243,7 @@ pub inline fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{idle}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{idle}) catch unreachable, false };
 }
 
 pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
@@ -252,7 +252,7 @@ pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, false };
 }
 
 pub inline fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
@@ -264,10 +264,10 @@ pub inline fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, false };
 }
 
-pub noinline fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
+pub inline fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { []const u8, bool } {
     _ = self;
 
     const value: u64 =
@@ -296,7 +296,7 @@ pub noinline fn MEM(self: Self, profiler: *Profiler, arg: []const u8) !struct { 
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable, true };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable, false };
 }
 
 pub noinline fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
@@ -351,7 +351,7 @@ pub inline fn DEL(self: Self, key: []const u8) !void {
     try self.storage.removeAtIndex(index);
 }
 
-pub noinline fn SAVE(self: Self, logger: *log.Logger) !void {
+pub inline fn SAVE(self: Self, logger: *log.Logger) !void {
     snap.snap(self.storage, logger, false) catch return error.SaveFailed;
 }
 
