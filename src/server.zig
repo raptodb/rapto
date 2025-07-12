@@ -137,22 +137,25 @@ pub const Server = struct {
     /// Wrapper for client handler.
     /// This function handles errors.
     fn handleClientWrapper(self: *Self, client: *Client) void {
-        client.stream.disableNagle() catch return;
-        client.stream.setReadDeadline(DEADLINE_MS) catch return;
-        client.stream.setWriteDeadline(DEADLINE_MS) catch return;
+        blk: {
+            client.stream.enableREUSEADDR() catch break :blk;
+            client.stream.disableNagle() catch break :blk;
+            client.stream.setReadDeadline(DEADLINE_MS) catch break :blk;
+            client.stream.setWriteDeadline(DEADLINE_MS) catch break :blk;
 
-        self.handleClient(client) catch |err| {
-            @branchHint(.unlikely);
+            self.handleClient(client) catch |err| {
+                @branchHint(.unlikely);
 
-            const msg = switch (err) {
-                error.OutOfMemory => signal.OOM(),
-                // already disconnected (likely deinit)
-                error.NotOpenForReading, error.NotOpenForWriting => return,
-                else => ree.expandClientError(err),
+                const msg = switch (err) {
+                    error.OutOfMemory => signal.OOM(),
+                    // already disconnected (likely deinit)
+                    error.NotOpenForReading, error.NotOpenForWriting => return,
+                    else => ree.expandClientError(err),
+                };
+
+                client.stream.write(msg) catch {};
             };
-
-            client.stream.write(msg) catch {};
-        };
+        }
 
         client.alive = false;
         self.destroyClient(client);
