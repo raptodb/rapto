@@ -119,6 +119,17 @@ pub const Stream = struct {
         return utils.advancedCompare(readed, request);
     }
 
+    /// Enable REUSEADDR to use same address frequently.
+    pub fn enableREUSEADDR(self: *Self) error{SocketConfig}!void {
+        const val: u32 = 1;
+        posix.setsockopt(
+            self.handle,
+            posix.SOL.SOCKET,
+            posix.SO.REUSEADDR,
+            @as([*]const u8, @ptrCast(&val))[0..4],
+        ) catch return error.SocketConfig;
+    }
+
     /// Disables Nagle's algorithm.
     /// Optimizes network performance.
     pub fn disableNagle(self: *Self) error{SocketConfig}!void {
