@@ -209,6 +209,8 @@ pub const Storage = struct {
                         break :blk .{ .string = obj.field.string };
                     },
                 };
+
+                obj.metadata.update();
             } else {
                 // restore size without this object,
                 // then add size with updated object
