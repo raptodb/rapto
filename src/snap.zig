@@ -53,19 +53,16 @@ pub const AutosnapConf = struct {
 /// with a min of <modify count>.
 /// This function is already threaded.
 pub fn autosnap(storage: *Storage, logger: *log.Logger, conf: *const AutosnapConf, modc: *std.atomic.Value(u64)) error{ThreadError}!void {
+    const max_delay = conf.delay * std.time.ns_per_s;
+
     var timer = std.time.Timer.start() catch unreachable;
+    while (true) if (timer.read() >= max_delay and modc.load(.acquire) >= conf.count) {
+        // save to storage
+        snap(storage, logger, true) catch {};
 
-    while (true) {
-        if (timer.read() >= conf.delay * std.time.ns_per_s and modc.load(.acquire) >= conf.count) {
-            // Save to storage
-            snap(storage, logger, true) catch {};
-
-            modc.store(0, .release);
-            timer.reset();
-        }
-
-        std.time.sleep(1 * std.time.ns_per_s);
-    }
+        modc.store(0, .release);
+        timer.reset();
+    } else std.time.sleep(1 * std.time.ns_per_s);
 }
 
 /// Attempts to save the storage to disk.
