@@ -109,45 +109,49 @@ pub const Logger = struct {
 
     /// Prints info message.
     pub fn info(self: *Self, comptime format: []const u8, args: anytype) void {
+        if (self.level != .noisy) return;
+
         const msg = std.fmt.allocPrint(self.allocator, format, args) catch signal.OOM();
         defer self.allocator.free(msg);
 
         // print info when log level is noisy
-        if (self.level == .noisy)
-            self.log(.info, msg);
+        self.log(.info, msg);
     }
 
     /// Prints warning message.
     pub fn warning(self: *Self, comptime format: []const u8, args: anytype) void {
+        if (self.level == .silent) return;
+
         const msg = std.fmt.allocPrint(self.allocator, format, args) catch signal.OOM();
         defer self.allocator.free(msg);
 
         // print info when log level is noisy or warnings
-        if (self.level != .silent)
-            self.log(.warning, msg);
+        self.log(.warning, msg);
     }
 
     /// Prints critical message without terminating.
     pub fn critical_msg(self: *Self, comptime format: []const u8, args: anytype) void {
+        if (self.level == .silent) return;
+
         const msg = std.fmt.allocPrint(self.allocator, format, args) catch signal.OOM();
         defer self.allocator.free(msg);
 
         // print info when log level is noisy or warnings
-        if (self.level != .silent)
-            self.log(.critical_msg, msg);
+        self.log(.critical_msg, msg);
     }
 
     /// Prints critical message and terminate program with exit code 1.
     pub fn critical(self: *Self, comptime format: []const u8, args: anytype) noreturn {
+        if (self.level == .silent) std.process.exit(1);
+
         const msg = std.fmt.allocPrint(self.allocator, format, args) catch signal.OOM();
         defer {
             self.allocator.free(msg);
-            defer std.process.exit(1);
+            std.process.exit(1);
         }
 
         // print info when log level is noisy or warnings
-        if (self.level != .silent)
-            self.log(.critical, msg);
+        self.log(.critical, msg);
     }
 };
 
