@@ -138,11 +138,11 @@ pub fn RENAME(self: Self, args: []const u8) !void {
     var new_index: ?u64 = null;
     var old_index: ?u64 = null;
 
-    var i: u64 = self.store.items.len;
+    var i: u64 = self.storage.store.items.len;
     while (i > 0) {
         i -= 1;
 
-        const obj = &self.store.items[i];
+        const obj = &self.storage.store.items[i];
         if (utils.advancedCompare(obj.key, new_key)) {
             new_index = i;
             if (old_index != null) break;
@@ -278,7 +278,7 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
     var i: u64 = len;
     while (i > 0) {
         i -= 1;
-        try keys.appendAssumeCapacity(self.storage.store.items[i].key);
+        keys.appendAssumeCapacity(self.storage.store.items[i].key);
     }
 
     return .{ try std.mem.join(self.storage.allocator, " ", keys.items), false };
@@ -310,9 +310,9 @@ pub inline fn TOUCH(self: Self, key: []const u8) !void {
 /// Complexity O(2)
 pub fn HEAD(self: Self, key: []const u8) !void {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
-    const head = &self.storage.store.getLast();
+    var head = self.storage.store.getLast();
 
-    std.mem.swap(Object, obj, head);
+    std.mem.swap(Object, obj, &head);
 }
 
 /// Updates priority moving key
@@ -601,7 +601,7 @@ pub fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
         var buf: [20]u8 = undefined;
 
         break :blk if (utils.advancedCompare(arg, "cap"))
-            if (self.storage.conf.db_size.?) |size|
+            if (self.storage.conf.db_size) |size|
                 .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, false }
             else
                 .{ "ALLRAM", false }
