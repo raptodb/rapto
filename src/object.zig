@@ -73,7 +73,7 @@ pub const Object = struct {
     metadata: struct {
         /// Count of read, write operations.
         /// Also called FREQ.
-        access_times: i64 = 1,
+        access_times: i64 = 0,
 
         /// Last access in timestamp (us).
         /// Useful for storage prefetching with LRU-policy.
