@@ -307,12 +307,14 @@ pub inline fn TOUCH(self: Self, key: []const u8) !void {
 /// `HEAD k`
 /// `HEAD mykey`
 ///
-/// Complexity O(2)
+/// Complexity O(n+1)
 pub fn HEAD(self: Self, key: []const u8) !void {
-    const obj = self.storage.get(key) orelse return error.KeyNotFound;
-    var head = self.storage.store.getLast();
+    const last_index = self.storage.store.items.len - 1;
 
-    std.mem.swap(Object, obj, &head);
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
+    const head = &self.storage.store.items[last_index];
+
+    std.mem.swap(Object, obj, head);
 }
 
 /// Updates priority moving key
@@ -324,7 +326,7 @@ pub fn HEAD(self: Self, key: []const u8) !void {
 /// `TAIL k`
 /// `TAIL mykey`
 ///
-/// Complexity O(2)
+/// Complexity O(n+1)
 pub fn TAIL(self: Self, key: []const u8) !void {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
     const head = &self.storage.store.items[0];
