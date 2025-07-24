@@ -521,7 +521,7 @@ pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
 pub inline fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
-    var size: u64 = 56; // min size for a object
+    var size: u64 = 48; // min size for a object
     size += obj.key.len;
     size += if (obj.field == .string) obj.field.string.len else 8;
 
