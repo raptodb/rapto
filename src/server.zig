@@ -68,6 +68,7 @@ pub const Client = struct {
             allocator.free(n);
 
         allocator.destroy(self.stream);
+        allocator.destroy(self);
 
         self.* = undefined;
     }
