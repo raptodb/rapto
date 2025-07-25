@@ -503,7 +503,7 @@ pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
 }
 
 /// Returns how much memory
-/// in bytes occupies object.
+/// in bytes occupies object in RAM.
 ///
 /// Occupied memory is composed
 /// by 56 (min space of struct)
@@ -521,13 +521,9 @@ pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
 pub inline fn SIZE(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
-    var size: u64 = 48; // min size for a object
-    size += obj.key.len;
-    size += if (obj.field == .string) obj.field.string.len else 8;
-
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
-    return .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, false };
+    return .{ std.fmt.bufPrint(&buf, "{d}", .{obj.getSize()}) catch unreachable, false };
 }
 
 /// Gets or sets memory profiling
