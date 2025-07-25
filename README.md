@@ -36,7 +36,7 @@ The contexts of use are limited and very specific, such as real-time monitoring,
 ## Benchmarks
 
 Valid benchmarks are available through Rapto clients. <br>
-Internal tests focused on query resolution showed latencies in a few hundreds of microseconds.
+Internal tests focused on query resolution showed latencies in a few microseconds.
 > [!IMPORTANT]
 > However, these results are not publicly verified and should be considered indicative only.
 
