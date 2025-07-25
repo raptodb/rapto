@@ -383,20 +383,18 @@ pub fn main() void {
 
     // select capacity as ALL RAM if size
     // is not specified, else as fixed buffer
-    profiler, const allocator, const zprof = if (conf.db_size) |size| blk: {
+    const zprof = if (conf.db_size) |size| blk: {
         const buf: []u8 = arenaAllocator.alloc(u8, size) catch signal.OOM();
         var fba = std.heap.FixedBufferAllocator.init(buf);
         var fbaAllocator = fba.allocator();
 
         // this allocator is wrapped with tracker Zprof
-        const zprof = Zprof.init(&fbaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
-        break :blk .{ &zprof.profiler, zprof.allocator, zprof };
-    } else blk: {
-        // this allocator is wrapped with tracker Zprof
-        const zprof = Zprof.init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
-        break :blk .{ &zprof.profiler, zprof.allocator, zprof };
-    };
+        break :blk Zprof.init(&fbaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
+    } else Zprof.init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
     defer zprof.deinit();
+
+    profiler = &zprof.profiler;
+    const allocator = zprof.allocator;
 
     // handle server
     if (conf.mode == .server) {
