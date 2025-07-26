@@ -34,6 +34,8 @@
 
 const std = @import("std");
 
+const appendNoGrowing = @import("utils.zig").appendNoGrowing;
+
 /// Thread safe queue with mutex locking
 /// and thread conditions. Hightly optimized.
 pub fn ThreadSafeQueue(comptime T: type) type {
@@ -49,7 +51,7 @@ pub fn ThreadSafeQueue(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            try self.append(allocator, item);
+            try appendNoGrowing(allocator, T, &self.queue, item);
             self.cond.signal();
         }
 
@@ -75,12 +77,6 @@ pub fn ThreadSafeQueue(comptime T: type) type {
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             self.queue.deinit(allocator);
             self.* = undefined;
-        }
-
-        /// Appends to queue growing memory by 1.
-        inline fn append(self: *Self, allocator: std.mem.Allocator, item: T) error{OutOfMemory}!void {
-            try self.queue.ensureTotalCapacityPrecise(allocator, self.queue.items.len + 1);
-            self.queue.appendAssumeCapacity(item);
         }
     };
 }

@@ -40,6 +40,7 @@ const std = @import("std");
 
 const socket = @import("socket.zig");
 const signal = @import("signal.zig");
+const utils = @import("utils.zig");
 const log = @import("log.zig");
 const ree = @import("ree.zig");
 
@@ -179,11 +180,9 @@ pub const Server = struct {
             const name = try client.stream.read(self.allocator);
             client.name = if (name.len > 0) name else null;
 
-            // grow memory 1 at a time
-            try self.clients.ensureTotalCapacityPrecise(self.allocator, self.clients.items.len + 1);
             // add current client to list
             // of connected clients
-            self.clients.appendAssumeCapacity(client);
+            try utils.appendNoGrowing(self.allocator, *Client, &self.clients, client);
         }
 
         self.logger.info("CLIENT [id={d};name={s};{}] Connected.", .{ client.id, client.name orelse "", client.address });

@@ -54,6 +54,17 @@ pub inline fn parseStringType(value: []const u8) []const u8 {
     return value[1 .. value.len - 1];
 }
 
+/// Appends item to std.ArrayListUnmanaged with growing of 1.
+pub inline fn appendNoGrowing(
+    allocator: std.mem.Allocator,
+    comptime T: type,
+    array: *std.ArrayListUnmanaged(T),
+    item: T,
+) error{OutOfMemory}!void {
+    try array.ensureTotalCapacityPrecise(allocator, array.items.len + 1);
+    array.appendAssumeCapacity(item);
+}
+
 /// Parses enum value type from string.
 pub fn valueTypeFromSerialized(noalias value: []const u8) error{TypeOverflow}!FieldType {
     // check if value is string if
