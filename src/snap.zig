@@ -94,7 +94,7 @@ pub fn autosnap(
 }
 
 /// Attempts to save the storage to disk.
-pub fn snap(storage: *Storage, logger: *log.Logger, auto: bool) error{SaveFailed}!void {
+pub fn snap(storage: *Storage, logger: *log.Logger, comptime auto: bool) error{SaveFailed}!void {
     storage.save() catch |err| {
         @branchHint(.unlikely);
 
@@ -111,11 +111,9 @@ pub fn snap(storage: *Storage, logger: *log.Logger, auto: bool) error{SaveFailed
         return error.SaveFailed;
     };
 
+    // Snap success
     const src = if (auto) "Auto-snap" else "Snap";
     logger.info("{s}: saved successful.", .{src});
-
-    // Snap success
-    return;
 }
 
 test "reftest" {
