@@ -82,7 +82,7 @@ pub const Logger = struct {
 
     /// Generic log function implementation with footer.
     /// Prints log with date and time.
-    pub fn log(self: *Self, logtype: enum { info, warning, critical, critical_msg }, msg: []const u8) void {
+    pub fn log(self: *Self, logtype: enum { info, warning, critical }, msg: []const u8) void {
         // set prefix with date and name
         var prefix: [27]u8 = undefined;
         _ = std.fmt.bufPrint(&prefix, "{s} [Rapto]", .{getFormattedTime()}) catch unreachable;
@@ -92,14 +92,11 @@ pub const Logger = struct {
             self.stdout.writeAll("\x1b[K") catch unreachable;
         }
 
-        if (logtype == .critical)
-            self.stderr.print("\r{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable;
-
         // by logtype, print info from stdout or warning and critical from stderr
         switch (logtype) {
             .info => self.stdout.print("{s} info: {s}\n", .{ prefix, msg }) catch unreachable,
             .warning => self.stderr.print("{s} warning: {s}\n", .{ prefix, msg }) catch unreachable,
-            .critical_msg => self.stderr.print("{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable,
+            .critical => self.stderr.print("{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable,
             else => {},
         }
 
@@ -127,17 +124,6 @@ pub const Logger = struct {
 
         // print info when log level is noisy or warnings
         self.log(.warning, msg);
-    }
-
-    /// Prints critical message without terminating.
-    pub fn critical_msg(self: *Self, comptime format: []const u8, args: anytype) void {
-        if (self.level == .silent) return;
-
-        const msg = std.fmt.allocPrint(self.allocator, format, args) catch signal.OOM();
-        defer self.allocator.free(msg);
-
-        // print info when log level is noisy or warnings
-        self.log(.critical_msg, msg);
     }
 
     /// Prints critical message and terminate program with exit code 1.
