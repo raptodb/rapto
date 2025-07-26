@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) void {
         .name = "rapto",
         .root_source_file = b.path("src/rapto.zig"),
         .target = target,
-        .optimize = optimize,
+        .optimize = .ReleaseFast,
     });
 
     exe.linkLibC();
