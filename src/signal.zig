@@ -47,7 +47,6 @@ pub const SignalError = error{ OutOfMemory, OutOfDisk };
 const SIGINT = std.posix.system.SIG.INT;
 const SIGABRT = std.posix.system.SIG.ABRT;
 const SIGTERM = std.posix.system.SIG.TERM;
-const SIGWINCH = std.posix.system.SIG.WINCH;
 
 /// Global SIGABRT reason. The context can be
 /// OutOfMemory (OOM), OutOfDisk (OOD) or Unexpected Error (UE).
