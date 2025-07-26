@@ -87,7 +87,7 @@ pub const Server = struct {
 
     conf: *RaptoConfig,
 
-    pub const BindError = signal.SignalError || error{BindError};
+    pub const BindError = error{ BindError, OutOfMemory };
     pub const ClientError = error{UnmatchVersion} || socket.Stream.ReadError || socket.Stream.WriteError;
 
     /// Initializes and binds server.

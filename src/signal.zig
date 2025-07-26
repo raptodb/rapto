@@ -39,11 +39,6 @@ const log = @import("log.zig");
 
 const Storage = @import("storage.zig").Storage;
 
-/// Errors handled by signal.
-/// OutOfMemory (OOM) is when there is no RAM space.
-/// OutOfDisk (OOD) is when there is no disk space.
-pub const SignalError = error{ OutOfMemory, OutOfDisk };
-
 const SIGINT = std.posix.system.SIG.INT;
 const SIGABRT = std.posix.system.SIG.ABRT;
 const SIGTERM = std.posix.system.SIG.TERM;

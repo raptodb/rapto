@@ -48,7 +48,7 @@ const MAXFLOW = 1024 * 1024 * 512;
 pub const Stream = struct {
     const Self = @This();
 
-    pub const ReadError = posix.ReadError || signal.SignalError || error{ InvalidLength, EndOfStream };
+    pub const ReadError = posix.ReadError || error{ OutOfMemory, InvalidLength, EndOfStream };
     pub const WriteError = posix.WriteError;
 
     reader: std.io.Reader(*Self, posix.ReadError, rawRead) = undefined,
@@ -58,7 +58,7 @@ pub const Stream = struct {
     handle: posix.socket_t,
 
     /// Initializes Stream with posix file descriptor.
-    pub fn init(allocator: std.mem.Allocator, handle: posix.socket_t) signal.SignalError!*Stream {
+    pub fn init(allocator: std.mem.Allocator, handle: posix.socket_t) error{OutOfMemory}!*Stream {
         var s = try allocator.create(Stream);
         s.* = Stream{ .handle = handle };
         s.reader = std.io.Reader(*Stream, posix.ReadError, rawRead){ .context = s };

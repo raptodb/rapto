@@ -90,8 +90,8 @@ pub const Object = struct {
         }
     } = undefined,
 
-    pub const SetError = error{TypeOverflow} || signal.SignalError;
-    pub const DeserializeError = error{ EndOfStream, UnsupportedType } || signal.SignalError;
+    pub const SetError = error{ TypeOverflow, OutOfMemory };
+    pub const DeserializeError = error{ EndOfStream, UnsupportedType, OutOfMemory };
 
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
@@ -161,7 +161,7 @@ pub const Object = struct {
     }
 
     /// Returns serialized object to byte array.
-    pub noinline fn serialize(self: *Self, allocator: std.mem.Allocator) signal.SignalError![]u8 {
+    pub noinline fn serialize(self: *Self, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
         // get len of serialized object
         const size = self.getSizeFromSerialized();
 

@@ -61,9 +61,9 @@ pub const Storage = struct {
 
     conf: *RaptoConfig,
 
-    pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit } || signal.SignalError;
-    pub const SaveError = error{ FileSeek, FileSync } || signal.SignalError || std.fs.File.WriteError;
-    pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit } || signal.SignalError;
+    pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit, OutOfMemory };
+    pub const SaveError = error{ FileSeek, FileSync, OutOfMemory, OutOfDisk } || std.fs.File.WriteError;
+    pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit, OutOfMemory };
 
     /// Initializes storage with an allocator, file and size in bytes.
     pub fn init(allocator: std.mem.Allocator, file: std.fs.File, conf: *RaptoConfig) Self {

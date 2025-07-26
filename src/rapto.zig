@@ -60,20 +60,9 @@ pub const ServerSessionError = error{
     CorruptedStat,
     ThreadError,
     OpenError,
-} || Server.BindError || Storage.LoadError || signal.SignalError || socket.Stream.WriteError;
-pub const ResolveError = error{
-    MissingTokens,
-    TypeOverflow,
-    KeyNotFound,
-    KeyReplacementExist,
-    MismatchType,
-    SaveFailed,
-    InvalidObject,
-    InvalidMetadata,
-    NoKeysFound,
-    UnknownArgument,
-    ExcedeedSpaceLimit,
-} || signal.SignalError || Storage.PutError;
+    OutOfMemory,
+} || Server.BindError || Storage.LoadError || socket.Stream.WriteError;
+pub const ResolveError = error{ MissingTokens, TypeOverflow, KeyNotFound, KeyReplacementExist, MismatchType, SaveFailed, InvalidObject, InvalidMetadata, NoKeysFound, UnknownArgument, ExcedeedSpaceLimit, OutOfMemory } || Storage.PutError;
 
 var logger: log.Logger = undefined;
 var profiler: *Profiler = undefined;

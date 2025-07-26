@@ -89,18 +89,7 @@ pub inline fn usage() []const u8 {
     ;
 }
 
-pub const OptionsError = error{
-    HelpFlag,
-    InvalidOption,
-    InvalidValue,
-    InvalidMode,
-    MissingMode,
-    MissingName,
-    MissingValue,
-    InvalidDirectory,
-    IncompleteAddr,
-    CacheLarger,
-} || signal.SignalError;
+pub const OptionsError = error{ HelpFlag, InvalidOption, InvalidValue, InvalidMode, MissingMode, MissingName, MissingValue, InvalidDirectory, IncompleteAddr, CacheLarger, OutOfMemory };
 
 /// Parse arguments into RaptoConfig struct.
 /// It can return parsing errors.
