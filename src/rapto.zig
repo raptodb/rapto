@@ -198,23 +198,6 @@ fn footerActions(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
     }
 }
 
-/// Starts autosnap if it is enalbled.
-/// Logs configs about autosnap.
-inline fn startAutosnap(storage: *Storage, save_info: ?snap.AutosnapConf, modc: *std.atomic.Value(u64)) !void {
-    // if save is enabled, start Auto-snap
-    // with configuration
-    if (save_info) |*save| {
-        const t0 = try utils.spawn(snap.autosnap, .{ storage, &logger, save, modc });
-        t0.detach();
-
-        logger.info("Auto-snap enabled with delay={d} count={d}.", .{ save.delay, save.count });
-    }
-    // if save is not enabled warn
-    // to say that Auto-snap is disabled.
-    // items will not be saved persistently.
-    else logger.warning("Auto-snap disabled.", .{});
-}
-
 fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSessionError!void {
     // try to get storage file and compute capacity.
     // if does not exist, creates it
@@ -227,7 +210,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     var modc = std.atomic.Value(u64).init(0);
     // if autosnap is enabled starts
     // thread with auto save config
-    try startAutosnap(storage, conf.save, &modc);
+    try snap.startAutosnap(storage, &logger, conf.save, &modc);
 
     // create queue for queries
     var queue = ThreadSafeQueue(Query){};

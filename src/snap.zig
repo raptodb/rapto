@@ -34,6 +34,7 @@
 
 const std = @import("std");
 
+const utils = @import("utils.zig");
 const signal = @import("signal.zig");
 const log = @import("log.zig");
 const ree = @import("ree.zig");
@@ -49,10 +50,37 @@ pub const AutosnapConf = struct {
     count: u64,
 };
 
+/// Starts autosnap if it is enabled.
+/// Logs configs about autosnap.
+pub inline fn startAutosnap(
+    storage: *Storage,
+    logger: *log.Logger,
+    save_info: ?AutosnapConf,
+    modc: *std.atomic.Value(u64),
+) !void {
+    // if save is enabled, start Auto-snap
+    // with configuration
+    if (save_info) |*save| {
+        const t = try utils.spawn(autosnap, .{ storage, logger, save, modc });
+        t.detach();
+
+        logger.info("Auto-snap enabled with delay={d} count={d}.", .{ save.delay, save.count });
+    }
+    // if save is not enabled warn
+    // to say that Auto-snap is disabled.
+    // items will not be saved persistently.
+    else logger.warning("Auto-snap disabled.", .{});
+}
+
 /// Makes a snap of database every <delay>
 /// with a min of <modify count>.
 /// This function is already threaded.
-pub fn autosnap(storage: *Storage, logger: *log.Logger, conf: *const AutosnapConf, modc: *std.atomic.Value(u64)) error{ThreadError}!void {
+pub fn autosnap(
+    storage: *Storage,
+    logger: *log.Logger,
+    conf: *const AutosnapConf,
+    modc: *std.atomic.Value(u64),
+) error{ThreadError}!void {
     const max_delay = conf.delay * std.time.ns_per_s;
 
     var timer = std.time.Timer.start() catch unreachable;
