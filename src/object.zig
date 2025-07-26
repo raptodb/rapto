@@ -139,13 +139,7 @@ pub const Object = struct {
         // select from field type
         obj.field = switch (try reader.readByte()) {
             0 => .{ .integer = try reader.readInt(i64, comptime .little) },
-            1 => blk: {
-                // convert 8 bytes to 64bit floating-point type
-                var buf: [8]u8 = undefined;
-                _ = try reader.readAll(&buf);
-
-                break :blk .{ .decimal = @bitCast(buf) };
-            },
+            1 => .{ .decimal = @bitCast(try reader.readInt(u64, comptime .little)) },
             2 => blk: {
                 const fieldlen = try reader.readInt(u64, comptime .little);
 
