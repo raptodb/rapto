@@ -74,7 +74,6 @@ pub inline fn startAutosnap(
 
 /// Makes a snap of database every <delay>
 /// with a min of <modify count>.
-/// This function is already threaded.
 pub fn autosnap(
     storage: *Storage,
     logger: *log.Logger,
@@ -84,13 +83,19 @@ pub fn autosnap(
     const max_delay = conf.delay * std.time.ns_per_s;
 
     var timer = std.time.Timer.start() catch unreachable;
-    while (true) if (timer.read() >= max_delay and modc.load(.acquire) >= conf.count) {
-        // save to storage
-        snap(storage, logger, true) catch {};
 
-        modc.store(0, .release);
-        timer.reset();
-    } else std.time.sleep(1 * std.time.ns_per_s);
+    // performs a snap when timer marks over config delay
+    // and the count of queries is over config count.
+    // when snap is finally performed resets the timer and
+    // restart loop
+    while (true)
+        if (timer.read() >= max_delay and modc.load(.acquire) >= conf.count) {
+            // save to the storage
+            snap(storage, logger, true) catch {};
+
+            modc.store(0, .release);
+            timer.reset();
+        } else std.time.sleep(1 * std.time.ns_per_s);
 }
 
 /// Attempts to save the storage to disk.

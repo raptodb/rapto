@@ -33,7 +33,7 @@ pub fn compress(allocator: std.mem.Allocator, noalias src: []const u8) error{Out
 
 /// Decompresses string with LZ4 algorithm.
 /// It can fail with DecompressionFail error.
-/// Allocates 255 times string to ensure max decompression.
+/// Allocates 255 times string to ensure max decompression size.
 pub fn decompress(allocator: std.mem.Allocator, noalias src: []const u8) error{ OutOfMemory, DecompressionFail }![]u8 {
     // allocates buffer with 1:255 ratio to ensure max decompression safety
     const buf = try allocator.alloc(u8, src.len * 255);
