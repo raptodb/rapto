@@ -97,7 +97,6 @@ pub const Logger = struct {
             .info => self.stdout.print("{s} info: {s}\n", .{ prefix, msg }) catch unreachable,
             .warning => self.stderr.print("{s} warning: {s}\n", .{ prefix, msg }) catch unreachable,
             .critical => self.stderr.print("{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable,
-            else => {},
         }
 
         if (self.conf) |conf|
