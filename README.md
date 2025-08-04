@@ -40,13 +40,13 @@ Internal tests focused on query resolution showed latencies in a few microsecond
 > [!IMPORTANT]
 > However, these results are not publicly verified and should be considered indicative only.
 
-Benchmarks should be based on <ins>max</ins>, <ins>min</ins> and <ins>avg</ins> statistics of `SET` and `GET` which give a general overview of the performance.
+Benchmarks should be based on <ins>max</ins>, <ins>min</ins> and <ins>avg</ins> statistics based on 2000 epochs of `SET` and `GET` which give a general overview of the performance.
 
 #### Official Rapto clients
 
-| Client                                            | Server version        | Benchmark tested |
-| :------------------------------------------------ | :-------------------: | :--------------: |
-| [zig-rapto](https://github.com/raptodb/zig-rapto) | `v0.1.0` (unreleased) | ✅               |
+| Client                                            | Server version        | Benchmark tested | AVG stats              |
+| :------------------------------------------------ | :-------------------: | :--------------: | :--------------------: |
+| [zig-rapto](https://github.com/raptodb/zig-rapto) | `v0.1.0` (unreleased) | ✅               | `SET`: 19µs, `GET`:12µs |
 
 ## Documentation
 
