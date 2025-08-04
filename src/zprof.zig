@@ -2,18 +2,27 @@
 //!
 //! Copyright (c) 2025 Andrea Vaccaro
 //!
-//! Zprof is a lightweight, easy-to-use memory profiler that helps
-//! you track allocations, detect memory leaks, and logs memory changes.
+//! Zprof is a lightweight, easy-to-use
+//! memory profiler that helps you track
+//! allocations, detect memory leaks,
+//! and logs memory changes.
+//! Version 1.2.0
+//!
+//! Original repository: https://github.com/andrvv/zprof
 
 const std = @import("std");
 
-pub const VERSION = "1.0.0";
+pub const VERSION = "1.2.0";
 pub const SEMANTIC_VERSION = std.SemanticVersion.parse(VERSION) catch unreachable;
 
 /// Profiler struct that tracks memory allocations and deallocations.
 /// Perfect for debugging memory leaks in your applications.
 pub const Profiler = struct {
     const Self = @This();
+
+    /// Controls whether logging is enabled.
+    /// When true, allocation events can be logged to stdout.
+    log: bool,
 
     /// Allocated bytes from initialization.
     /// Keeps track of total bytes requested during the program's lifetime.
@@ -34,6 +43,29 @@ pub const Profiler = struct {
     /// Shows how much memory is currently in use.
     live_bytes: u64 = 0,
 
+    /// Updates profiler simulating allocation.
+    /// Called internally whenever memory is allocated.
+    inline fn updateAlloc(self: *Self, size: u64) void {
+        // track the bytes and count
+        self.allocated += size;
+        self.live_bytes += size;
+        self.alloc_count += 1;
+        // update peak if needed
+        self.live_peak = @max(self.live_bytes, self.live_peak);
+
+        if (self.log) std.debug.print("Zprof::ALLOC allocated={d}\n", .{size});
+    }
+
+    /// Updates profiler simulating free.
+    /// Called internally whenever memory is freed.
+    inline fn updateFree(self: *Self, size: u64) void {
+        // decrease live bytes and increment free counter
+        self.live_bytes -= size;
+        self.free_count += 1;
+
+        if (self.log) std.debug.print("Zprof::FREE deallocated={d}\n", .{size});
+    }
+
     /// Check if has memory leaks.
     /// Returns true if any allocations weren't properly freed.
     pub inline fn hasLeaks(self: *Self) bool {
@@ -43,244 +75,185 @@ pub const Profiler = struct {
 
     /// Resets all profiling statistics.
     /// Useful when you want to start tracking from a clean slate.
-    pub inline fn reset(self: *Self) void {
-        // create a Profiler instance
+    pub fn reset(self: *Self) void {
+        // create a empty Profiler instance
         self.* = Profiler{};
-    }
-
-    /// Logs a summary of all profiling statistics.
-    /// Great for getting a complete overview of memory usage.
-    pub fn sumLog(self: *Self) void {
-        std.log.info(
-            "Zprof [*]: allocated-bytes={d} alloc-times={d} free-times={d} live-bytes={d} live-peak-bytes={d}",
-            .{
-                self.allocated,
-                self.alloc_count,
-                self.free_count,
-                self.live_bytes,
-                self.live_peak,
-            },
-        );
-    }
-
-    /// Logs allocation and deallocation counts.
-    /// Useful for tracking how many memory operations occurred.
-    pub fn actionLog(self: *Self) void {
-        std.log.info("Zprof [*]: allocated-bytes={d} alloc-times={d} free-times={d}", .{ self.allocated, self.alloc_count, self.free_count });
-    }
-
-    /// Logs current memory usage statistics.
-    /// Shows how much memory is currently active and the highest it's been.
-    pub inline fn liveLog(self: *Self) void {
-        std.log.info("Zprof [*]: live-bytes={d} live-peak-bytes={d}", .{
-            self.live_bytes,
-            self.live_peak,
-        });
-    }
-
-    /// Logs a single allocation event with the function name.
-    /// Helps trace where allocations are happening in your code.
-    pub inline fn allocLog(self: *Self, allocated_now: usize) void {
-        _ = self;
-
-        std.log.info("Zprof [+][{s}]: allocated-now={d}", .{
-            @src().fn_name,
-            allocated_now,
-        });
-    }
-
-    /// Logs a single deallocation event with the function name.
-    /// Helps trace where deallocations are happening in your code.
-    pub inline fn freeLog(self: *Self, deallocated_now: usize) void {
-        _ = self;
-
-        std.log.info("Zprof [-][{s}]: deallocated-now={d}", .{
-            @src().fn_name,
-            deallocated_now,
-        });
-    }
-
-    /// Updates profiler simulating allocation.
-    /// Called internally whenever memory is allocated.
-    fn updateAlloc(self: *Self, size: u64) void {
-        // track the bytes and count
-        self.allocated += size;
-        self.live_bytes += size;
-        self.alloc_count += 1;
-        // update peak if needed
-        self.live_peak = @max(self.live_bytes, self.live_peak);
-    }
-
-    /// Updates profiler simulating free.
-    /// Called internally whenever memory is freed.
-    fn updateFree(self: *Self, size: u64) void {
-        // decrease live bytes and increment free counter
-        self.live_bytes -= size;
-        self.free_count += 1;
-    }
-
-    /// Updates profiler simulating deinit.
-    /// Called when cleaning up all memory at once.
-    fn updateDeinit(self: *Self) void {
-        // consider everything freed
-        self.live_bytes = 0;
-        self.free_count += self.alloc_count;
     }
 };
 
 /// Zprof - a friendly memory profiler that wraps any allocator.
 /// Use this to track memory usage in your Zig projects!
-pub const Zprof = struct {
-    const Self = @This();
+pub fn Zprof(comptime thread_safe: bool) type {
+    return struct {
+        const Self = @This();
 
-    /// The original allocator we're wrapping.
-    /// All actual memory operations will be delegated to this.
-    wrapped_allocator: *std.mem.Allocator,
+        /// The original allocator we're wrapping.
+        /// All actual memory operations will be delegated to this.
+        wrapped_allocator: *std.mem.Allocator,
 
-    /// The profiling allocator interface.
-    /// Use this in your code instead of the original allocator.
-    allocator: std.mem.Allocator = undefined,
+        /// The profiling allocator interface.
+        /// Use this in your code instead of the original allocator.
+        allocator: std.mem.Allocator,
 
-    /// The embedded profiler that keeps track of memory stats.
-    /// Access this to check memory usage and detect leaks.
-    profiler: Profiler,
+        /// The embedded profiler that keeps track of memory stats.
+        /// Access this to check memory usage and detect leaks.
+        profiler: Profiler,
 
-    /// Controls whether logging is enabled.
-    /// When true, allocation events can be logged to stdout.
-    log: bool,
+        mutex: std.Thread.Mutex = .{},
 
-    /// Allocates and initializes a new Zprof instance.
-    /// Wraps an existing allocator with memory profiling capabilities.
-    /// After, it must be freed with `deinit()` function.
-    pub fn init(allocator: *std.mem.Allocator, log: bool) !*Self {
-        // create our custom allocator with profiling hooks
-        const zprof_ptr = try allocator.create(Zprof);
+        /// Allocates and initializes a new Zprof instance.
+        /// Wraps an existing allocator with memory profiling capabilities.
+        /// After, it must be freed with `deinit()` function.
+        pub fn init(allocator: *std.mem.Allocator, log: bool) !*Self {
+            // create our custom allocator with profiling hooks
+            const zprof_ptr = try allocator.create(Self);
 
-        zprof_ptr.* = .{
-            .wrapped_allocator = allocator,
-            .profiler = Profiler{},
-            .log = log,
-            .allocator = undefined,
-        };
+            zprof_ptr.* = .{
+                .wrapped_allocator = allocator,
+                .profiler = Profiler{ .log = log },
+                .allocator = undefined,
+            };
 
-        zprof_ptr.allocator = std.mem.Allocator{
-            .ptr = zprof_ptr,
-            .vtable = &.{
-                .alloc = alloc,
-                .resize = resize,
-                .remap = remap,
-                .free = free,
-            },
-        };
+            zprof_ptr.allocator = std.mem.Allocator{
+                .ptr = zprof_ptr,
+                .vtable = &.{
+                    .alloc = alloc,
+                    .resize = resize,
+                    .remap = remap,
+                    .free = free,
+                },
+            };
 
-        return zprof_ptr;
-    }
+            return zprof_ptr;
+        }
 
-    /// Custom allocation function that tracks memory usage.
-    /// This gets called whenever memory is allocated through our allocator.
-    fn alloc(ctx: *anyopaque, n: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
-        const self: *Zprof = @ptrCast(@alignCast(ctx));
+        /// Custom allocation function that tracks memory usage.
+        /// This gets called whenever memory is allocated through our allocator.
+        fn alloc(
+            ctx: *anyopaque,
+            n: usize,
+            alignment: std.mem.Alignment,
+            ra: usize,
+        ) ?[*]u8 {
+            const self: *Self = @ptrCast(@alignCast(ctx));
 
-        // delegate actual allocation to wrapped allocator
-        const ptr = self.wrapped_allocator.rawAlloc(n, alignment, ra);
+            if (thread_safe) {
+                self.mutex.lock();
+                defer self.mutex.unlock();
+            }
 
-        if (ptr != null) {
-            // if allocation succeeded, update the profiler
-            self.profiler.updateAlloc(n);
+            // delegate actual allocation to wrapped allocator
+            const ptr = self.wrapped_allocator.rawAlloc(n, alignment, ra);
 
-            // if enabled, logs allocated memory
-            if (self.log) self.profiler.allocLog(n);
+            if (ptr != null)
+                // if allocation succeeded, update the profiler
+                self.profiler.updateAlloc(n);
 
             return ptr;
         }
 
+        /// Custom resize function that tracks changes in memory usage.
+        /// This gets called when memory blocks are resized.
+        fn resize(
+            ctx: *anyopaque,
+            buf: []u8,
+            alignment: std.mem.Alignment,
+            new_len: usize,
+            ret_addr: usize,
+        ) bool {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            const old_len = buf.len;
+
+            if (thread_safe) {
+                self.mutex.lock();
+                defer self.mutex.unlock();
+            }
+
+            // delegate actual resize to wrapped allocator
+            const resized = self.wrapped_allocator.rawResize(buf, alignment, new_len, ret_addr);
+
+            if (resized) if (diff(new_len, old_len)) |d| {
+                if (new_len > old_len) {
+                    @branchHint(.likely);
+                    // growing memory - count as allocation
+                    self.profiler.updateAlloc(d);
+                } else if (new_len < old_len)
+                    // shrinking memory - count as free
+                    self.profiler.updateFree(d);
+            };
+
+            return resized;
+        }
+
+        /// Custom remap function that tracks changes in memory usage.
+        /// Used when memory needs to be potentially moved to a new location.
+        fn remap(
+            context: *anyopaque,
+            memory: []u8,
+            alignment: std.mem.Alignment,
+            new_len: usize,
+            return_address: usize,
+        ) ?[*]u8 {
+            const self: *Self = @ptrCast(@alignCast(context));
+            const old_len = memory.len;
+
+            if (thread_safe) {
+                self.mutex.lock();
+                defer self.mutex.unlock();
+            }
+
+            // delegate actual remap to wrapped allocator
+            const remapped = self.wrapped_allocator.rawRemap(memory, alignment, new_len, return_address);
+
+            if (remapped != null) if (diff(new_len, old_len)) |d| {
+                if (new_len > old_len) {
+                    @branchHint(.likely);
+                    // growing memory - count as allocation
+                    self.profiler.updateAlloc(d);
+                } else if (new_len < old_len)
+                    // shrinking memory - count as free
+                    self.profiler.updateFree(d);
+            };
+
+            return remapped;
+        }
+
+        /// Custom free function that tracks memory deallocation.
+        /// Called whenever memory is explicitly freed.
+        fn free(
+            ctx: *anyopaque,
+            buf: []u8,
+            alignment: std.mem.Alignment,
+            ret_addr: usize,
+        ) void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+
+            if (thread_safe) {
+                self.mutex.lock();
+                defer self.mutex.unlock();
+            }
+
+            // update profiler stats first
+            self.profiler.updateFree(buf.len);
+
+            // then actually free the memory
+            return self.wrapped_allocator.rawFree(buf, alignment, ret_addr);
+        }
+
+        /// Deinitializes self.
+        pub fn deinit(self: *Self) void {
+            self.wrapped_allocator.destroy(self);
+        }
+    };
+}
+
+/// Returns the difference from 2 values.
+/// Null can be returned if there is not difference.
+inline fn diff(a: usize, b: usize) ?usize {
+    if (a == b)
+        // if a and b have the
+        // same value, no diff
         return null;
-    }
 
-    /// Custom resize function that tracks changes in memory usage.
-    /// This gets called when memory blocks are resized.
-    fn resize(ctx: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
-        const self: *Zprof = @ptrCast(@alignCast(ctx));
-
-        const old_len = buf.len;
-
-        // delegate actual resize to wrapped allocator
-        const resized = self.wrapped_allocator.rawResize(buf, alignment, new_len, ret_addr);
-
-        if (resized) {
-            const diff = if (new_len > old_len) new_len - old_len else old_len - new_len;
-
-            if (new_len > old_len) {
-                @branchHint(.likely);
-                // growing memory - count as allocation
-                self.profiler.updateAlloc(diff);
-
-                // if enabled, logs allocated memory
-                if (self.log) self.profiler.allocLog(diff);
-            } else if (new_len < old_len) {
-                // shrinking memory - count as free
-                self.profiler.updateFree(@abs(diff));
-
-                // if enabled, logs freed memory
-                if (self.log) self.profiler.freeLog(diff);
-            }
-
-            // if diff is 0, no allocation or free has been made
-        }
-
-        return resized;
-    }
-
-    /// Custom remap function that tracks changes in memory usage.
-    /// Used when memory needs to be potentially moved to a new location.
-    fn remap(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, return_address: usize) ?[*]u8 {
-        const self: *Zprof = @ptrCast(@alignCast(context));
-
-        const old_len = memory.len;
-
-        // delegate actual remap to wrapped allocator
-        const remapped = self.wrapped_allocator.rawRemap(memory, alignment, new_len, return_address);
-
-        if (remapped != null) {
-            const diff = if (new_len > old_len) new_len - old_len else old_len - new_len;
-
-            if (new_len > old_len) {
-                @branchHint(.likely);
-                // growing memory - count as allocation
-                self.profiler.updateAlloc(diff);
-
-                // if enabled, logs allocated memory
-                if (self.log) self.profiler.allocLog(diff);
-            } else if (new_len < old_len) {
-                // shrinking memory - count as free
-                self.profiler.updateFree(@abs(diff));
-
-                // if enabled, logs freed memory
-                if (self.log) self.profiler.freeLog(diff);
-            }
-
-            // if diff is 0, no allocation or free has been made
-        }
-
-        return remapped;
-    }
-
-    /// Custom free function that tracks memory deallocation.
-    /// Called whenever memory is explicitly freed.
-    fn free(ctx: *anyopaque, buf: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
-        const self: *Zprof = @ptrCast(@alignCast(ctx));
-
-        // update profiler stats first
-        self.profiler.updateFree(buf.len);
-        // if enabled, logs freed memory
-        if (self.log) self.profiler.freeLog(buf.len);
-
-        // then actually free the memory
-        return self.wrapped_allocator.rawFree(buf, alignment, ret_addr);
-    }
-
-    /// Deinitializes self.
-    pub fn deinit(self: *Self) void {
-        self.wrapped_allocator.destroy(self);
-    }
-};
+    return if (a > b) a - b else b - a;
+}
