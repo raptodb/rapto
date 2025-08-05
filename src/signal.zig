@@ -51,7 +51,7 @@ var ABRT_ctx: enum { OOM, OOD, UE } = .UE;
 pub fn hsignal() void {
     const handler = struct {
         fn inner(sig: i32) callconv(.c) void {
-            var logger = log.Logger.init(std.heap.c_allocator, .noisy);
+            var stderr = std.io.getStdErr();
 
             switch (sig) {
                 SIGINT => {},
@@ -62,9 +62,9 @@ pub fn hsignal() void {
                         .UE => "UNEXPECTED ERROR. EXIT.           ",
                     };
 
-                    logger.critical("{s}", .{msg});
+                    stderr.writeAll(msg) catch {};
                 },
-                SIGTERM => logger.critical("SIGTERM received. EXIT.", .{}),
+                SIGTERM => stderr.writeAll("SIGTERM received. EXIT.") catch {},
                 else => unreachable,
             }
         }
