@@ -212,7 +212,6 @@ pub const Server = struct {
                 // useful to return the response.
                 try self.queue.put(self.allocator, query);
             }
-
             // if error is EOF message is corrupted.
             // if error is WouldBlock read timeout is reached.
             // if error is InvalidLength message is corrupted.

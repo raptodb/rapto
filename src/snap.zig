@@ -45,7 +45,6 @@ const Storage = @import("storage.zig").Storage;
 pub const AutosnapConf = struct {
     /// Saving delay from 2 saves.
     delay: u64,
-
     // Count of database modifies before snap.
     count: u64,
 };

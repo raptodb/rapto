@@ -214,7 +214,6 @@ pub const Storage = struct {
 
             obj.metadata.update();
         }
-
         // if field type is not same, overwrites
         // object saving the same metadata
         else {
