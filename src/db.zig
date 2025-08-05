@@ -604,7 +604,11 @@ pub fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
             else
                 .{ "ALLRAM", false }
         else if (utils.advancedCompare(arg, "size"))
-            .{ std.fmt.bufPrint(&buf, "{d}", .{std.math.maxInt(u64) - self.storage.store_cap}) catch unreachable, false }
+            .{ std.fmt.bufPrint(
+                &buf,
+                "{d}",
+                .{if (self.storage.conf.db_size) |size| size - self.storage.store_cap else std.math.maxInt(u64) - self.storage.store_cap},
+            ) catch unreachable, false }
         else
             error.UnknownArgument;
     };
