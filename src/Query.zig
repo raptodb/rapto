@@ -88,7 +88,7 @@ pub const Command = enum(u8) {
     /// Consider quantity of field <= 100.
     pub inline fn parse(noalias command: []const u8) ?Command {
         @setEvalBranchQuota(std.math.maxInt(u32));
-        return @call(.always_inline, std.meta.stringToEnum, .{Command, command});
+        return @call(.always_inline, std.meta.stringToEnum, .{ Command, command });
     }
 };
 
