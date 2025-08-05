@@ -272,11 +272,11 @@ pub const Storage = struct {
         if (index == self.store.items.len - 1) return index;
 
         const front_index = index + 1;
-        std.mem.swap(
+        @call(.always_inline, std.mem.swap, .{
             Object,
             &self.store.items[front_index], // front
             &self.store.items[index], // current index
-        );
+        });
 
         return front_index;
     }
