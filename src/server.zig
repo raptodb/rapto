@@ -131,7 +131,7 @@ pub const Server = struct {
             // for next client
             id += 1;
 
-            const t = std.Thread.spawn(.{}, Server.handleClientWrapper, .{ self, client }) catch continue;
+            const t = utils.spawn(Server.handleClientWrapper, .{ self, client }) catch continue;
             t.detach();
         }
     }
@@ -199,16 +199,18 @@ pub const Server = struct {
                 // free only if error is occurred
                 errdefer self.allocator.free(raw_query);
 
-                if (Query.parseQuery(client, raw_query)) |query| {
-                    // adding query to queue associated with client.
-                    // useful to return the response.
-                    try self.queue.put(self.allocator, query);
-                } else |err| {
+                const query = Query.parseQuery(client, raw_query) catch |err| {
                     @branchHint(.unlikely);
 
+                    // if query parsing fails, send
+                    // error to client and waits new query
                     client.stream.write(ree.expandQueryParsingError(err)) catch {};
                     continue;
-                }
+                };
+
+                // adding query to queue associated with client.
+                // useful to return the response.
+                try self.queue.put(self.allocator, query);
             }
 
             // if error is EOF message is corrupted.
@@ -232,11 +234,10 @@ pub const Server = struct {
     /// Closes and deinits clients.
     pub fn deinit(self: *Self) void {
         // close clients
-        for (self.clients.items) |client| {
+        for (self.clients.items) |client|
             // call exception in handler
             // trigging destroyClient
             client.stream.close();
-        }
 
         // deinit clients
         self.clients.deinit(self.allocator);
