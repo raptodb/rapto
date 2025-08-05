@@ -188,51 +188,54 @@ pub const Storage = struct {
     /// If not exist, stores item on head of array, as most
     /// priority element for LRU policy.
     pub fn put(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
+        const i = self.search(key) orelse
+            // if key does not exist
+            return self.append(field_type, key, value);
+
         // check if key already exist
-        if (self.search(key)) |i| {
-            var obj = &self.store.items[i];
+        var obj = &self.store.items[i];
 
-            // updates value if the field type
-            // is the same, else overwrites object
-            // saving the same metadata
-            if (field_type == obj.field) {
-                @branchHint(.likely);
+        // updates value if the
+        // field type is the same
+        if (field_type == obj.field) {
+            @branchHint(.likely);
 
-                obj.field = switch (field_type) {
-                    .integer => .{ .integer = value },
-                    .decimal => .{ .decimal = value },
-                    .string => blk: {
-                        if (value.len != obj.field.string.len)
-                            obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
+            obj.field = switch (field_type) {
+                .integer => .{ .integer = value },
+                .decimal => .{ .decimal = value },
+                .string => blk: {
+                    if (value.len != obj.field.string.len)
+                        obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
 
-                        @memcpy(obj.field.string, value);
-                        break :blk .{ .string = obj.field.string };
-                    },
-                };
+                    @memcpy(obj.field.string, value);
+                    break :blk .{ .string = obj.field.string };
+                },
+            };
 
-                obj.metadata.update();
-            } else {
-                // restore size without this object,
-                // then add size with updated object
-                try self.addCapacity(self.store.items[i].getSize());
-
-                // update value and metadata
-                var metadata = self.store.items[i].metadata;
-                metadata.update();
-
-                self.store.items[i].deinit(self.allocator);
-
-                self.store.items[i] = try Object.set(self.allocator, field_type, key, value);
-                self.store.items[i].metadata = metadata;
-
-                // update capacity with updated object
-                try self.removeCapacity(self.store.items[i].getSize());
-            }
-
-            return i;
+            obj.metadata.update();
         }
 
-        return self.append(field_type, key, value);
+        // if field type is not same, overwrites
+        // object saving the same metadata
+        else {
+            // restore size without this object,
+            // then add size with updated object
+            try self.addCapacity(obj.getSize());
+
+            // update value and metadata
+            var metadata = obj.metadata;
+            metadata.update();
+
+            obj.deinit(self.allocator);
+
+            obj.* = try Object.set(self.allocator, field_type, key, value);
+            obj.metadata = metadata;
+
+            // update capacity with updated object
+            try self.removeCapacity(obj.getSize());
+        }
+
+        return i;
     }
 
     /// Removes item from index from store.
