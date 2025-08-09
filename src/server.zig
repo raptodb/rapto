@@ -187,36 +187,40 @@ pub const Server = struct {
 
         self.logger.info("CLIENT [id={d};name={s};{}] Connected.", .{ client.id, client.name orelse "", client.address });
 
-        // read query and add to queue
-        while (true) {
-            // receive query from client
-            const recvd = client.stream.read(self.allocator);
+        // receive query from client
+        // and add to queue
+        while (client.stream.read(self.allocator)) |raw_query| {
+            // very hot branch!!
+            @branchHint(.likely);
 
-            if (recvd) |raw_query| {
-                @branchHint(.likely);
+            // parseQuery make no allocation,
+            // free only if error is occurred
+            errdefer self.allocator.free(raw_query);
 
-                // parseQuery make no allocation,
-                // free only if error is occurred
-                errdefer self.allocator.free(raw_query);
+            const query = Query.parseQuery(client, raw_query) catch |err| {
+                @branchHint(.unlikely);
 
-                const query = Query.parseQuery(client, raw_query) catch |err| {
-                    @branchHint(.unlikely);
+                // if query parsing fails, send
+                // error to client and waits new query
+                client.stream.write(ree.expandQueryParsingError(err)) catch {};
+                continue;
+            };
 
-                    // if query parsing fails, send
-                    // error to client and waits new query
-                    client.stream.write(ree.expandQueryParsingError(err)) catch {};
-                    continue;
-                };
+            // adding query to queue associated with client.
+            // useful to return the response.
+            try self.queue.put(self.allocator, query);
+        }
+        // an error is occurred during
+        // stream reading
+        else |err| {
+            // branch hint on this branch is
+            // not included because errors as
+            // WouldBlock is not too rare.
 
-                // adding query to queue associated with client.
-                // useful to return the response.
-                try self.queue.put(self.allocator, query);
-            }
-            // if error is EOF message is corrupted.
-            // if error is WouldBlock read timeout is reached.
-            // if error is InvalidLength message is corrupted.
-            // if one of these errors are occurred, retry to next message from client.
-            else |err| if (err != error.EndOfStream and err != error.WouldBlock and err != error.InvalidLength) return err;
+            // EOF: message is corrupted, WouldBlock: read timeout is reached.
+            // InvalidLength: message is corrupted, if one of these errors are
+            // occurred, retry to next message from client by returning error.
+            if (err != error.EndOfStream and err != error.WouldBlock and err != error.InvalidLength) return err;
         }
     }
 
