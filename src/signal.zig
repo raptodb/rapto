@@ -53,20 +53,18 @@ pub fn hsignal() void {
         fn inner(sig: i32) callconv(.c) void {
             var stderr = std.io.getStdErr();
 
-            switch (sig) {
-                SIGINT => {},
-                SIGABRT => {
-                    const msg = switch (ABRT_ctx) {
-                        .OOM => "OUT-OF-MEMORY: no RAM space. EXIT.",
-                        .OOD => "OUT-OF-DISK: no disk space. EXIT. ",
-                        .UE => "UNEXPECTED ERROR. EXIT.           ",
-                    };
-
-                    stderr.writeAll(msg) catch {};
+            const msg = switch (sig) {
+                SIGINT => return,
+                SIGABRT => switch (ABRT_ctx) {
+                    .OOM => "OUT-OF-MEMORY: no RAM space. EXIT.",
+                    .OOD => "OUT-OF-DISK: no disk space. EXIT. ",
+                    .UE => "UNEXPECTED ERROR. EXIT.           ",
                 },
-                SIGTERM => stderr.writeAll("SIGTERM received. EXIT.") catch {},
+                SIGTERM => "SIGTERM received. EXIT.           ",
                 else => unreachable,
-            }
+            };
+
+            stderr.writeAll(msg) catch {};
         }
     }.inner;
 
