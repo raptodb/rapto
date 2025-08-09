@@ -35,6 +35,10 @@ COMMON OPTIONS
       If it is not defined, auto-saving is disabled.
       If count is 0, a min of 1 is selected.
 
+  --no-persistence
+      Disables snapshot saving on exit and locks all
+      commands about persistence.
+
   --help/-h
       Prints usage clearly.
 
