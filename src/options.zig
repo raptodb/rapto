@@ -104,10 +104,11 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
     // first arguments must be mode
     opts.mode = if (std.mem.eql(u8, value, "server"))
         .server
-    else if (std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "-h"))
-        return error.HelpFlag
     else
-        return error.InvalidMode;
+        return if (std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "-h"))
+            error.HelpFlag
+        else
+            error.InvalidMode;
 
     // check flag with value
     while (args.next()) |flag| {
