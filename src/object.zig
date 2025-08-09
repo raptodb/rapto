@@ -161,7 +161,7 @@ pub const Object = struct {
     }
 
     /// Returns serialized object to byte array.
-    pub noinline fn serialize(self: *Self, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
+    pub noinline fn serialize(self: *const Self, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
         // get len of serialized object
         const size = self.getSizeFromSerialized();
 
@@ -195,7 +195,7 @@ pub const Object = struct {
     }
 
     /// Returns size of serialized object
-    pub inline fn getSizeFromSerialized(self: *Self) u64 {
+    pub inline fn getSizeFromSerialized(self: *const Self) u64 {
         // field size is present if field type is string
         const fieldsize: u64 = if (self.field == .string) 8 else 0;
         const fieldlen = switch (self.field) {
@@ -212,7 +212,7 @@ pub const Object = struct {
     }
 
     /// Returns size of object stored in RAM
-    pub inline fn getSize(self: *Self) u64 {
+    pub inline fn getSize(self: *const Self) u64 {
         var size: u64 = 48; // min size for a object
         size += self.key.len;
         size += if (self.field == .string) self.field.string.len else 8;
