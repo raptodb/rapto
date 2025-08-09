@@ -78,6 +78,10 @@ pub inline fn usage() []const u8 {
     \\      If it is not defined, auto-saving is disabled.
     \\      If count is 0, a min of 1 is selected.
     \\
+    \\  --no-persistence
+    \\      Disables snapshot saving on exit and locks all
+    \\      commands about persistence.
+    \\
     \\  --help/-h
     \\      Prints usage clearly.
     \\  
@@ -89,7 +93,19 @@ pub inline fn usage() []const u8 {
     ;
 }
 
-pub const OptionsError = error{ HelpFlag, InvalidOption, InvalidValue, InvalidMode, MissingMode, MissingName, MissingValue, InvalidDirectory, IncompleteAddr, CacheLarger, OutOfMemory };
+pub const OptionsError = error{
+    HelpFlag,
+    InvalidOption,
+    InvalidValue,
+    InvalidMode,
+    MissingMode,
+    MissingName,
+    MissingValue,
+    InvalidDirectory,
+    IncompleteAddr,
+    CacheLarger,
+    OutOfMemory,
+};
 
 /// Parse arguments into RaptoConfig struct.
 /// It can return parsing errors.
@@ -110,11 +126,13 @@ pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator
         else
             error.InvalidMode;
 
-    // check flag with value
+    // check flags
     while (args.next()) |flag| {
         // ----- flags without values ------
         if (std.mem.eql(u8, flag, "--help") or std.mem.eql(u8, flag, "-h"))
-            return error.HelpFlag;
+            return error.HelpFlag
+        else if (std.mem.eql(u8, flag, "--no-persistence"))
+            opts.no_persistence = true;
 
         // ----- flags with values -----
         value = args.next() orelse return error.MissingValue;

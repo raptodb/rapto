@@ -40,6 +40,8 @@ const signal = @import("signal.zig");
 const RaptoConfig = @import("rapto.zig").RaptoConfig;
 
 const server_footer: []const u8 = "Session [SERVER db={s};addr={}] Press q: quit, s: save.\n";
+// used when persistence is disabled
+const server_footer_nosave: []const u8 = "Session [SERVER db={s};addr={}] Press q: quit.\n";
 
 /// Level of verbosity when print log,
 /// warnings or critical messages.
@@ -99,7 +101,9 @@ pub const Logger = struct {
             .critical => self.stderr.print("{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable,
         }
 
-        if (self.conf) |conf|
+        if (self.conf) |conf| if (conf.no_persistence)
+            self.stdout.print(server_footer_nosave, .{ conf.name.?, conf.addr.? }) catch unreachable
+        else
             self.stdout.print(server_footer, .{ conf.name.?, conf.addr.? }) catch unreachable;
     }
 

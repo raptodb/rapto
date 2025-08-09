@@ -57,6 +57,13 @@ pub inline fn startAutosnap(
     save_info: ?AutosnapConf,
     modc: *std.atomic.Value(u64),
 ) !void {
+    if (storage.conf.no_persistence) {
+        // if server is launched with no-persistence
+        // mode, disables automatically Auto-snap.
+        logger.warning("Auto-snap disabled by no-persistence mode.", .{});
+        return;
+    }
+
     // if save is enabled, start Auto-snap
     // with configuration
     if (save_info) |*save| {
@@ -99,6 +106,8 @@ pub fn autosnap(
 
 /// Attempts to save the storage to disk.
 pub fn snap(storage: *Storage, logger: *log.Logger, comptime auto: bool) error{SaveFailed}!void {
+    if (storage.conf.no_persistence) return;
+
     storage.save() catch |err| {
         @branchHint(.unlikely);
 

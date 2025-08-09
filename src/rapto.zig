@@ -62,7 +62,21 @@ pub const ServerSessionError = error{
     OpenError,
     OutOfMemory,
 } || Server.BindError || Storage.LoadError || socket.Stream.WriteError;
-pub const ResolveError = error{ MissingTokens, TypeOverflow, KeyNotFound, KeyReplacementExist, MismatchType, SaveFailed, InvalidObject, InvalidMetadata, NoKeysFound, UnknownArgument, ExcedeedSpaceLimit, OutOfMemory } || Storage.PutError;
+pub const ResolveError = error{
+    MissingTokens,
+    TypeOverflow,
+    KeyNotFound,
+    KeyReplacementExist,
+    MismatchType,
+    SaveFailed,
+    InvalidObject,
+    InvalidMetadata,
+    NoKeysFound,
+    UnknownArgument,
+    ExcedeedSpaceLimit,
+    NoPersistence,
+    OutOfMemory,
+} || Storage.PutError;
 
 var logger: log.Logger = undefined;
 var profiler: *Profiler = undefined;
@@ -85,6 +99,10 @@ pub const RaptoConfig = struct {
     /// If enabled, auto-saving is runner
     /// every <delay> with min of <count>.
     save: ?snap.AutosnapConf = null,
+
+    /// If enables disables all saving
+    /// commands and disables save on exit.
+    no_persistence: bool = false,
 
     /// IPv4 address for client connection
     /// or server binding.
@@ -271,7 +289,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
                         .RESTORE => db.RESTORE(task.args),
                         .ERASE => db.ERASE(),
                         .DEL => db.DEL(task.args),
-                        .SAVE => db.SAVE(&logger),
+                        .SAVE => if (conf.no_persistence) error.NoPersistence else db.SAVE(&logger),
                         .COPY => db.COPY(task.args),
 
                         // all handled
