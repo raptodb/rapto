@@ -204,6 +204,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // create queue for queries
     var queue = ThreadSafeQueue(Query){};
     defer queue.deinit(allocator);
+
     // bind server
     var session = try Server.bind(allocator, &logger, &queue, conf);
     defer session.deinit();
@@ -256,8 +257,8 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
                 .DUMP => db.DUMP(task.args),
 
                 // commands with void return type
-                else => |void_command| blk: {
-                    _ = switch (void_command) {
+                else => blk: {
+                    _ = switch (task.command) {
                         .SET => db.SET(task.args),
                         .UPDATE => db.UPDATE(task.args),
                         .RENAME => db.RENAME(task.args),
@@ -296,6 +297,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
             };
             defer if (heap_allocated) allocator.free(response);
 
+            // sends the response to client
             client.stream.write(response) catch {};
 
             // increment counter of storage modifies
@@ -310,9 +312,8 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
 pub fn main() void {
     // check memory leaks
-    defer if (DEBUG_MODE_MEMORY) {
+    defer if (DEBUG_MODE_MEMORY)
         std.debug.assert(!profiler.hasLeaks());
-    };
 
     // start handler for signals
     signal.hsignal();
