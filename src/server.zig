@@ -212,15 +212,14 @@ pub const Server = struct {
         }
         // an error is occurred during
         // stream reading
-        else |err| {
-            // branch hint on this branch is
-            // not included because errors as
-            // WouldBlock is not too rare.
+        else |err| switch (err) {
+            error.EndOfStream, // error of broken message
+            error.WouldBlock, // error of read timeout
+            error.InvalidLength, // error of corrupted message (similar to EOF)
+            => {}, // retries to next message from client by returning error
 
-            // EOF: message is corrupted, WouldBlock: read timeout is reached.
-            // InvalidLength: message is corrupted, if one of these errors are
-            // occurred, retry to next message from client by returning error.
-            if (err != error.EndOfStream and err != error.WouldBlock and err != error.InvalidLength) return err;
+            // else returns error and closes client connection
+            else => return err,
         }
     }
 
