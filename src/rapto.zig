@@ -350,10 +350,7 @@ pub fn main() void {
     // get logger with max level of verbosity
     logger = log.Logger.init(arenaAllocator, .noisy);
 
-    var args = std.process.argsWithAllocator(arenaAllocator) catch signal.OOM();
-    errdefer args.deinit();
-
-    var conf = options.parseOptions(arenaAllocator, &args) catch |err| {
+    var conf = options.parseOptionsFromArgs(arenaAllocator) catch |err| {
         @branchHint(.unlikely);
 
         const msg = switch (err) {
@@ -364,7 +361,6 @@ pub fn main() void {
 
         logger.critical("Options parser: {s}\n\n{s}", .{ msg, options.usage() });
     };
-    args.deinit();
     defer conf.deinit(arenaAllocator);
 
     // if selected verbose is different than .noisy

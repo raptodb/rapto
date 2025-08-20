@@ -109,7 +109,9 @@ pub const OptionsError = error{
 
 /// Parse arguments into RaptoConfig struct.
 /// It can return parsing errors.
-pub fn parseOptions(allocator: std.mem.Allocator, args: *std.process.ArgIterator) OptionsError!RaptoConfig {
+pub fn parseOptionsFromArgs(allocator: std.mem.Allocator) OptionsError!RaptoConfig {
+    var args = std.process.args();
+
     // skip executable path
     _ = args.skip();
 
