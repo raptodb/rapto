@@ -38,7 +38,7 @@ const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
 
 const ResolveError = @import("rapto.zig").ResolveError;
 const ParseQueryError = @import("Query.zig").ParseQueryError;
-const OptionsError = @import("options.zig").OptionsError;
+const OptionsError = @import("options.zig").RaptoConfig.OptionsError;
 const ClientError = @import("server.zig").Server.ClientError;
 const ServerSessionError = @import("rapto.zig").ServerSessionError;
 const SaveError = @import("storage.zig").Storage.SaveError;

@@ -39,14 +39,15 @@ pub const RAPTO_VERSION = "0.1.0";
 const std = @import("std");
 
 const log = @import("log.zig");
-const options = @import("options.zig");
 const snap = @import("snap.zig");
 const signal = @import("signal.zig");
+const options = @import("options.zig");
 const utils = @import("utils.zig");
 const ree = @import("ree.zig");
 const socket = @import("socket.zig");
 const cmds = @import("db.zig");
 
+const RaptoConfig = options.RaptoConfig;
 const Zprof = @import("zprof.zig").Zprof;
 const Profiler = @import("zprof.zig").Profiler;
 const Server = @import("server.zig").Server;
@@ -81,45 +82,6 @@ pub const ResolveError = error{
 var logger: log.Logger = undefined;
 var profiler: *Profiler = undefined;
 var quit: bool = false;
-
-pub const RaptoConfig = struct {
-    // Client is not implemented yet.
-    /// Mode of start, could be server or client.
-    mode: enum { server, client } = .server,
-
-    /// Name of database.
-    name: ?[]const u8 = null,
-
-    /// Directory of database storage.
-    db_path: ?[]const u8 = null,
-
-    /// Set verbosity of log output level.
-    verbose: log.Level = .noisy,
-
-    /// If enabled, auto-saving is runner
-    /// every <delay> with min of <count>.
-    save: ?snap.AutosnapConf = null,
-
-    /// If enables disables all saving
-    /// commands and disables save on exit.
-    no_persistence: bool = false,
-
-    /// IPv4 address for client connection
-    /// or server binding.
-    addr: ?std.net.Ip4Address = null,
-
-    /// Max database storage capacity. On server launch
-    /// will be requested this memory on RAM. If database
-    /// storage file is already created omits this
-    /// parameter.
-    db_size: ?u64 = null,
-
-    /// Deinits config.
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        allocator.free(self.name.?);
-        allocator.free(self.db_path.?);
-    }
-};
 
 /// Opens a file, if does not exist, creates it.
 /// After, if file exist loads and prefetchs items to RAM.
@@ -350,7 +312,7 @@ pub fn main() void {
     // get logger with max level of verbosity
     logger = log.Logger.init(arenaAllocator, .noisy);
 
-    var conf = options.parseOptionsFromArgs(arenaAllocator) catch |err| {
+    var conf = RaptoConfig.parseFromArgs(arenaAllocator) catch |err| {
         @branchHint(.unlikely);
 
         const msg = switch (err) {

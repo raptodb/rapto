@@ -37,7 +37,7 @@ const std = @import("std");
 const ctime = @cImport(@cInclude("time.h"));
 const signal = @import("signal.zig");
 
-const RaptoConfig = @import("rapto.zig").RaptoConfig;
+const RaptoConfig = @import("options.zig").RaptoConfig;
 
 const server_footer: []const u8 = "Session [SERVER db={s};addr={}] Press q: quit, s: save.\n";
 // used when persistence is disabled

@@ -35,8 +35,8 @@
 const std = @import("std");
 
 const signal = @import("signal.zig");
-
-const RaptoConfig = @import("rapto.zig").RaptoConfig;
+const log = @import("log.zig");
+const snap = @import("snap.zig");
 
 // Gets usage text.
 pub inline fn usage() []const u8 {
@@ -93,121 +93,163 @@ pub inline fn usage() []const u8 {
     ;
 }
 
-pub const OptionsError = error{
-    HelpFlag,
-    InvalidOption,
-    InvalidValue,
-    InvalidMode,
-    MissingMode,
-    MissingName,
-    MissingValue,
-    InvalidDirectory,
-    IncompleteAddr,
-    CacheLarger,
-    OutOfMemory,
-};
+pub const RaptoConfig = struct {
+    const Self = @This();
 
-/// Parse arguments into RaptoConfig struct.
-/// It can return parsing errors.
-pub fn parseOptionsFromArgs(allocator: std.mem.Allocator) OptionsError!RaptoConfig {
-    var args = std.process.args();
+    // Client is not implemented yet.
+    /// Mode of start, could be server or client.
+    mode: enum { server, client } = .server,
 
-    // skip executable path
-    _ = args.skip();
+    /// Name of database.
+    name: ?[]const u8 = null,
 
-    var opts = RaptoConfig{};
+    /// Directory of database storage.
+    db_path: ?[]const u8 = null,
 
-    var value = args.next() orelse return error.MissingMode;
+    /// Set verbosity of log output level.
+    verbose: log.Level = .noisy,
 
-    // first arguments must be mode
-    opts.mode = if (std.mem.eql(u8, value, "server"))
-        .server
-    else
-        return if (std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "-h"))
-            error.HelpFlag
+    /// If enabled, auto-saving is runner
+    /// every <delay> with min of <count>.
+    save: ?snap.AutosnapConf = null,
+
+    /// If enables disables all saving
+    /// commands and disables save on exit.
+    no_persistence: bool = false,
+
+    /// IPv4 address for client connection
+    /// or server binding.
+    addr: ?std.net.Ip4Address = null,
+
+    /// Max database storage capacity. On server launch
+    /// will be requested this memory on RAM. If database
+    /// storage file is already created omits this
+    /// parameter.
+    db_size: ?u64 = null,
+
+    /// Errors about options parsing.
+    pub const OptionsError = error{
+        HelpFlag,
+        InvalidOption,
+        InvalidValue,
+        InvalidMode,
+        MissingMode,
+        MissingName,
+        MissingValue,
+        InvalidDirectory,
+        IncompleteAddr,
+        CacheLarger,
+        OutOfMemory,
+    };
+
+    /// Parses arguments.
+    /// It can return parsing errors.
+    pub fn parseFromArgs(allocator: std.mem.Allocator) OptionsError!Self {
+        var args = std.process.args();
+
+        // skip executable path
+        _ = args.skip();
+
+        var opts = Self{};
+
+        var value = args.next() orelse return error.MissingMode;
+
+        // first arguments must be mode
+        opts.mode = if (std.mem.eql(u8, value, "server"))
+            .server
         else
-            error.InvalidMode;
-
-    // check flags
-    while (args.next()) |flag| {
-        // ----- flags without values ------
-        if (std.mem.eql(u8, flag, "--help") or std.mem.eql(u8, flag, "-h"))
-            return error.HelpFlag
-        else if (std.mem.eql(u8, flag, "--no-persistence"))
-            opts.no_persistence = true;
-
-        // ----- flags with values -----
-        value = args.next() orelse return error.MissingValue;
-
-        // required parameters
-        if (std.mem.eql(u8, flag, "--name")) {
-            opts.name = try allocator.dupe(u8, value);
-        }
-
-        // server exclusive parameters
-        else if (std.mem.eql(u8, flag, "--db-size") and opts.mode == .server)
-            opts.db_size = std.fmt.parseInt(u64, value, 10) catch return error.InvalidValue
-        else if (std.mem.eql(u8, flag, "--db-dir") and opts.mode == .server) {
-            // if directory exist, set to db_path
-            if (std.fs.openDirAbsolute(value, .{})) |_|
-                opts.db_path = try allocator.dupe(u8, value)
-            else |_|
-                return error.InvalidDirectory;
-        }
-
-        // optional parameters
-        else if (std.mem.eql(u8, flag, "--addr")) {
-            var addr = std.mem.splitScalar(u8, value, ':');
-
-            // convert ip and port to valid values
-            // check if port is valid
-            const ip = addr.first();
-            const port = std.fmt.parseInt(u16, addr.next() orelse return error.IncompleteAddr, 10) catch return error.InvalidValue;
-
-            // set addr with parsed ipv4
-            opts.addr = std.net.Ip4Address.parse(ip, port) catch return error.InvalidValue;
-        } else if (std.mem.eql(u8, flag, "--verbose")) {
-            opts.verbose = if (std.mem.eql(u8, value, "silent"))
-                .silent
-            else if (std.mem.eql(u8, value, "warnings"))
-                .warnings
-            else if (std.mem.eql(u8, value, "noisy"))
-                .noisy
+            return if (std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "-h"))
+                error.HelpFlag
             else
-                return error.InvalidValue;
-        } else if (std.mem.eql(u8, flag, "--save")) {
-            // get delay and mod count
-            const delay = std.fmt.parseInt(u64, value, 10) catch return error.InvalidValue;
-            const count = std.fmt.parseInt(u64, args.next() orelse return error.MissingValue, 10) catch return error.InvalidValue;
+                error.InvalidMode;
 
-            opts.save = .{ .delay = delay, .count = @max(count, 1) };
-        } else return error.InvalidOption;
+        // check flags
+        while (args.next()) |flag| {
+            // ----- flags without values ------
+            if (std.mem.eql(u8, flag, "--help") or std.mem.eql(u8, flag, "-h"))
+                return error.HelpFlag
+            else if (std.mem.eql(u8, flag, "--no-persistence"))
+                opts.no_persistence = true;
+
+            // ----- flags with values -----
+            value = args.next() orelse return error.MissingValue;
+
+            // required parameters
+            if (std.mem.eql(u8, flag, "--name")) {
+                opts.name = try allocator.dupe(u8, value);
+            }
+
+            // server exclusive parameters
+            else if (std.mem.eql(u8, flag, "--db-size") and opts.mode == .server)
+                opts.db_size = std.fmt.parseInt(u64, value, 10) catch return error.InvalidValue
+            else if (std.mem.eql(u8, flag, "--db-dir") and opts.mode == .server) {
+                // if directory exist, set to db_path
+                if (std.fs.openDirAbsolute(value, .{})) |_|
+                    opts.db_path = try allocator.dupe(u8, value)
+                else |_|
+                    return error.InvalidDirectory;
+            }
+
+            // optional parameters
+            else if (std.mem.eql(u8, flag, "--addr")) {
+                var addr = std.mem.splitScalar(u8, value, ':');
+
+                // convert ip and port to valid values
+                // check if port is valid
+                const ip = addr.first();
+                const port = std.fmt.parseInt(u16, addr.next() orelse return error.IncompleteAddr, 10) catch return error.InvalidValue;
+
+                // set addr with parsed ipv4
+                opts.addr = std.net.Ip4Address.parse(ip, port) catch return error.InvalidValue;
+            } else if (std.mem.eql(u8, flag, "--verbose")) {
+                opts.verbose = if (std.mem.eql(u8, value, "silent"))
+                    .silent
+                else if (std.mem.eql(u8, value, "warnings"))
+                    .warnings
+                else if (std.mem.eql(u8, value, "noisy"))
+                    .noisy
+                else
+                    return error.InvalidValue;
+            } else if (std.mem.eql(u8, flag, "--save")) {
+                // get delay and mod count
+                const delay = std.fmt.parseInt(u64, value, 10) catch return error.InvalidValue;
+                const count = std.fmt.parseInt(u64, args.next() orelse return error.MissingValue, 10) catch return error.InvalidValue;
+
+                opts.save = .{ .delay = delay, .count = @max(count, 1) };
+            } else return error.InvalidOption;
+        }
+
+        // database name is a required parameter.
+        // if it is not set return an error
+        if (opts.name == null) return error.MissingName;
+
+        // if addr is not set, generate localhost with
+        // random port from 10000 to 19999
+        if (opts.addr == null) {
+            const port: u16 = std.crypto.random.intRangeAtMost(u16, 10000, 19999);
+            opts.addr = std.net.Ip4Address.parse("127.0.0.1", port) catch unreachable;
+        }
+
+        // storage directory is server exclusive
+        if (opts.mode == .server) {
+            // if database directory is not present, set
+            // with current absolute path
+            const storage_dir = opts.db_path orelse std.fs.cwd().realpathAlloc(allocator, ".") catch unreachable;
+            defer allocator.free(storage_dir);
+
+            // set database directory with database storage file
+            opts.db_path = try std.fmt.allocPrint(allocator, "{s}/{s}.raptodb", .{ storage_dir, opts.name.? });
+        }
+
+        return opts;
     }
 
-    // database name is a required parameter.
-    // if it is not set return an error
-    if (opts.name == null) return error.MissingName;
-
-    // if addr is not set, generate localhost with
-    // random port from 10000 to 19999
-    if (opts.addr == null) {
-        const port: u16 = std.crypto.random.intRangeAtMost(u16, 10000, 19999);
-        opts.addr = std.net.Ip4Address.parse("127.0.0.1", port) catch unreachable;
+    /// Deinits config.
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.name.?);
+        allocator.free(self.db_path.?);
     }
-
-    // storage directory is server exclusive
-    if (opts.mode == .server) {
-        // if database directory is not present, set
-        // with current absolute path
-        const storage_dir = opts.db_path orelse std.fs.cwd().realpathAlloc(allocator, ".") catch unreachable;
-        defer allocator.free(storage_dir);
-
-        // set database directory with database storage file
-        opts.db_path = try std.fmt.allocPrint(allocator, "{s}/{s}.raptodb", .{ storage_dir, opts.name.? });
-    }
-
-    return opts;
-}
+};
 
 test "reftest" {
     _ = std.testing.refAllDeclsRecursive(@This());

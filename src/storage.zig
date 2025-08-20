@@ -40,7 +40,7 @@ const utils = @import("utils.zig");
 
 const Object = @import("object.zig").Object;
 const FieldType = @import("object.zig").FieldType;
-const RaptoConfig = @import("rapto.zig").RaptoConfig;
+const RaptoConfig = @import("options.zig").RaptoConfig;
 
 /// Store of objects.
 pub const Storage = struct {

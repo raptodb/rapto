@@ -46,7 +46,7 @@ const ree = @import("ree.zig");
 
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 const Query = @import("Query.zig");
-const RaptoConfig = @import("rapto.zig").RaptoConfig;
+const RaptoConfig = @import("options.zig").RaptoConfig;
 
 /// Represents client with informations
 /// and streams.
