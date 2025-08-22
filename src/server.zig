@@ -189,7 +189,7 @@ pub const Server = struct {
 
         // receive query from client
         // and add to queue
-        while (client.stream.read(self.allocator)) |raw_query| {
+        while (true) while (client.stream.read(self.allocator)) |raw_query| {
             // very hot branch!!
             @branchHint(.likely);
 
@@ -220,7 +220,7 @@ pub const Server = struct {
 
             // else returns error and closes client connection
             else => return err,
-        }
+        };
     }
 
     /// Removes and closes stream of a client.
