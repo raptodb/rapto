@@ -230,7 +230,7 @@ pub const RaptoConfig = struct {
             opts.addr = std.net.Ip4Address.parse("127.0.0.1", port) catch unreachable;
         }
 
-        // storage directory is server exclusive
+        // storage directory is exclusive for server
         if (opts.mode == .server) {
             // if database directory is not present, set
             // with current absolute path
