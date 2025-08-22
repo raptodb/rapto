@@ -53,7 +53,6 @@ pub fn expandOptionsError(err: OptionsError) []const u8 {
         error.MissingValue => "Missing value.",
         error.InvalidDirectory => "Invalid/not found directory.",
         error.IncompleteAddr => "Incomplete address.",
-        error.CacheLarger => "Cache is larger than database storage.",
         else => unreachable,
     };
 }
