@@ -78,7 +78,7 @@ pub const Object = struct {
         /// Last access in timestamp (us).
         /// Useful for storage prefetching with LRU-policy.
         /// Also called LAST.
-        last_access: i64,
+        last_access: i64 = undefined,
 
         /// Updates the metadata when the object is accessed.
         /// This increments the access counter and refreshes the last access timestamp.
@@ -88,7 +88,7 @@ pub const Object = struct {
             self.access_times +|= 1;
             self.last_access = std.time.microTimestamp();
         }
-    } = undefined,
+    } = .{},
 
     pub const SetError = error{ TypeOverflow, OutOfMemory };
     pub const DeserializeError = error{ EndOfStream, UnsupportedType, OutOfMemory };
