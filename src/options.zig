@@ -245,7 +245,7 @@ pub const RaptoConfig = struct {
     }
 
     /// Deinits config.
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         allocator.free(self.name.?);
         allocator.free(self.db_path.?);
     }
