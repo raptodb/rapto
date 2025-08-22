@@ -39,9 +39,9 @@ const signal = @import("signal.zig");
 
 const RaptoConfig = @import("options.zig").RaptoConfig;
 
-const server_footer: []const u8 = "Session [SERVER db={s};addr={}] Press q: quit, s: save.\n";
+const server_footer: []const u8 = "Session [SERVER db={s};addr={f}] Press q: quit, s: save.\n";
 // used when persistence is disabled
-const server_footer_nosave: []const u8 = "Session [SERVER db={s};addr={}] Press q: quit.\n";
+const server_footer_nosave: []const u8 = "Session [SERVER db={s};addr={f}] Press q: quit.\n";
 
 /// Level of verbosity when print log,
 /// warnings or critical messages.
@@ -75,8 +75,8 @@ pub const Logger = struct {
     /// Initializes logger with stdout and stderr streams
     pub fn init(allocator: std.mem.Allocator, level: Level) Self {
         return Self{
-            .stdout = std.io.getStdOut().writer(),
-            .stderr = std.io.getStdErr().writer(),
+            .stdout = std.fs.File.stdout().writerStreaming(&.{}),
+            .stderr = std.fs.File.stderr().writerStreaming(&.{}),
             .allocator = allocator,
             .level = level,
         };
@@ -90,21 +90,21 @@ pub const Logger = struct {
         _ = std.fmt.bufPrint(&prefix, "{s} [Rapto]", .{getFormattedTime()}) catch unreachable;
 
         if (self.conf != null) {
-            self.stdout.writeAll("\x1b[F") catch unreachable;
-            self.stdout.writeAll("\x1b[K") catch unreachable;
+            self.stdout.interface.writeAll("\x1b[F") catch unreachable;
+            self.stdout.interface.writeAll("\x1b[K") catch unreachable;
         }
 
         // by logtype, print info from stdout or warning and critical from stderr
         switch (logtype) {
-            .info => self.stdout.print("{s} info: {s}\n", .{ prefix, msg }) catch unreachable,
-            .warning => self.stderr.print("{s} warning: {s}\n", .{ prefix, msg }) catch unreachable,
-            .critical => self.stderr.print("{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable,
+            .info => self.stdout.interface.print("{s} info: {s}\n", .{ prefix, msg }) catch unreachable,
+            .warning => self.stderr.interface.print("{s} warning: {s}\n", .{ prefix, msg }) catch unreachable,
+            .critical => self.stderr.interface.print("{s} CRITICAL: {s}\n", .{ prefix, msg }) catch unreachable,
         }
 
         if (self.conf) |conf| if (conf.no_persistence)
-            self.stdout.print(server_footer_nosave, .{ conf.name.?, conf.addr.? }) catch unreachable
+            self.stdout.interface.print(server_footer_nosave, .{ conf.name.?, conf.addr.? }) catch unreachable
         else
-            self.stdout.print(server_footer, .{ conf.name.?, conf.addr.? }) catch unreachable;
+            self.stdout.interface.print(server_footer, .{ conf.name.?, conf.addr.? }) catch unreachable;
     }
 
     /// Prints info message.

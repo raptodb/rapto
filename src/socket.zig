@@ -51,8 +51,8 @@ pub const Stream = struct {
     pub const ReadError = posix.ReadError || error{ OutOfMemory, InvalidLength, EndOfStream };
     pub const WriteError = posix.WriteError;
 
-    reader: std.io.Reader(*Self, posix.ReadError, rawRead) = undefined,
-    writer: std.io.Writer(*Self, posix.WriteError, rawWrite) = undefined,
+    reader: std.Io.GenericReader(*Self, posix.ReadError, rawRead) = undefined,
+    writer: std.Io.GenericWriter(*Self, posix.WriteError, rawWrite) = undefined,
 
     /// File descriptor for socket
     handle: posix.socket_t,
@@ -61,8 +61,8 @@ pub const Stream = struct {
     pub fn init(allocator: std.mem.Allocator, handle: posix.socket_t) error{OutOfMemory}!*Stream {
         var s = try allocator.create(Stream);
         s.* = Stream{ .handle = handle };
-        s.reader = std.io.Reader(*Stream, posix.ReadError, rawRead){ .context = s };
-        s.writer = std.io.Writer(*Stream, posix.WriteError, rawWrite){ .context = s };
+        s.reader = std.Io.GenericReader(*Stream, posix.ReadError, rawRead){ .context = s };
+        s.writer = std.Io.GenericWriter(*Stream, posix.WriteError, rawWrite){ .context = s };
         return s;
     }
 

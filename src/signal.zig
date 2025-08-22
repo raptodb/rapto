@@ -51,7 +51,7 @@ var ABRT_ctx: enum { OOM, OOD, UE } = .UE;
 pub fn hsignal() void {
     const handler = struct {
         fn inner(sig: i32) callconv(.c) void {
-            var stderr = std.io.getStdErr();
+            var stderr = std.fs.File.stderr().writerStreaming(&.{});
 
             const msg = switch (sig) {
                 SIGINT => return,
@@ -64,14 +64,14 @@ pub fn hsignal() void {
                 else => unreachable,
             };
 
-            stderr.writeAll(msg) catch {};
+            stderr.interface.writeAll(msg) catch {};
         }
     }.inner;
 
     // setup for sigaction
     const s_sigint: std.posix.Sigaction = .{
         .handler = .{ .handler = handler },
-        .mask = std.posix.empty_sigset,
+        .mask = std.posix.sigemptyset(),
         .flags = 0,
     };
 

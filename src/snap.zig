@@ -101,7 +101,7 @@ pub fn autosnap(
 
             modc.store(0, .release);
             timer.reset();
-        } else std.time.sleep(1 * std.time.ns_per_s);
+        } else std.Thread.sleep(1 * std.time.ns_per_s);
 }
 
 /// Attempts to save the storage to disk.

@@ -120,7 +120,7 @@ pub const Object = struct {
     /// Return struct from serialized data.
     pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) DeserializeError!Self {
         // init io reader
-        var deserialized = std.io.fixedBufferStream(data);
+        var deserialized = std.Io.fixedBufferStream(data);
         const reader = deserialized.reader();
 
         var obj = Object{};
@@ -170,7 +170,7 @@ pub const Object = struct {
         // after alloc, it never fails
 
         // init io writer
-        var serialized = std.io.fixedBufferStream(buf);
+        var serialized = std.Io.fixedBufferStream(buf);
         const writer = serialized.writer();
 
         // write the fields

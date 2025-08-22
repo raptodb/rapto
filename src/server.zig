@@ -185,7 +185,7 @@ pub const Server = struct {
             try utils.appendNoGrowing(self.allocator, *Client, &self.clients, client);
         }
 
-        self.logger.info("CLIENT [id={d};name={s};{}] Connected.", .{ client.id, client.name orelse "", client.address });
+        self.logger.info("CLIENT [id={d};name={s};{f}] Connected.", .{ client.id, client.name orelse "", client.address });
 
         // receive query from client
         // and add to queue
@@ -227,7 +227,7 @@ pub const Server = struct {
     pub fn destroyClient(self: *Self, client: *Client) void {
         const i = std.mem.indexOfScalar(*Client, self.clients.items, client) orelse return;
 
-        self.logger.info("CLIENT [id={d};name={s};{}] Disconnected.", .{ client.id, client.name.?, client.address });
+        self.logger.info("CLIENT [id={d};name={s};{f}] Disconnected.", .{ client.id, client.name.?, client.address });
 
         client.deinit(self.allocator);
         _ = self.clients.orderedRemove(i);

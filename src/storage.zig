@@ -79,14 +79,15 @@ pub const Storage = struct {
     /// Loads stored objects from file to memory.
     /// Returns the number of loaded items.
     pub noinline fn load(self: *Self) LoadError!u64 {
-        const reader = self.file.reader();
+        var buf: [16 * 1024]u8 = undefined;
+        var reader = self.file.readerStreaming(&buf);
         // count of loaded items
         var i: u64 = 0;
 
         while (true) {
             // get size of compressed object.
             // if it fails, data is fully loaded
-            const size = reader.readInt(u64, .little) catch break;
+            const size = reader.interface.takeInt(u64, .little) catch break;
             if (size == 0) {
                 @branchHint(.unlikely);
                 break;
@@ -96,7 +97,7 @@ pub const Storage = struct {
             const compressed = try self.allocator.alloc(u8, size);
             errdefer self.allocator.free(compressed);
 
-            _ = reader.readAll(compressed) catch return error.LoadingError;
+            reader.interface.readSliceAll(compressed) catch return error.LoadingError;
 
             // decompression occupies a max 255 times more than compressed,
             // for this reason, check firstly if it doesn't excedeed space limit
@@ -123,7 +124,6 @@ pub const Storage = struct {
                 try self.store.append(self.allocator, obj);
                 i += 1; // increment loaded items
             }
-
             // rare branch: OOM or object
             // corrupted (caused by decompression fail)
             else |err| {
@@ -148,7 +148,8 @@ pub const Storage = struct {
         self.file.seekTo(0) catch return error.FileSeek;
         self.file.setEndPos(0) catch return error.FileSeek;
 
-        const writer = self.file.writer();
+        var buf: [16 * 1024]u8 = undefined;
+        var writer = self.file.writerStreaming(&buf);
 
         var i: u64 = self.store.items.len;
         while (i > 0) {
@@ -163,16 +164,20 @@ pub const Storage = struct {
             defer self.allocator.free(compressed);
 
             // append size and serialized Object to file
-            writer.writeInt(u64, compressed.len, comptime .little) catch |err| {
+            writer.interface.writeInt(u64, compressed.len, comptime .little) catch {
                 @branchHint(.unlikely);
-                if (err == error.NoSpaceLeft) return error.OutOfDisk;
+                if (writer.err.? == error.NoSpaceLeft) return error.OutOfDisk;
             };
-            writer.writeAll(compressed) catch |err| {
+            writer.interface.writeAll(compressed) catch {
                 @branchHint(.unlikely);
-                if (err == error.NoSpaceLeft) return error.OutOfDisk;
+                if (writer.err.? == error.NoSpaceLeft) return error.OutOfDisk;
             };
         }
 
+        writer.interface.flush() catch {
+            @branchHint(.unlikely);
+            if (writer.err.? == error.NoSpaceLeft) return error.OutOfDisk;
+        };
         self.file.sync() catch return error.FileSync;
     }
 

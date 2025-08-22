@@ -199,10 +199,10 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // if conf is set, footer is enabled
     if (!DEBUG_MODE_MEMORY) {
         logger.conf = conf;
-        logger.stdout.writeByte('\n') catch unreachable;
+        logger.stdout.interface.writeByte('\n') catch unreachable;
     }
 
-    logger.info("Started server addr={}; LISTENING...", .{conf.addr.?});
+    logger.info("Started server addr={f}; LISTENING...", .{conf.addr.?});
 
     // setup db commands with same parameter storage
     const db = cmds{ .storage = storage };
@@ -316,7 +316,7 @@ pub fn main() void {
         @branchHint(.unlikely);
 
         const msg = switch (err) {
-            error.HelpFlag => return logger.stdout.print("{s}", .{options.usage()}) catch {},
+            error.HelpFlag => return logger.stdout.interface.print("{s}", .{options.usage()}) catch {},
             error.OutOfMemory => signal.OOM(),
             else => ree.expandOptionsError(err),
         };
@@ -350,12 +350,12 @@ pub fn main() void {
         @branchHint(.likely);
 
         defer {
-            std.time.sleep(1 * std.time.ns_per_s);
+            std.Thread.sleep(1 * std.time.ns_per_s);
             logger.info("Quitted.", .{});
         }
 
         logger.info("Rapto {s} is starting.", .{RAPTO_VERSION});
-        logger.info("Server db={s} pid={d} addr={}", .{ conf.name.?, std.os.linux.getpid(), conf.addr.? });
+        logger.info("Server db={s} pid={d} addr={f}", .{ conf.name.?, std.os.linux.getpid(), conf.addr.? });
 
         serverSession(allocator, &conf) catch |err| {
             @branchHint(.unlikely);
