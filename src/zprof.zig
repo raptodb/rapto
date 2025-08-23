@@ -6,13 +6,13 @@
 //! memory profiler that helps you track
 //! allocations, detect memory leaks,
 //! and logs memory changes.
-//! Version 1.2.1
+//! Version 1.3.0
 //!
 //! Original repository: https://github.com/andrvv/zprof
 
 const std = @import("std");
 
-pub const VERSION = "1.2.1";
+pub const VERSION = "1.3.0";
 pub const SEMANTIC_VERSION = std.SemanticVersion.parse(VERSION) catch unreachable;
 
 /// Profiler struct that tracks memory allocations and deallocations.
@@ -20,9 +20,8 @@ pub const SEMANTIC_VERSION = std.SemanticVersion.parse(VERSION) catch unreachabl
 pub const Profiler = struct {
     const Self = @This();
 
-    /// Controls whether logging is enabled.
-    /// When true, allocation events can be logged to stdout.
-    log: bool,
+    /// Writer of output when allocation or deallocation is occurred.
+    log_writer: ?*std.Io.Writer,
 
     /// Allocated bytes from initialization.
     /// Keeps track of total bytes requested during the program's lifetime.
@@ -47,25 +46,23 @@ pub const Profiler = struct {
     /// Called internally whenever memory is allocated.
     inline fn updateAlloc(self: *Self, size: u64) void {
         // track the bytes and count
-        self.allocated += size;
-        self.live_bytes += size;
-        self.alloc_count += 1;
+        self.allocated +|= size;
+        self.live_bytes +|= size;
+        self.alloc_count +|= 1;
         // update peak if needed
         self.live_peak = @max(self.live_bytes, self.live_peak);
 
-        if (self.log) std.debug.print("Zprof::ALLOC allocated={d}\n", .{size});
+        if (self.log_writer) |writer| writer.print("Zprof::ALLOC allocated={d}\n", .{size}) catch {};
     }
 
     /// Updates profiler simulating free.
     /// Called internally whenever memory is freed.
     inline fn updateFree(self: *Self, size: u64) void {
-        // Decrease live bytes and increment free counter
-        // This can underflow in the case of invalid frees
-        // Don't know if that's a problem
-        self.live_bytes -= size;
-        self.free_count += 1;
+        // decrease live bytes and increment free counter
+        self.live_bytes -|= size;
+        self.free_count +|= 1;
 
-        if (self.log) std.debug.print("Zprof::FREE deallocated={d}\n", .{size});
+        if (self.log_writer) |writer| writer.print("Zprof::FREE deallocated={d}\n", .{size}) catch {};
     }
 
     /// Check if has memory leaks.
@@ -88,6 +85,11 @@ pub fn Zprof(comptime thread_safe: bool) type {
     return struct {
         const Self = @This();
 
+        /// The synchronization primitive ensuring
+        /// only one thread is in the critical section.
+        /// Used when thread_safe is enabled.
+        mutex: std.Thread.Mutex = .{},
+
         /// The original allocator we're wrapping.
         /// All actual memory operations will be delegated to this.
         wrapped_allocator: *std.mem.Allocator,
@@ -100,18 +102,16 @@ pub fn Zprof(comptime thread_safe: bool) type {
         /// Access this to check memory usage and detect leaks.
         profiler: Profiler,
 
-        mutex: std.Thread.Mutex = .{},
-
         /// Allocates and initializes a new Zprof instance.
         /// Wraps an existing allocator with memory profiling capabilities.
         /// After, it must be freed with `deinit()` function.
-        pub fn init(allocator: *std.mem.Allocator, log: bool) !*Self {
+        pub fn init(allocator: *std.mem.Allocator, log_writer: ?*std.Io.Writer) !*Self {
             // create our custom allocator with profiling hooks
             const zprof_ptr = try allocator.create(Self);
 
             zprof_ptr.* = .{
                 .wrapped_allocator = allocator,
-                .profiler = Profiler{ .log = log },
+                .profiler = Profiler{ .log_writer = log_writer },
                 .allocator = undefined,
             };
 
@@ -138,10 +138,8 @@ pub fn Zprof(comptime thread_safe: bool) type {
         ) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
 
-            if (thread_safe) {
-                self.mutex.lock();
-                defer self.mutex.unlock();
-            }
+            if (thread_safe) self.mutex.lock();
+            defer if (thread_safe) self.mutex.unlock();
 
             // delegate actual allocation to wrapped allocator
             const ptr = self.wrapped_allocator.rawAlloc(n, alignment, ra);
@@ -165,10 +163,8 @@ pub fn Zprof(comptime thread_safe: bool) type {
             const self: *Self = @ptrCast(@alignCast(ctx));
             const old_len = buf.len;
 
-            if (thread_safe) {
-                self.mutex.lock();
-                defer self.mutex.unlock();
-            }
+            if (thread_safe) self.mutex.lock();
+            defer if (thread_safe) self.mutex.unlock();
 
             // delegate actual resize to wrapped allocator
             const resized = self.wrapped_allocator.rawResize(buf, alignment, new_len, ret_addr);
@@ -198,10 +194,8 @@ pub fn Zprof(comptime thread_safe: bool) type {
             const self: *Self = @ptrCast(@alignCast(context));
             const old_len = memory.len;
 
-            if (thread_safe) {
-                self.mutex.lock();
-                defer self.mutex.unlock();
-            }
+            if (thread_safe) self.mutex.lock();
+            defer if (thread_safe) self.mutex.unlock();
 
             // delegate actual remap to wrapped allocator
             const remapped = self.wrapped_allocator.rawRemap(memory, alignment, new_len, return_address);
@@ -229,16 +223,15 @@ pub fn Zprof(comptime thread_safe: bool) type {
         ) void {
             const self: *Self = @ptrCast(@alignCast(ctx));
 
-            if (thread_safe) {
-                self.mutex.lock();
-                defer self.mutex.unlock();
-            }
+            if (thread_safe) self.mutex.lock();
+            defer if (thread_safe) self.mutex.unlock();
 
-            // update profiler stats first
-            self.profiler.updateFree(buf.len);
+            // update profiler stats with old buf
+            // length info after memory free
+            defer self.profiler.updateFree(buf.len);
 
-            // then actually free the memory
-            return self.wrapped_allocator.rawFree(buf, alignment, ret_addr);
+            // free the memory
+            self.wrapped_allocator.rawFree(buf, alignment, ret_addr);
         }
 
         /// Deinitializes self.

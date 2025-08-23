@@ -338,8 +338,8 @@ pub fn main() void {
         var fbaAllocator = fba.allocator();
 
         // this allocator is wrapped with tracker Zprof
-        break :blk Zprof(true).init(&fbaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
-    } else Zprof(true).init(&arenaAllocator, DEBUG_MODE_MEMORY) catch signal.OOM();
+        break :blk Zprof(true).init(&fbaAllocator, null) catch signal.OOM();
+    } else Zprof(true).init(&arenaAllocator, null) catch signal.OOM();
     defer zprof.deinit();
 
     profiler = &zprof.profiler;
