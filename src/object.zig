@@ -91,7 +91,7 @@ pub const Object = struct {
     } = .{},
 
     pub const SetError = error{ TypeOverflow, OutOfMemory };
-    pub const DeserializeError = error{ EndOfStream, UnsupportedType, OutOfMemory };
+    pub const DeserializeError = error{ EndOfStream, UnsupportedType, OutOfMemory, ReadFailed };
 
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
@@ -120,34 +120,30 @@ pub const Object = struct {
     /// Return struct from serialized data.
     pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) DeserializeError!Self {
         // init io reader
-        var deserialized = std.Io.fixedBufferStream(data);
-        const reader = deserialized.reader();
+        var deserialized: std.Io.Reader = .fixed(data);
 
         var obj = Object{};
 
-        const keylen = try reader.readInt(u8, comptime .little);
-        obj.key = try allocator.alloc(u8, keylen);
+        const keylen = try deserialized.takeInt(u8, comptime .little);
+
+        obj.key = try deserialized.readAlloc(allocator, keylen);
         errdefer allocator.free(obj.key);
 
-        _ = try reader.readAll(obj.key);
-
         obj.metadata = .{
-            .access_times = try reader.readInt(i64, comptime .little),
-            .last_access = try reader.readInt(i64, comptime .little),
+            .access_times = try deserialized.takeInt(i64, comptime .little),
+            .last_access = try deserialized.takeInt(i64, comptime .little),
         };
 
         // select from field type
-        obj.field = switch (try reader.readByte()) {
-            0 => .{ .integer = try reader.readInt(i64, comptime .little) },
-            1 => .{ .decimal = @bitCast(try reader.readInt(u64, comptime .little)) },
+        obj.field = switch (try deserialized.takeByte()) {
+            0 => .{ .integer = try deserialized.takeInt(i64, comptime .little) },
+            1 => .{ .decimal = @bitCast(try deserialized.takeInt(u64, comptime .little)) },
             2 => blk: {
-                const fieldlen = try reader.readInt(u64, comptime .little);
+                const fieldlen = try deserialized.takeInt(u64, comptime .little);
 
                 // for string: get length, then read string
-                const str = try allocator.alloc(u8, fieldlen);
+                const str = try deserialized.readAlloc(allocator, fieldlen);
                 errdefer allocator.free(str);
-
-                _ = try reader.readAll(str);
 
                 break :blk .{ .string = str };
             },
@@ -170,28 +166,27 @@ pub const Object = struct {
         // after alloc, it never fails
 
         // init io writer
-        var serialized = std.Io.fixedBufferStream(buf);
-        const writer = serialized.writer();
+        var serialized: std.Io.Writer = .fixed(buf);
 
         // write the fields
-        writer.writeInt(u8, @intCast(self.key.len), comptime .little) catch unreachable;
-        writer.writeAll(self.key) catch unreachable;
-        writer.writeInt(i64, self.metadata.access_times, comptime .little) catch unreachable;
-        writer.writeInt(i64, self.metadata.last_access, comptime .little) catch unreachable;
-        writer.writeInt(u8, @intFromEnum(self.field), comptime .little) catch unreachable;
+        serialized.writeInt(u8, @intCast(self.key.len), comptime .little) catch unreachable;
+        serialized.writeAll(self.key) catch unreachable;
+        serialized.writeInt(i64, self.metadata.access_times, comptime .little) catch unreachable;
+        serialized.writeInt(i64, self.metadata.last_access, comptime .little) catch unreachable;
+        serialized.writeInt(u8, @intFromEnum(self.field), comptime .little) catch unreachable;
 
         // write value of object.
         // if value is string, add size
         switch (self.field) {
-            .integer => |value| writer.writeInt(i64, value, comptime .little) catch unreachable,
-            .decimal => |value| writer.writeAll(std.mem.asBytes(&value)) catch unreachable,
+            .integer => |value| serialized.writeInt(i64, value, comptime .little) catch unreachable,
+            .decimal => |value| serialized.writeAll(std.mem.asBytes(&value)) catch unreachable,
             .string => |value| {
-                writer.writeInt(u64, value.len, comptime .little) catch unreachable;
-                writer.writeAll(value) catch unreachable;
+                serialized.writeInt(u64, value.len, comptime .little) catch unreachable;
+                serialized.writeAll(value) catch unreachable;
             },
         }
 
-        return serialized.getWritten();
+        return serialized.buffered();
     }
 
     /// Returns size of serialized object
