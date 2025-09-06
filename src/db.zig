@@ -271,7 +271,7 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
     const len = self.storage.store.items.len;
     if (len == 0) return error.NoKeysFound;
 
-    var keys = std.ArrayListUnmanaged([]const u8).initCapacity(self.storage.allocator, len) catch unreachable;
+    var keys = std.ArrayList([]const u8).initCapacity(self.storage.allocator, len) catch unreachable;
     defer keys.deinit(self.storage.allocator);
 
     // in order of priority

@@ -42,7 +42,7 @@ pub fn ThreadSafeQueue(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        queue: std.ArrayListUnmanaged(T) = .empty,
+        queue: std.ArrayList(T) = .empty,
         mutex: std.Thread.Mutex = .{},
         cond: std.Thread.Condition = .{},
 

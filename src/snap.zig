@@ -94,14 +94,13 @@ pub fn autosnap(
     // and the count of queries is over config count.
     // when snap is finally performed resets the timer and
     // restart loop
-    while (true)
-        if (timer.read() >= max_delay and modc.load(.acquire) >= conf.count) {
-            // save to the storage
-            snap(storage, logger, true) catch {};
+    while (true) if (timer.read() >= max_delay and modc.load(.acquire) >= conf.count) {
+        // save to the storage
+        snap(storage, logger, true) catch {};
 
-            modc.store(0, .release);
-            timer.reset();
-        } else std.Thread.sleep(1 * std.time.ns_per_s);
+        modc.store(0, .release);
+        timer.reset();
+    } else std.Thread.sleep(1 * std.time.ns_per_s);
 }
 
 /// Attempts to save the storage to disk.

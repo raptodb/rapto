@@ -52,7 +52,7 @@ pub const Storage = struct {
     file: std.fs.File = undefined,
 
     /// Store of objects.
-    store: std.ArrayListUnmanaged(Object) = undefined,
+    store: std.ArrayList(Object) = undefined,
 
     /// Store capacity.
     /// Should be changed with addition
@@ -62,7 +62,7 @@ pub const Storage = struct {
     conf: *RaptoConfig,
 
     pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit, OutOfMemory };
-    pub const SaveError = error{ FileSeek, FileSync, OutOfMemory, OutOfDisk } || std.fs.File.WriteError;
+    pub const SaveError = std.fs.File.WriteError || error{ FileSeek, FileSync, OutOfMemory, OutOfDisk };
     pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit, OutOfMemory };
 
     /// Initializes storage with an allocator, file and size in bytes.
@@ -70,7 +70,7 @@ pub const Storage = struct {
         return Self{
             .allocator = allocator,
             .file = file,
-            .store = std.ArrayListUnmanaged(Object).initCapacity(allocator, 0) catch unreachable,
+            .store = std.ArrayList(Object).initCapacity(allocator, 0) catch unreachable,
             .store_cap = conf.db_size orelse std.math.maxInt(u64),
             .conf = conf,
         };
@@ -197,7 +197,6 @@ pub const Storage = struct {
             // if key does not exist
             return self.append(field_type, key, value);
 
-        // check if key already exist
         var obj = &self.store.items[i];
 
         // updates value if the
@@ -232,7 +231,7 @@ pub const Storage = struct {
 
             obj.deinit(self.allocator);
 
-            obj.* = try Object.set(self.allocator, field_type, key, value);
+            obj.* = try .set(self.allocator, field_type, key, value);
             obj.metadata = metadata;
 
             // update capacity with updated object
@@ -311,7 +310,7 @@ pub const Storage = struct {
     /// Returns the index of object.
     pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
         // create new object
-        var obj = try Object.set(self.allocator, field_type, key, value);
+        var obj: Object = try .set(self.allocator, field_type, key, value);
         errdefer obj.deinit(self.allocator);
 
         // update store capacity

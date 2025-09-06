@@ -44,26 +44,25 @@ const signal = @import("signal.zig");
 const options = @import("options.zig");
 const utils = @import("utils.zig");
 const ree = @import("ree.zig");
-const socket = @import("socket.zig");
 const cmds = @import("db.zig");
 
 const RaptoConfig = options.RaptoConfig;
 const Zprof = @import("zprof.zig").Zprof;
 const Profiler = @import("zprof.zig").Profiler;
 const Server = @import("server.zig").Server;
-const Client = @import("server.zig").Client;
 const Storage = @import("storage.zig").Storage;
 const Query = @import("Query.zig");
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 
-pub const ServerSessionError = error{
+pub const ServerSessionError = Server.BindError || Storage.LoadError || error{
     NoCapacity,
     CorruptedStat,
     ThreadError,
     OpenError,
     OutOfMemory,
-} || Server.BindError || Storage.LoadError || socket.Stream.WriteError;
-pub const ResolveError = error{
+};
+
+pub const ResolveError = Storage.PutError || error{
     MissingTokens,
     TypeOverflow,
     KeyNotFound,
@@ -77,7 +76,7 @@ pub const ResolveError = error{
     ExcedeedSpaceLimit,
     NoPersistence,
     OutOfMemory,
-} || Storage.PutError;
+};
 
 var logger: log.Logger = undefined;
 var profiler: *Profiler = undefined;
