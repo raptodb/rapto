@@ -656,7 +656,7 @@ pub fn RESTORE(self: Self, obj: []const u8) !void {
 ///
 /// Complexity O(n)
 pub fn ERASE(self: Self) !void {
-    var i: usize = self.storage.store.items.len;
+    var i: u64 = self.storage.store.items.len;
     while (i > 0) {
         i -= 1;
         try self.storage.removeAtIndex(i);
