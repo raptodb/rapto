@@ -55,6 +55,9 @@ reader: std.net.Stream.Reader,
 pub const SendError = std.net.Stream.WriteError;
 pub const RecvError = std.net.Stream.ReadError || error{ InvalidLength, EndOfStream, OutOfMemory };
 
+/// Initializes client with ID and connection.
+/// With this function an IO writer/reader are provided
+/// to send and receive buf from peers.
 pub fn init(allocator: std.mem.Allocator, id: u64, connection: *const std.net.Server.Connection) error{OutOfMemory}!*Self {
     const client = try allocator.create(Self);
     errdefer allocator.destroy(client);
@@ -75,57 +78,44 @@ pub fn init(allocator: std.mem.Allocator, id: u64, connection: *const std.net.Se
     return client;
 }
 
-pub fn setupSockopt(self: *Self, ms: u32) error{SocketConfig}!void {
+/// Setup client with configs. Enables ReuseAddr and disables
+/// Nagle's algorithm to improve general perforamance.
+/// Sets deadline with timeout for read and write stream.
+pub fn setupSockopt(self: *Self, ms: u32) std.posix.SetSockOptError!void {
     const val: u32 = 1;
 
     // enable REUSEADDR to use same address more frequently
-    std.posix.setsockopt(
-        self.handle,
-        std.posix.SOL.SOCKET,
-        std.posix.SO.REUSEADDR,
-        std.mem.asBytes(&val),
-    ) catch return error.SocketConfig;
+    try self.setsockopt(std.posix.SOL.SOCKET, std.posix.SO.REUSEADDR, std.mem.asBytes(&val));
+    // disable Nagle's algorithm and optimizes network performance
+    try self.setsockopt(std.posix.IPPROTO.TCP, std.posix.TCP.NODELAY, std.mem.asBytes(&val));
 
-    // disable Nagle's algorithm and
-    // optimizes network performance.
-    std.posix.setsockopt(
-        self.handle,
-        std.posix.IPPROTO.TCP,
-        std.posix.TCP.NODELAY,
-        std.mem.asBytes(&val),
-    ) catch return error.SocketConfig;
-
-    const opt = std.posix.timeval{
+    const opt: std.posix.timeval = .{
         .sec = @intCast(@divTrunc(ms, std.time.ms_per_s)),
         .usec = @intCast(@mod(ms, std.time.ms_per_s)),
     };
-
-    // set the timeout for recv function.
-    std.posix.setsockopt(
-        self.handle,
-        std.posix.SOL.SOCKET,
-        std.posix.SO.RCVTIMEO,
-        std.mem.toBytes(opt)[0..],
-    ) catch return error.SocketConfig;
-
-    // set the timeout for send function
-    std.posix.setsockopt(
-        self.handle,
-        std.posix.SOL.SOCKET,
-        std.posix.SO.SNDTIMEO,
-        std.mem.toBytes(opt)[0..],
-    ) catch return error.SocketConfig;
+    const so = [2]comptime_int{ std.posix.SO.RCVTIMEO, std.posix.SO.SNDTIMEO };
+    inline for (so) |optname|
+        // set the timeout for recv/send function.
+        try self.setsockopt(std.posix.SOL.SOCKET, optname, std.mem.toBytes(opt)[0..]);
 }
 
+/// Sends a buf to peer with length information.
 pub fn send(self: *Self, buf: []const u8) SendError!void {
+    // build msg using iovec method
     var msg: [2][]const u8 = .{
+        // length of content as u64
         @constCast(&@as([8]u8, @bitCast(buf.len))),
+        // content
         @constCast(buf),
     };
 
+    // send iovecs to file descriptor
     self.writer.interface.writeVecAll(&msg) catch return self.writer.err.?;
 }
 
+/// Receives message from peer. Uses length to read all message
+/// without corruption. If returns error.ConnectionResetByPeer, peer
+/// has disconnected from session.
 pub fn recv(self: *Self, allocator: std.mem.Allocator) RecvError![]u8 {
     var buf: [8]u8 = undefined;
     const raw_len = self.reader.interface().readSliceShort(&buf) catch return self.reader.getError().?;
@@ -134,6 +124,7 @@ pub fn recv(self: *Self, allocator: std.mem.Allocator) RecvError![]u8 {
         8 => {
             @branchHint(.likely);
 
+            // converts buf to content length
             const len = std.mem.readInt(u64, &buf, .little);
             if (len == 0 or len > MAXFLOW) {
                 @branchHint(.unlikely);
@@ -146,15 +137,26 @@ pub fn recv(self: *Self, allocator: std.mem.Allocator) RecvError![]u8 {
                 else => @errorCast(err),
             };
         },
+        // disconnected peer
         0 => return error.ConnectionResetByPeer,
+        // corrupted message
         else => return error.EndOfStream,
     }
 }
 
+/// Alias fot std.posix.setsockopt with handle
+/// integrated and cleaner API.
+inline fn setsockopt(self: *Self, level: i32, optname: u32, opt: []const u8) std.posix.SetSockOptError!void {
+    return std.posix.setsockopt(self.handle, level, optname, opt);
+}
+
+/// Closes connection with peer.
 pub inline fn close(self: *Self) void {
     std.posix.close(self.handle);
 }
 
+/// Destroy client. Deallocated all memory associated with it.
+/// NOTE: does not closes connection with peer, first, call `close()`.
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     if (self.name) |n|
         allocator.free(n);
