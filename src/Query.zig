@@ -41,7 +41,7 @@ const utils = @import("utils.zig");
 
 const Profiler = @import("zprof.zig").Profiler;
 const Storage = @import("storage.zig").Storage;
-const Client = @import("server.zig").Client;
+const Client = @import("Client.zig");
 
 const Self = @This();
 
@@ -93,7 +93,7 @@ pub const Command = enum(u8) {
 };
 
 /// Client that make query.
-client: ?*const Client = null,
+client: ?*Client = null,
 
 raw_query: []const u8 = undefined,
 command: Command = undefined,
@@ -104,7 +104,7 @@ pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
 /// Parses raw query to valid query. Divides the
 /// query in command and arguments, associated to
 /// client that make request.
-pub fn parseQuery(client: *const Client, raw_query: []const u8) ParseQueryError!Self {
+pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     const trimmed = std.mem.trim(u8, raw_query, " ");
     if (trimmed.len == 0) {
         @branchHint(.unlikely);

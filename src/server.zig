@@ -38,7 +38,6 @@ const DEADLINE_MS = 5000;
 
 const std = @import("std");
 
-const socket = @import("socket.zig");
 const signal = @import("signal.zig");
 const utils = @import("utils.zig");
 const log = @import("log.zig");
@@ -47,33 +46,7 @@ const ree = @import("ree.zig");
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 const Query = @import("Query.zig");
 const RaptoConfig = @import("options.zig").RaptoConfig;
-
-/// Represents client with informations
-/// and streams.
-pub const Client = struct {
-    /// Is alive
-    alive: bool = true,
-
-    /// Client unique ID.
-    id: u64,
-    /// Address of client
-    address: std.net.Address,
-    /// Name of client.
-    name: ?[]const u8 = null,
-
-    /// Stream of client
-    stream: *socket.Stream,
-
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        if (self.name) |n|
-            allocator.free(n);
-
-        allocator.destroy(self.stream);
-        allocator.destroy(self);
-
-        self.* = undefined;
-    }
-};
+const Client = @import("Client.zig");
 
 pub const Server = struct {
     const Self = @This();
@@ -82,13 +55,13 @@ pub const Server = struct {
     logger: *log.Logger,
 
     server: std.net.Server,
-    clients: std.ArrayListUnmanaged(*Client),
+    clients: std.ArrayList(*Client),
     queue: *ThreadSafeQueue(Query),
 
     conf: *RaptoConfig,
 
     pub const BindError = error{ BindError, OutOfMemory };
-    pub const ClientError = error{UnmatchVersion} || socket.Stream.ReadError || socket.Stream.WriteError;
+    pub const ClientError = Client.SendError || Client.RecvError || error{UnmatchVersion};
 
     /// Initializes and binds server.
     pub fn bind(
@@ -117,16 +90,12 @@ pub const Server = struct {
         while (true) {
             const conn = self.server.accept() catch continue;
 
-            const client = self.allocator.create(Client) catch signal.OOM();
-            errdefer self.allocator.destroy(client);
-
-            // save client info
-            client.* = .{
-                .id = id,
-                .stream = socket.Stream.init(self.allocator, conn.stream.handle) catch signal.OOM(),
-                .address = conn.address,
+            const client = Client.init(self.allocator, id, &conn) catch signal.OOM();
+            client.setupSockopt(DEADLINE_MS) catch {
+                client.close();
+                client.deinit(self.allocator);
+                continue;
             };
-
             // update incremental ID counter
             // for next client
             id += 1;
@@ -139,27 +108,19 @@ pub const Server = struct {
     /// Wrapper for client handler.
     /// This function handles errors.
     fn handleClientWrapper(self: *Self, client: *Client) void {
-        blk: {
-            client.stream.enableREUSEADDR() catch break :blk;
-            client.stream.disableNagle() catch break :blk;
-            client.stream.setReadDeadline(DEADLINE_MS) catch break :blk;
-            client.stream.setWriteDeadline(DEADLINE_MS) catch break :blk;
+        self.handleClient(client) catch |err| {
+            @branchHint(.unlikely);
 
-            self.handleClient(client) catch |err| {
-                @branchHint(.unlikely);
-
-                const msg = switch (err) {
-                    error.OutOfMemory => signal.OOM(),
-                    // already disconnected (likely deinit)
-                    error.NotOpenForReading, error.NotOpenForWriting => return,
-                    else => ree.expandClientError(err),
-                };
-
-                client.stream.write(msg) catch {};
+            const msg = switch (err) {
+                error.OutOfMemory => signal.OOM(),
+                // already disconnected (likely deinit)
+                error.SocketNotConnected, error.AddressNotAvailable => return,
+                else => ree.expandClientError(err),
             };
-        }
 
-        client.alive = false;
+            client.send(msg) catch {};
+        };
+
         self.destroyClient(client);
     }
 
@@ -172,12 +133,17 @@ pub const Server = struct {
             // as first message, client send its version.
             // if version matching with server version is ok,
             // else throws error.
-            const match_version = client.stream.hasRequest(self.allocator, RAPTO_VERSION);
+            const match_version = blk: {
+                const recv_version = client.recv(self.allocator) catch break :blk false;
+                defer self.allocator.free(recv_version);
+                break :blk utils.advancedCompare(recv_version, RAPTO_VERSION);
+            };
             if (!match_version) return error.UnmatchVersion;
-            try client.stream.write("OK");
+            try client.send("OK");
 
             // try to get name of client
-            const name = try client.stream.read(self.allocator);
+
+            const name = try client.recv(self.allocator);
             client.name = if (name.len > 0) name else null;
 
             // add current client to list
@@ -189,7 +155,7 @@ pub const Server = struct {
 
         // receive query from client
         // and add to queue
-        while (true) while (client.stream.read(self.allocator)) |raw_query| {
+        while (true) while (client.recv(self.allocator)) |raw_query| {
             // very hot branch!!
             @branchHint(.likely);
 
@@ -202,7 +168,7 @@ pub const Server = struct {
 
                 // if query parsing fails, send
                 // error to client and waits new query
-                client.stream.write(ree.expandQueryParsingError(err)) catch {};
+                client.send(ree.expandQueryParsingError(err)) catch {};
                 continue;
             };
 
@@ -239,7 +205,7 @@ pub const Server = struct {
         for (self.clients.items) |client|
             // call exception in handler
             // trigging destroyClient
-            client.stream.close();
+            client.close();
 
         // deinit clients
         self.clients.deinit(self.allocator);

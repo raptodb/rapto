@@ -104,9 +104,6 @@ pub fn expandServerSessionError(err: ServerSessionError) []const u8 {
         error.LoadingError => "Cannot load from storage. Read error occurred.",
         error.ExcedeedSpaceLimit => "Cannot load from storage. Space limit excedeed.",
         error.OpenError => "Cannot open storage file.",
-        error.NotOpenForWriting,
-        error.ConnectionResetByPeer,
-        => "Unstabilized connection.",
         else => "Unrecognized connection error.",
     };
 }

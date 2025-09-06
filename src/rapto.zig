@@ -277,7 +277,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
             defer if (heap_allocated) allocator.free(response);
 
             // sends the response to client
-            client.stream.write(response) catch {};
+            client.send(response) catch {};
 
             // increment counter of storage modifies
             if (conf.save != null)

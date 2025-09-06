@@ -43,7 +43,6 @@ test {
     _ = @import("server.zig");
     _ = @import("signal.zig");
     _ = @import("snap.zig");
-    _ = @import("socket.zig");
 
     // Tested modules
     _ = @import("lz4.zig");
