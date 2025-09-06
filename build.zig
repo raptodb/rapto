@@ -41,7 +41,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
-        .name = "rapto",
+        .name = "raptodb",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/rapto.zig"),
             .target = target,
