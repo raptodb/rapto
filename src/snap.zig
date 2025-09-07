@@ -112,7 +112,7 @@ pub fn snap(storage: *Storage, logger: *log.Logger, comptime auto: bool) error{S
 
         const msg = switch (err) {
             error.OutOfMemory => signal.OOM(),
-            error.NoSpaceLeft => signal.OOD(),
+            error.OutOfDisk => signal.OOD(),
             else => ree.expandSaveError(err),
         };
 
