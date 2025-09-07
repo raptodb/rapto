@@ -70,7 +70,7 @@ pub fn expandResolveError(err: ResolveError) []const u8 {
         error.NoKeysFound => "ERR: no keys found.",
         error.UnknownArgument => "ERR: invalid argument.",
         error.ExcedeedSpaceLimit => "ERR: excedeed db space limit.",
-        error.NoPersistence => "Persistence disabled from server.",
+        error.NoPersistence => "ERR: persistence disabled from server.",
         else => unreachable,
     };
 }
