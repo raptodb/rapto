@@ -88,10 +88,14 @@ pub const Server = struct {
         var id: u64 = 0;
 
         while (true) {
-            const conn = self.server.accept() catch continue;
+            const conn = self.server.accept() catch |err| {
+                self.logger.warning("posix-accept: {s}.", .{@errorName(err)});
+                continue;
+            };
 
             const client = Client.init(self.allocator, id, &conn) catch signal.OOM();
-            client.setupSockopt(DEADLINE_MS) catch {
+            client.setupSockopt(DEADLINE_MS) catch |err| {
+                client.log(self.logger, .warning, "posix-setsockopt: {s}.", .{@errorName(err)});
                 client.close();
                 client.deinit(self.allocator);
                 continue;
@@ -151,7 +155,7 @@ pub const Server = struct {
             try utils.appendNoGrowing(self.allocator, *Client, &self.clients, client);
         }
 
-        self.logger.info("CLIENT [id={d};name={s};{f}] Connected.", .{ client.id, client.name orelse "", client.address });
+        client.log(self.logger, .info, "Connected.", .{});
 
         // receive query from client
         // and add to queue
@@ -193,7 +197,7 @@ pub const Server = struct {
     pub fn destroyClient(self: *Self, client: *Client) void {
         const i = std.mem.indexOfScalar(*Client, self.clients.items, client) orelse return;
 
-        self.logger.info("CLIENT [id={d};name={s};{f}] Disconnected.", .{ client.id, client.name.?, client.address });
+        client.log(self.logger, .info, "Disconnected.", .{});
 
         client.deinit(self.allocator);
         _ = self.clients.orderedRemove(i);

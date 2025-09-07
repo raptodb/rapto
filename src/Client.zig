@@ -34,10 +34,13 @@
 
 const std = @import("std");
 
+const signal = @import("signal.zig");
+
+const Logger = @import("log.zig").Logger;
+const Self = @This();
+
 /// Limits of 512 MiB for READ
 const MAXFLOW = 1024 * 1024 * 512;
-
-const Self = @This();
 
 /// Client unique ID.
 id: u64,
@@ -144,7 +147,24 @@ pub fn recv(self: *Self, allocator: std.mem.Allocator) RecvError![]u8 {
     }
 }
 
-/// Alias for std.posix.setsockopt with handle
+/// Logs a message with client information.
+pub inline fn log(
+    self: *Self,
+    logger: *Logger,
+    logtype: enum { info, warning, critical },
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const msg = std.fmt.allocPrint(logger.allocator, format, args) catch signal.OOM();
+    const f = "CLIENT [id={d};name={s};{f}] {s}";
+    switch (logtype) {
+        .info => logger.info(f, .{ self.id, self.name orelse "", self.address, msg }),
+        .warning => logger.warning(f, .{ self.id, self.name orelse "", self.address, msg }),
+        .critical => logger.critical(f, .{ self.id, self.name orelse "", self.address, msg }),
+    }
+}
+
+/// Alias fot std.posix.setsockopt with handle
 /// integrated and cleaner API.
 inline fn setsockopt(self: *Self, level: i32, optname: u32, opt: []const u8) std.posix.SetSockOptError!void {
     return std.posix.setsockopt(self.handle, level, optname, opt);
