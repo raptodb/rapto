@@ -124,7 +124,7 @@ pub fn recv(self: *Self, allocator: std.mem.Allocator) RecvError![]u8 {
         8 => {
             @branchHint(.likely);
 
-            // converts buf to content length
+            // convert buf to content length
             const len = std.mem.readInt(u64, &buf, .little);
             if (len == 0 or len > MAXFLOW) {
                 @branchHint(.unlikely);
@@ -144,7 +144,7 @@ pub fn recv(self: *Self, allocator: std.mem.Allocator) RecvError![]u8 {
     }
 }
 
-/// Alias fot std.posix.setsockopt with handle
+/// Alias for std.posix.setsockopt with handle
 /// integrated and cleaner API.
 inline fn setsockopt(self: *Self, level: i32, optname: u32, opt: []const u8) std.posix.SetSockOptError!void {
     return std.posix.setsockopt(self.handle, level, optname, opt);
@@ -155,7 +155,7 @@ pub inline fn close(self: *Self) void {
     std.posix.close(self.handle);
 }
 
-/// Destroy client. Deallocated all memory associated with it.
+/// Destroy client. Deallocates all memory associated with it.
 /// NOTE: does not closes connection with peer, first, call `close()`.
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     if (self.name) |n|
