@@ -69,8 +69,11 @@ pub const ResolveError = Storage.PutError || error{
     KeyReplacementExist,
     MismatchType,
     SaveFailed,
-    InvalidObject,
     InvalidMetadata,
+    WriteFailed,
+    ReadFailed,
+    EndOfStream,
+    UnsupportedType,
     NoKeysFound,
     UnknownArgument,
     ExcedeedSpaceLimit,
@@ -271,8 +274,10 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
             const response, const heap_allocated = content catch |err| blk: {
                 @branchHint(.unlikely);
-                if (err == error.OutOfMemory) return error.OutOfMemory;
-                break :blk .{ ree.expandResolveError(err), false };
+                switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => break :blk .{ ree.expandResolveError(err), false },
+                }
             };
             defer if (heap_allocated) allocator.free(response);
 

@@ -189,8 +189,8 @@ pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     obj.metadata.update();
 
     if (obj.field == .string) {
-        const value = std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string});
-        return .{ value catch return error.OutOfMemory, true };
+        const value = try std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string});
+        return .{ value, true };
     }
 
     // preallocated buffer on stack
@@ -271,7 +271,7 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
     const len = self.storage.store.items.len;
     if (len == 0) return error.NoKeysFound;
 
-    var keys = std.ArrayList([]const u8).initCapacity(self.storage.allocator, len) catch unreachable;
+    var keys = try std.ArrayList([]const u8).initCapacity(self.storage.allocator, len);
     defer keys.deinit(self.storage.allocator);
 
     // in order of priority
@@ -639,7 +639,7 @@ pub fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
 ///
 /// Complexity O(n)
 pub fn RESTORE(self: Self, obj: []const u8) !void {
-    const d = Object.deserialize(self.storage.allocator, obj) catch return error.InvalidObject;
+    const d = try Object.deserialize(self.storage.allocator, obj);
 
     const i = switch (d.field) {
         .integer => |value| try self.storage.put(.integer, d.key, value),
@@ -686,7 +686,7 @@ pub inline fn DEL(self: Self, key: []const u8) !void {
 ///
 /// Complexity O(n)
 pub inline fn SAVE(self: Self, logger: *log.Logger) !void {
-    snap.snap(self.storage, logger, false) catch return error.SaveFailed;
+    try snap.snap(self.storage, logger, false);
 }
 
 /// Copies key to another key.
@@ -704,7 +704,7 @@ pub fn COPY(self: Self, args: []const u8) !void {
     const rawkey, const heap_allocated = try self.DUMP(key);
     defer if (heap_allocated) self.storage.allocator.free(rawkey);
 
-    var d = Object.deserialize(self.storage.allocator, rawkey) catch unreachable;
+    var d = try Object.deserialize(self.storage.allocator, rawkey);
     d.key = try self.storage.allocator.dupe(u8, dst);
 
     const i = switch (d.field) {

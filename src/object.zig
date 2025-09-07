@@ -157,7 +157,7 @@ pub const Object = struct {
     }
 
     /// Returns serialized object to byte array.
-    pub noinline fn serialize(self: *const Self, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
+    pub noinline fn serialize(self: *const Self, allocator: std.mem.Allocator) error{ WriteFailed, OutOfMemory }![]u8 {
         // get len of serialized object
         const size = self.getSizeFromSerialized();
 
@@ -169,20 +169,20 @@ pub const Object = struct {
         var serialized: std.Io.Writer = .fixed(buf);
 
         // write the fields
-        serialized.writeInt(u8, @intCast(self.key.len), comptime .little) catch unreachable;
-        serialized.writeAll(self.key) catch unreachable;
-        serialized.writeInt(i64, self.metadata.access_times, comptime .little) catch unreachable;
-        serialized.writeInt(i64, self.metadata.last_access, comptime .little) catch unreachable;
-        serialized.writeInt(u8, @intFromEnum(self.field), comptime .little) catch unreachable;
+        try serialized.writeInt(u8, @intCast(self.key.len), comptime .little);
+        try serialized.writeAll(self.key);
+        try serialized.writeInt(i64, self.metadata.access_times, comptime .little);
+        try serialized.writeInt(i64, self.metadata.last_access, comptime .little);
+        try serialized.writeInt(u8, @intFromEnum(self.field), comptime .little);
 
         // write value of object.
         // if value is string, add size
         switch (self.field) {
-            .integer => |value| serialized.writeInt(i64, value, comptime .little) catch unreachable,
-            .decimal => |value| serialized.writeAll(std.mem.asBytes(&value)) catch unreachable,
+            .integer => |value| try serialized.writeInt(i64, value, comptime .little),
+            .decimal => |value| try serialized.writeAll(std.mem.asBytes(&value)),
             .string => |value| {
-                serialized.writeInt(u64, value.len, comptime .little) catch unreachable;
-                serialized.writeAll(value) catch unreachable;
+                try serialized.writeInt(u64, value.len, comptime .little);
+                try serialized.writeAll(value);
             },
         }
 

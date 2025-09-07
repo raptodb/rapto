@@ -65,17 +65,20 @@ pub fn expandResolveError(err: ResolveError) []const u8 {
         error.KeyNotFound => "ERR: key not found.",
         error.KeyReplacementExist => "ERR: new name correspond to existent key.",
         error.SaveFailed => "ERR: persistent saving is failed.",
-        error.InvalidObject => "ERR: serialized object is invalid.",
+        error.EndOfStream => "ERR: object is corrupted.",
         error.InvalidMetadata => "ERR: metadata is corrupted.",
         error.NoKeysFound => "ERR: no keys found.",
         error.UnknownArgument => "ERR: invalid argument.",
         error.ExcedeedSpaceLimit => "ERR: excedeed db space limit.",
         error.NoPersistence => "ERR: persistence disabled from server.",
+        error.WriteFailed, error.ReadFailed => "ERR: IO failed.",
+        error.UnsupportedType => "ERR: type is unrecognized or unsupported.",
+        // OOM is already handled
         else => unreachable,
     };
 }
 
-pub fn expandClientError(err: ClientError) []const u8 {
+pub fn expandClientError(err: ClientError, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
     return switch (err) {
         error.UnmatchVersion => "ERR: compatible-version=" ++ RAPTO_VERSION,
         error.WouldBlock => "ERR: timeout-reached",
@@ -83,8 +86,7 @@ pub fn expandClientError(err: ClientError) []const u8 {
         error.SocketNotConnected,
         error.ConnectionResetByPeer,
         => "ERR: no-connection",
-
-        else => "ERR: unknown",
+        else => std.fmt.allocPrint(allocator, "ERR: {s}", .{@errorName(err)}),
     };
 }
 
@@ -112,9 +114,10 @@ pub fn expandSaveError(err: SaveError) []const u8 {
     return switch (err) {
         error.FileSeek => "File seek error. The storage file may not exist.",
         error.FileSync => "File sync error.",
-        error.AccessDenied => "Check file permission.",
-        error.FileTooBig => "File is too big.",
-        else => "Unknown error.",
+        error.WriteFailed => "Write failed to disk.",
+        // OOM and OOD are already handled
+        // out of this function.
+        else => unreachable,
     };
 }
 

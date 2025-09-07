@@ -119,7 +119,7 @@ pub const Server = struct {
                 error.OutOfMemory => signal.OOM(),
                 // already disconnected (likely deinit)
                 error.SocketNotConnected, error.AddressNotAvailable => return,
-                else => ree.expandClientError(err),
+                else => ree.expandClientError(err, self.allocator) catch signal.OOM(),
             };
 
             client.send(msg) catch {};

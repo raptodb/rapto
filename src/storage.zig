@@ -62,7 +62,7 @@ pub const Storage = struct {
     conf: *RaptoConfig,
 
     pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit, OutOfMemory };
-    pub const SaveError = std.fs.File.WriteError || error{ FileSeek, FileSync, OutOfMemory, OutOfDisk };
+    pub const SaveError = error{ FileSeek, FileSync, WriteFailed, OutOfMemory, OutOfDisk };
     pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit, OutOfMemory };
 
     /// Initializes storage with an allocator, file and size in bytes.
@@ -166,17 +166,17 @@ pub const Storage = struct {
             // append size and serialized Object to file
             writer.interface.writeInt(u64, compressed.len, comptime .little) catch {
                 @branchHint(.unlikely);
-                if (writer.err.? == error.NoSpaceLeft) return error.OutOfDisk;
+                return if (writer.err.? == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
             };
             writer.interface.writeAll(compressed) catch {
                 @branchHint(.unlikely);
-                if (writer.err.? == error.NoSpaceLeft) return error.OutOfDisk;
+                return if (writer.err.? == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
             };
         }
 
         writer.interface.flush() catch {
             @branchHint(.unlikely);
-            if (writer.err.? == error.NoSpaceLeft) return error.OutOfDisk;
+            return if (writer.err.? == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
         };
         self.file.sync() catch return error.FileSync;
     }
