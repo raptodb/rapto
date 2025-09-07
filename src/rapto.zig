@@ -214,6 +214,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
         // returns task with query and client information
         const task = queue.waitAndPop(allocator);
         if (task.client) |client| {
+            @branchHint(.likely);
             defer allocator.free(task.raw_query);
 
             // this block resolves query and returns response with
