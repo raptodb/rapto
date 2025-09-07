@@ -32,14 +32,14 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of client and IO functions associated to client for server.
 
+const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
+
 const std = @import("std");
 
 const signal = @import("signal.zig");
-
 const Logger = @import("log.zig").Logger;
-const Self = @This();
 
-const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
+const Self = @This();
 
 /// Limits of 512 MiB for READ
 const MAXFLOW = 1024 * 1024 * 512;

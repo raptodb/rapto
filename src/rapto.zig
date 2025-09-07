@@ -61,7 +61,6 @@ pub const ServerSessionError = Server.BindError || Storage.LoadError || error{
     OpenError,
     OutOfMemory,
 };
-
 pub const ResolveError = Storage.PutError || error{
     MissingTokens,
     TypeOverflow,

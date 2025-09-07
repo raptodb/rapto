@@ -32,9 +32,9 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of Rapto Error Expander.
 
-const std = @import("std");
-
 const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
+
+const std = @import("std");
 
 const ResolveError = @import("rapto.zig").ResolveError;
 const ParseQueryError = @import("Query.zig").ParseQueryError;
