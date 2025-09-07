@@ -30,7 +30,7 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of client.
+//! It contains the implementation of client and IO functions associated to client for server.
 
 const std = @import("std");
 
@@ -39,13 +39,16 @@ const signal = @import("signal.zig");
 const Logger = @import("log.zig").Logger;
 const Self = @This();
 
+const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
+
 /// Limits of 512 MiB for READ
 const MAXFLOW = 1024 * 1024 * 512;
+const DEADLINE_MS = 5000;
 
 /// Client unique ID.
-id: u64,
+id: u64 = undefined,
 /// Address of client.
-address: std.net.Address,
+address: std.net.Address = undefined,
 /// Name of client.
 name: ?[]const u8 = null,
 
@@ -61,7 +64,43 @@ pub const RecvError = std.net.Stream.ReadError || error{ InvalidLength, EndOfStr
 /// Initializes client with ID and connection.
 /// With this function an IO writer/reader are provided
 /// to send and receive buf from peers.
-pub fn init(allocator: std.mem.Allocator, id: u64, connection: *const std.net.Server.Connection) error{OutOfMemory}!*Self {
+/// Next establishes connection with server.
+///
+/// NOTE: with this initialization `self.address` and
+/// `self.log()` must not be used.
+pub fn initClient(allocator: std.mem.Allocator, stream: *const std.net.Stream, name: []const u8) error{ OutOfMemory, UnmatchVersion }!*Self {
+    const client = try allocator.create(Self);
+    errdefer allocator.destroy(client);
+
+    // use buffering on reader to
+    // make takeInt working with 8 bytes
+    var buf: [8]u8 = undefined;
+
+    // save client info and setup with setsockopt
+    client.* = .{
+        .handle = stream.handle,
+        .writer = stream.writer(&.{}),
+        .reader = stream.reader(&buf),
+    };
+
+    client.setupSockopt(DEADLINE_MS);
+
+    // check compatibility by version
+    try client.send(RAPTO_VERSION);
+    const response = try client.recv(allocator);
+    defer allocator.free(response);
+    if (!std.mem.eql(u8, response, "OK")) @panic(response);
+
+    // send conventional client name
+    try client.send(name);
+
+    return client;
+}
+
+/// Initializes IO associated to client with ID and connection.
+/// With this function an IO writer/reader are provided
+/// to send and receive buf from peers.
+pub fn initServerIO(allocator: std.mem.Allocator, id: u64, connection: *const std.net.Server.Connection) error{OutOfMemory}!*Self {
     const client = try allocator.create(Self);
     errdefer allocator.destroy(client);
 
@@ -84,7 +123,7 @@ pub fn init(allocator: std.mem.Allocator, id: u64, connection: *const std.net.Se
 /// Setup client with configs. Enables ReuseAddr and disables
 /// Nagle's algorithm to improve general perforamance.
 /// Sets deadline with timeout for read and write stream.
-pub fn setupSockopt(self: *Self, ms: u32) std.posix.SetSockOptError!void {
+pub fn setupSockopt(self: *Self) std.posix.SetSockOptError!void {
     const val: u32 = 1;
 
     // enable REUSEADDR to use same address more frequently
@@ -93,13 +132,33 @@ pub fn setupSockopt(self: *Self, ms: u32) std.posix.SetSockOptError!void {
     try self.setsockopt(std.posix.IPPROTO.TCP, std.posix.TCP.NODELAY, std.mem.asBytes(&val));
 
     const opt: std.posix.timeval = .{
-        .sec = @intCast(@divTrunc(ms, std.time.ms_per_s)),
-        .usec = @intCast(@mod(ms, std.time.ms_per_s)),
+        .sec = @intCast(@divTrunc(DEADLINE_MS, std.time.ms_per_s)),
+        .usec = @intCast(@mod(DEADLINE_MS, std.time.ms_per_s)),
     };
     const so = [2]comptime_int{ std.posix.SO.RCVTIMEO, std.posix.SO.SNDTIMEO };
     inline for (so) |optname|
         // set the timeout for recv/send function.
         try self.setsockopt(std.posix.SOL.SOCKET, optname, std.mem.toBytes(opt)[0..]);
+}
+
+/// Sends query and return the response.
+/// If bench is enabled, returns as second parameter
+/// the latency of response in ns.
+///
+/// NOTE: this function is exclusive of initialization as client.
+pub fn sendQuery(self: *Self, allocator: std.mem.Allocator, query: []const u8, comptime bench: bool) !struct { []const u8, ?u64 } {
+    var timer: std.time.Timer = if (bench)
+        std.time.Timer.start() catch unreachable
+    else
+        undefined;
+
+    try self.send(query);
+    const response = try self.recv(allocator);
+
+    return .{
+        response,
+        if (bench) timer.read() else null,
+    };
 }
 
 /// Sends a buf to peer with length information.

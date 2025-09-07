@@ -104,7 +104,7 @@ pub const ParseQueryError = error{ EmptyQuery, CommandNotFound };
 /// Parses raw query to valid query. Divides the
 /// query in command and arguments, associated to
 /// client that make request.
-pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
+pub fn fromText(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     const trimmed = std.mem.trim(u8, raw_query, " ");
     if (trimmed.len == 0) {
         @branchHint(.unlikely);
@@ -116,6 +116,18 @@ pub fn parseQuery(client: *Client, raw_query: []const u8) ParseQueryError!Self {
     q.raw_query = raw_query;
     q.command = Command.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
+
+    return q;
+}
+
+/// Parses query from enum and optional arguments.
+/// Query must be freed with self.free().
+pub fn fromEnum(allocator: std.mem.Allocator, command: Command, args: ?[]const u8) error{OutOfMemory}!Self {
+    var q = Self{};
+
+    q.args = try allocator.dupe(u8, args orelse "");
+    q.command = command;
+    q.raw_query = try std.fmt.allocPrint(allocator, "{s} {s}", .{ @tagName(command), q.args });
 
     return q;
 }
@@ -133,7 +145,7 @@ test "command parsing" {
 }
 
 test "parse query" {
-    const q = try parseQuery(undefined, "PING abc def");
+    const q = try fromText(undefined, "PING abc def");
 
     try std.testing.expect(q.command == .PING);
     try std.testing.expectEqualSlices(u8, "abc def", q.args);

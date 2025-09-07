@@ -93,8 +93,8 @@ pub const Server = struct {
                 continue;
             };
 
-            const client = Client.init(self.allocator, id, &conn) catch signal.OOM();
-            client.setupSockopt(DEADLINE_MS) catch |err| {
+            const client = Client.initServerIO(self.allocator, id, &conn) catch signal.OOM();
+            client.setupSockopt() catch |err| {
                 client.log(self.logger, .warning, "posix-setsockopt: {s}.", .{@errorName(err)});
                 client.close();
                 client.deinit(self.allocator);
@@ -167,7 +167,7 @@ pub const Server = struct {
             // free only if error is occurred
             errdefer self.allocator.free(raw_query);
 
-            const query = Query.parseQuery(client, raw_query) catch |err| {
+            const query = Query.fromText(client, raw_query) catch |err| {
                 @branchHint(.unlikely);
 
                 // if query parsing fails, send
