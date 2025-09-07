@@ -68,7 +68,11 @@ pub const RecvError = std.net.Stream.ReadError || error{ InvalidLength, EndOfStr
 ///
 /// NOTE: with this initialization `self.address` and
 /// `self.log()` must not be used.
-pub fn initClient(allocator: std.mem.Allocator, stream: *const std.net.Stream, name: []const u8) error{ OutOfMemory, UnmatchVersion }!*Self {
+pub fn initClient(
+    allocator: std.mem.Allocator,
+    stream: *const std.net.Stream,
+    name: []const u8,
+) (std.posix.SetSockOptError || SendError || RecvError || error{UnmatchVersion})!*Self {
     const client = try allocator.create(Self);
     errdefer allocator.destroy(client);
 
@@ -83,7 +87,7 @@ pub fn initClient(allocator: std.mem.Allocator, stream: *const std.net.Stream, n
         .reader = stream.reader(&buf),
     };
 
-    client.setupSockopt(DEADLINE_MS);
+    try client.setupSockopt();
 
     // check compatibility by version
     try client.send(RAPTO_VERSION);
