@@ -100,7 +100,7 @@ pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool
     }
 
     // hash checking usually does not match
-    if (hash(a) != hash(b)) {
+    else if (hash(a) != hash(b)) {
         @branchHint(.likely);
         return false;
     }
