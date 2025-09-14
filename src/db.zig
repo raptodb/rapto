@@ -281,7 +281,7 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
         keys.appendAssumeCapacity(self.storage.store.items[i].key);
     }
 
-    return .{ try std.mem.join(self.storage.allocator, " ", keys.items), false };
+    return .{ try std.mem.join(self.storage.allocator, " ", keys.items), true };
 }
 
 /// Updates priority and metadata of key.

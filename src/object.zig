@@ -163,7 +163,7 @@ pub const Object = struct {
 
         // init preallocated buffer
         const buf: []u8 = try allocator.alloc(u8, size);
-        // after alloc, it never fails
+        errdefer allocator.free(buf);
 
         // init io writer
         var serialized: std.Io.Writer = .fixed(buf);
