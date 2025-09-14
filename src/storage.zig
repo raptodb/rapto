@@ -46,18 +46,18 @@ const RaptoConfig = @import("options.zig").RaptoConfig;
 pub const Storage = struct {
     const Self = @This();
 
-    allocator: std.mem.Allocator = undefined,
+    allocator: std.mem.Allocator,
 
     /// Storage file.
-    file: std.fs.File = undefined,
+    file: std.fs.File,
 
     /// Store of objects.
-    store: std.ArrayList(Object) = undefined,
+    store: std.ArrayList(Object),
 
     /// Store capacity.
     /// Should be changed with addition
     /// or subtraction of object size.
-    store_cap: u64 = 0,
+    store_cap: u64,
 
     conf: *RaptoConfig,
 
