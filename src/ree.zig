@@ -37,13 +37,13 @@ const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
 const std = @import("std");
 
 const ResolveError = @import("rapto.zig").ResolveError;
-const ParseQueryError = @import("Query.zig").ParseQueryError;
+const QueryParsingError = @import("Query.zig").QueryParsingError;
 const OptionsError = @import("options.zig").RaptoConfig.OptionsError;
 const ClientError = @import("server.zig").Server.ClientError;
 const ServerSessionError = @import("rapto.zig").ServerSessionError;
 const SaveError = @import("storage.zig").Storage.SaveError;
 
-pub fn expandOptionsError(err: OptionsError) []const u8 {
+pub noinline fn expandOptionsError(err: OptionsError) []const u8 {
     return switch (err) {
         error.InvalidOption => "Unknown option.",
         error.InvalidValue => "Invalid value.",
@@ -57,7 +57,7 @@ pub fn expandOptionsError(err: OptionsError) []const u8 {
     };
 }
 
-pub fn expandResolveError(err: ResolveError) []const u8 {
+pub noinline fn expandResolveError(err: ResolveError) []const u8 {
     return switch (err) {
         error.MissingTokens => "ERR: tokens missing.",
         error.MismatchType => "ERR: incompatible types.",
@@ -78,7 +78,7 @@ pub fn expandResolveError(err: ResolveError) []const u8 {
     };
 }
 
-pub fn expandClientError(err: ClientError, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
+pub noinline fn expandClientError(err: ClientError, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
     return switch (err) {
         error.UnmatchVersion => "ERR: compatible-version=" ++ RAPTO_VERSION,
         error.WouldBlock => "ERR: timeout-reached",
@@ -90,14 +90,14 @@ pub fn expandClientError(err: ClientError, allocator: std.mem.Allocator) error{O
     };
 }
 
-pub fn expandQueryParsingError(err: ParseQueryError) []const u8 {
+pub noinline fn expandQueryParsingError(err: QueryParsingError) []const u8 {
     return switch (err) {
         error.EmptyQuery => "ERR: query is empty or invalid.",
         error.CommandNotFound => "ERR: command does not exist.",
     };
 }
 
-pub fn expandServerSessionError(err: ServerSessionError) []const u8 {
+pub noinline fn expandServerSessionError(err: ServerSessionError) []const u8 {
     return switch (err) {
         error.NoCapacity => "Capacity of database is undefined or 0.",
         error.CorruptedStat => "Cannot get stat of storage file.",
@@ -110,7 +110,7 @@ pub fn expandServerSessionError(err: ServerSessionError) []const u8 {
     };
 }
 
-pub fn expandSaveError(err: SaveError) []const u8 {
+pub noinline fn expandSaveError(err: SaveError) []const u8 {
     return switch (err) {
         error.FileSeek => "File seek error. The storage file may not exist.",
         error.FileSync => "File sync error.",
