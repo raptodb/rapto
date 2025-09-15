@@ -39,7 +39,7 @@ const lz4 = @import("lz4.zig");
 const utils = @import("utils.zig");
 
 const Object = @import("object.zig").Object;
-const FieldType = @import("object.zig").FieldType;
+const FieldType = Object.FieldType;
 const RaptoConfig = @import("options.zig").RaptoConfig;
 
 /// Store of objects.
@@ -201,17 +201,19 @@ pub const Storage = struct {
 
         // updates value if the
         // field type is the same
-        if (field_type == obj.field) {
+        if (field_type == obj.type) {
             @branchHint(.likely);
 
             obj.field = switch (field_type) {
                 .integer => .{ .integer = value },
                 .decimal => .{ .decimal = value },
                 .string => blk: {
-                    if (value.len != obj.field.string.len)
-                        obj.field.string = try self.allocator.realloc(obj.field.string, value.len);
 
-                    @memcpy(obj.field.string, value);
+                    // conv value to anotyher pouinter
+                    if (value.len != obj.field.string.len)
+                        obj.field.string.* = try self.allocator.realloc(obj.field.string.*, value.len);
+
+                    @memcpy(obj.field.string.*, value.*);
                     break :blk .{ .string = obj.field.string };
                 },
             };
@@ -260,10 +262,11 @@ pub const Storage = struct {
     pub fn search(self: *Self, noalias key: []const u8) ?u64 {
         var i: u64 = self.store.items.len;
         while (i > 0) {
-            i -= 1;
+            @branchHint(.likely);
 
+            i -= 1;
             const obj = &self.store.items[i];
-            if (utils.advancedCompare(obj.key, key))
+            if (utils.advancedCompare(obj.getKey(), key))
                 return self.promote(i);
         }
 
@@ -354,25 +357,27 @@ test "storage" {
     var storage = Storage.init(std.testing.allocator, undefined, &conf);
     defer storage.deinit();
 
-    const index1 = try storage.put(.string, "foo", "bar");
+    const v1: []const u8 = "bar";
+    const index1 = try storage.put(.string, "foo", &v1);
     try std.testing.expect(index1 == 0);
 
     const index2 = try storage.put(.integer, "num", 42);
     try std.testing.expect(index2 == 1);
 
     const obj1 = storage.get("foo") orelse return error.TestExpectedObject;
-    try std.testing.expectEqualStrings("foo", obj1.key);
-    try std.testing.expectEqualStrings("bar", obj1.field.string);
+    try std.testing.expectEqualStrings("foo", obj1.getKey());
+    try std.testing.expectEqualStrings("bar", obj1.field.string.*);
 
     const obj2 = storage.get("num") orelse return error.TestExpectedObject;
     try std.testing.expect(obj2.field.integer == 42);
 
     // overwriting
-    const index3 = try storage.put(.string, "foo", "baz");
+    const v2: []const u8 = "baz";
+    const index3 = try storage.put(.string, "foo", &v2);
     try std.testing.expect(index1 == index3 - 1); // index1 promoted after put
 
     const obj3 = storage.get("foo") orelse return error.TestExpectedObject;
-    try std.testing.expectEqualStrings("baz", obj3.field.string);
+    try std.testing.expectEqualStrings("baz", obj3.field.string.*);
 
     try storage.removeAtIndex(index1);
     try std.testing.expect(storage.get("num") == null);

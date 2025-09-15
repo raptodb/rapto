@@ -34,12 +34,18 @@
 
 const std = @import("std");
 
-const FieldType = @import("object.zig").FieldType;
+const FieldType = @import("object.zig").Object.FieldType;
 
 /// Custom integer parsing with
 /// default i64 type and MismatchType error.
-pub inline fn parseIntegerType(value: []const u8) error{MismatchType}!i64 {
+pub inline fn parseIntType(value: []const u8) error{MismatchType}!i64 {
     return std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
+}
+
+/// Custom integer parsing with
+/// default u64 type and MismatchType error.
+pub inline fn parseUintType(value: []const u8) error{MismatchType}!u64 {
+    return std.fmt.parseInt(u64, value, 10) catch return error.MismatchType;
 }
 
 /// Custom decimal parsing with

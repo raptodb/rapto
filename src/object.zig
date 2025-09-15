@@ -36,27 +36,25 @@ const std = @import("std");
 
 const signal = @import("signal.zig");
 
-/// Type of field as enum.
-pub const FieldType = enum(u8) {
-    integer,
-    decimal,
-    string,
-};
-
 /// Represents database object with key, value and metadata.
+/// Optimized for L1/L2 cache hit. Aligned of 32 byte.
 pub const Object = struct {
     const Self = @This();
 
-    /// The key used to identify the object.
-    /// Limit size: 2^8 (because len is u8)
-    key: []u8 = undefined,
+    /// The length of key.
+    len: u32 = undefined,
+    /// Pointer to key.
+    key: [*]u8 = undefined,
 
+    /// Type identifier of field. Available types
+    /// are integer, decimal and string.
+    type: FieldType = undefined,
     /// Field of object storing the actual data.
     /// String is used as byte array for serialization
     /// of more complex contents.
     /// Decimal and integer fields are used for
     /// fast math operations.
-    field: union(FieldType) {
+    field: union {
         /// Integer value
         integer: i64,
 
@@ -64,16 +62,29 @@ pub const Object = struct {
         decimal: f64,
 
         /// String is byte array data.
-        /// Limit size: 2^32 = 4GiB
-        string: []u8,
+        /// Limit size: 2^64.
+        string: *[]u8,
     } = undefined,
 
     /// Stores metadata information associated with a key.
     /// This includes usage metrics.
-    metadata: struct {
+    metadata: *Metadata = undefined,
+
+    /// Retrieves key with length.
+    pub inline fn getKey(self: *const Self) []const u8 {
+        return self.key[0..self.len];
+    }
+
+    pub inline fn setKey(self: *Self, key: [*]u8, len: u64) void {
+        self.key = key;
+        self.len = @intCast(len);
+    }
+
+    pub const FieldType = enum(u8) { integer, decimal, string };
+    pub const Metadata = struct {
         /// Count of read, write operations.
         /// Also called FREQ.
-        access_times: i64 = 0,
+        access_times: u64 = 0,
 
         /// Last access in timestamp (us).
         /// Useful for storage prefetching with LRU-policy.
@@ -86,9 +97,9 @@ pub const Object = struct {
             // The saturation addition prevents counter overflow
             // and improves performance.
             self.access_times +|= 1;
-            self.last_access = std.time.microTimestamp();
+            self.last_access = @intCast(std.time.microTimestamp());
         }
-    } = .{},
+    };
 
     pub const SetError = error{ TypeOverflow, OutOfMemory };
     pub const DeserializeError = error{ EndOfStream, UnsupportedType, OutOfMemory, ReadFailed };
@@ -104,14 +115,23 @@ pub const Object = struct {
 
         var obj = Object{};
 
-        obj.key = try allocator.dupe(u8, key);
-        errdefer allocator.free(obj.key);
+        {
+            const dup_key = try allocator.dupe(u8, key);
+            obj.setKey(dup_key.ptr, dup_key.len);
+        }
+        errdefer allocator.free(obj.getKey());
 
+        obj.metadata = try allocator.create(Metadata);
         obj.metadata.update();
+        obj.type = field_type;
         obj.field = switch (field_type) {
             .integer => .{ .integer = value },
             .decimal => .{ .decimal = value },
-            .string => .{ .string = try allocator.dupe(u8, value) },
+            .string => blk: {
+                const str = try allocator.create([]u8);
+                str.* = try allocator.dupe(u8, value.*);
+                break :blk .{ .string = str };
+            },
         };
 
         return obj;
@@ -119,37 +139,37 @@ pub const Object = struct {
 
     /// Return struct from serialized data.
     pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) DeserializeError!Self {
-        // init io reader
         var deserialized: std.Io.Reader = .fixed(data);
 
         var obj = Object{};
 
-        const keylen = try deserialized.takeInt(u8, comptime .little);
+        const keylen = try deserialized.takeInt(u32, comptime .little);
+        {
+            const key = try deserialized.readAlloc(allocator, keylen);
+            obj.setKey(key.ptr, keylen);
+        }
+        errdefer allocator.free(obj.getKey());
 
-        obj.key = try deserialized.readAlloc(allocator, keylen);
-        errdefer allocator.free(obj.key);
-
-        obj.metadata = .{
-            .access_times = try deserialized.takeInt(i64, comptime .little),
+        obj.metadata = try allocator.create(Metadata);
+        obj.metadata.* = .{
+            .access_times = try deserialized.takeInt(u64, comptime .little),
             .last_access = try deserialized.takeInt(i64, comptime .little),
         };
 
         // select from field type
-        obj.field = switch (try deserialized.takeByte()) {
-            0 => .{ .integer = try deserialized.takeInt(i64, comptime .little) },
-            1 => .{ .decimal = @bitCast(try deserialized.takeInt(u64, comptime .little)) },
-            2 => blk: {
+        obj.type = std.enums.fromInt(FieldType, try deserialized.takeByte()) orelse return error.UnsupportedType;
+        obj.field = switch (obj.type) {
+            .integer => .{ .integer = try deserialized.takeInt(i64, comptime .little) },
+            .decimal => .{ .decimal = @bitCast(try deserialized.takeInt(u64, comptime .little)) },
+            .string => blk: {
                 const fieldlen = try deserialized.takeInt(u64, comptime .little);
 
                 // for string: get length, then read string
-                const str = try deserialized.readAlloc(allocator, fieldlen);
+                const str = try allocator.create([]u8);
+                str.* = try deserialized.readAlloc(allocator, fieldlen);
                 errdefer allocator.free(str);
 
                 break :blk .{ .string = str };
-            },
-            else => {
-                @branchHint(.unlikely);
-                return error.UnsupportedType;
             },
         };
 
@@ -165,24 +185,23 @@ pub const Object = struct {
         const buf: []u8 = try allocator.alloc(u8, size);
         errdefer allocator.free(buf);
 
-        // init io writer
         var serialized: std.Io.Writer = .fixed(buf);
 
         // write the fields
-        try serialized.writeInt(u8, @intCast(self.key.len), comptime .little);
-        try serialized.writeAll(self.key);
-        try serialized.writeInt(i64, self.metadata.access_times, comptime .little);
+        try serialized.writeInt(u32, @intCast(self.len), comptime .little);
+        try serialized.writeAll(self.getKey());
+        try serialized.writeInt(u64, self.metadata.access_times, comptime .little);
         try serialized.writeInt(i64, self.metadata.last_access, comptime .little);
-        try serialized.writeInt(u8, @intFromEnum(self.field), comptime .little);
+        try serialized.writeInt(u8, @intFromEnum(self.type), comptime .little);
 
         // write value of object.
         // if value is string, add size
-        switch (self.field) {
-            .integer => |value| try serialized.writeInt(i64, value, comptime .little),
-            .decimal => |value| try serialized.writeAll(std.mem.asBytes(&value)),
-            .string => |value| {
-                try serialized.writeInt(u64, value.len, comptime .little);
-                try serialized.writeAll(value);
+        switch (self.type) {
+            .integer => try serialized.writeInt(i64, self.field.integer, comptime .little),
+            .decimal => try serialized.writeAll(std.mem.asBytes(&self.field.decimal)),
+            .string => {
+                try serialized.writeInt(u64, self.field.string.len, comptime .little);
+                try serialized.writeAll(self.field.string.*);
             },
         }
 
@@ -192,35 +211,32 @@ pub const Object = struct {
     /// Returns size of serialized object
     pub inline fn getSizeFromSerialized(self: *const Self) u64 {
         // field size is present if field type is string
-        const fieldsize: u64 = if (self.field == .string) 8 else 0;
-        const fieldlen = switch (self.field) {
-            .integer, .decimal => 8,
-            .string => |v| v.len,
-        };
-
-        // size is composed of key size (1 byte)
-        // + key length + metadata (16 bytes) + field type (1 byte) +
-        // field size (8 bytes if is string, else 0) + field length
-        const size: u64 = 1 + self.key.len + 16 + 1 + fieldsize + fieldlen;
-
+        const fieldsize: u64 = if (self.type == .string) self.field.string.len else 0;
+        // size is composed of key size (4 bytes)
+        // + key length + field type (1 byte) +
+        // + field length + metadata (16 bytes)
+        const size: u64 = 4 + self.len + 1 + 8 + fieldsize + 16;
         return size;
     }
 
     /// Returns size of object stored in RAM
     pub inline fn getSize(self: *const Self) u64 {
-        var size: u64 = 48; // min size for a object
-        size += self.key.len;
-        size += if (self.field == .string) self.field.string.len else 8;
+        var size: u64 = 32; // min size for a object
+        size += self.len;
+        size += if (self.type == .string) self.field.string.len else 0;
         return size;
     }
 
     /// Frees all allocated memory associated with this object
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         // if field is string, deallocates it
-        if (self.field == .string)
-            allocator.free(self.field.string);
+        if (self.type == .string) {
+            allocator.free(self.field.string.*);
+            allocator.destroy(self.field.string);
+        }
         // deallocated key
-        allocator.free(self.key);
+        allocator.free(self.getKey());
+        allocator.destroy(self.metadata);
 
         self.* = undefined;
     }
@@ -232,7 +248,7 @@ test "set" {
     const dkey = "decimalkey";
     const dvalue: f64 = 3.14;
     const skey = "stringkey";
-    const svalue = "text in key";
+    const svalue: []const u8 = "text in key";
 
     var iobj = try Object.set(std.testing.allocator, .integer, ikey, ivalue);
     defer iobj.deinit(std.testing.allocator);
@@ -240,22 +256,22 @@ test "set" {
     var dobj = try Object.set(std.testing.allocator, .decimal, dkey, dvalue);
     defer dobj.deinit(std.testing.allocator);
 
-    var sobj = try Object.set(std.testing.allocator, .string, skey, svalue);
+    var sobj = try Object.set(std.testing.allocator, .string, skey, &svalue);
     defer sobj.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings(ikey, iobj.key);
+    try std.testing.expectEqualStrings(ikey, iobj.getKey());
     try std.testing.expect(ivalue == iobj.field.integer);
-    try std.testing.expectEqualStrings(dkey, dobj.key);
+    try std.testing.expectEqualStrings(dkey, dobj.getKey());
     try std.testing.expect(dvalue == dobj.field.decimal);
-    try std.testing.expectEqualStrings(skey, sobj.key);
-    try std.testing.expectEqualStrings(svalue, sobj.field.string);
+    try std.testing.expectEqualStrings(skey, sobj.getKey());
+    try std.testing.expectEqualStrings(svalue, sobj.field.string.*);
 }
 
 test "serialize and deserialize" {
     const key = "keyname";
-    const value = "serialized string";
+    const value: []const u8 = "serialized string";
 
-    var obj = try Object.set(std.testing.allocator, .string, key, value);
+    var obj = try Object.set(std.testing.allocator, .string, key, &value);
     defer obj.deinit(std.testing.allocator);
 
     const serialized = try obj.serialize(std.testing.allocator);
@@ -264,8 +280,8 @@ test "serialize and deserialize" {
     var deserialized = try Object.deserialize(std.testing.allocator, serialized);
     defer deserialized.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings(obj.key, deserialized.key);
-    try std.testing.expectEqualStrings(obj.field.string, deserialized.field.string);
+    try std.testing.expectEqualStrings(obj.getKey(), deserialized.getKey());
+    try std.testing.expectEqualStrings(obj.field.string.*, deserialized.field.string.*);
     try std.testing.expectEqual(obj.metadata.access_times, deserialized.metadata.access_times);
     try std.testing.expectEqual(obj.metadata.last_access, deserialized.metadata.last_access);
 }

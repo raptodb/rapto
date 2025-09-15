@@ -41,7 +41,7 @@ const utils = @import("utils.zig");
 const Profiler = @import("zprof.zig").Profiler;
 const Storage = @import("storage.zig").Storage;
 const Object = @import("object.zig").Object;
-const FieldType = @import("object.zig").FieldType;
+const FieldType = Object.FieldType;
 
 const Self = @This();
 
@@ -75,9 +75,9 @@ pub fn SET(self: Self, args: []const u8) !void {
     // detects value type from syntax,
     // parses correlated value and put on store
     switch (try utils.valueTypeFromSerialized(value)) {
-        .integer => _ = try self.storage.put(.integer, key, try utils.parseIntegerType(value)),
+        .integer => _ = try self.storage.put(.integer, key, try utils.parseIntType(value)),
         .decimal => _ = try self.storage.put(.decimal, key, try utils.parseDecimalType(value)),
-        .string => _ = try self.storage.put(.string, key, utils.parseStringType(value)),
+        .string => _ = try self.storage.put(.string, key, &utils.parseStringType(value)),
     }
 }
 
@@ -110,9 +110,9 @@ pub fn UPDATE(self: Self, args: []const u8) !void {
 
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
-    if (@mod(value, 1.0) == 0.0 and obj.field == .integer)
+    if (@mod(value, 1.0) == 0.0 and obj.type == .integer)
         obj.field.integer +|= @intFromFloat(value)
-    else if (obj.field == .decimal)
+    else if (obj.type == .decimal)
         obj.field.decimal += value
     else
         return error.MismatchType;
@@ -143,10 +143,10 @@ pub fn RENAME(self: Self, args: []const u8) !void {
         i -= 1;
 
         const obj = &self.storage.store.items[i];
-        if (utils.advancedCompare(obj.key, new_key)) {
+        if (utils.advancedCompare(obj.getKey(), new_key)) {
             new_index = i;
             if (old_index != null) break;
-        } else if (utils.advancedCompare(obj.key, old_key)) {
+        } else if (utils.advancedCompare(obj.getKey(), old_key)) {
             old_index = i;
             if (new_index != null) break;
         }
@@ -158,8 +158,10 @@ pub fn RENAME(self: Self, args: []const u8) !void {
     if (old_index) |index| {
         const obj = &self.storage.store.items[index];
 
-        if (obj.key.len != new_key.len)
-            obj.key = try self.storage.allocator.realloc(obj.key, new_key.len);
+        if (obj.len != new_key.len) {
+            const key = try self.storage.allocator.realloc(obj.key[0..obj.len], new_key.len);
+            obj.setKey(key.ptr, key.len);
+        }
 
         @memcpy(obj.key, new_key);
         obj.metadata.update();
@@ -188,8 +190,8 @@ pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
     obj.metadata.update();
 
-    if (obj.field == .string) {
-        const value = try std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string});
+    if (obj.type == .string) {
+        const value = try std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string.*});
         return .{ value, true };
     }
 
@@ -197,13 +199,13 @@ pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     // with max size for {i64, f64}
     // converted in u8 array
     var buf: [25]u8 = undefined;
-    const slice = switch (obj.field) {
-        .integer => |value| std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable,
-        .decimal => |value| blk: {
-            break :blk if (@mod(value, 1.0) == 0.0)
-                std.fmt.bufPrint(&buf, "{d:.1}", .{value}) catch unreachable
+    const slice = switch (obj.type) {
+        .integer => std.fmt.bufPrint(&buf, "{d}", .{obj.field.integer}) catch unreachable,
+        .decimal => blk: {
+            break :blk if (@mod(obj.field.decimal, 1.0) == 0.0)
+                std.fmt.bufPrint(&buf, "{d:.1}", .{obj.field.decimal}) catch unreachable
             else
-                std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
+                std.fmt.bufPrint(&buf, "{d}", .{obj.field.decimal}) catch unreachable;
         },
 
         // string already handled
@@ -228,7 +230,7 @@ pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
 /// Complexity O(n)
 pub inline fn TYPE(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
-    return .{ @tagName(obj.field), false };
+    return .{ @tagName(obj.type), false };
 }
 
 /// Checks if key exists.
@@ -278,7 +280,7 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
     var i: u64 = len;
     while (i > 0) {
         i -= 1;
-        keys.appendAssumeCapacity(self.storage.store.items[i].key);
+        keys.appendAssumeCapacity(self.storage.store.items[i].getKey());
     }
 
     return .{ try std.mem.join(self.storage.allocator, " ", keys.items), true };
@@ -405,7 +407,7 @@ pub inline fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
-        obj.metadata.access_times = try utils.parseIntegerType(string_value);
+        obj.metadata.access_times = try utils.parseUintType(string_value);
     }
     // if freq is to get
     else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
@@ -441,7 +443,7 @@ pub inline fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
-        obj.metadata.last_access = try utils.parseIntegerType(string_value);
+        obj.metadata.last_access = try utils.parseIntType(string_value);
     }
     // if last access is to get
     else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
@@ -495,7 +497,7 @@ pub inline fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
 /// Complexity O(n)
 pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
-    const size = if (obj.field == .string) obj.field.string.len else 8;
+    const size = if (obj.type == .string) obj.field.string.len else 8;
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
@@ -641,10 +643,10 @@ pub fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
 pub fn RESTORE(self: Self, obj: []const u8) !void {
     const d = try Object.deserialize(self.storage.allocator, obj);
 
-    const i = switch (d.field) {
-        .integer => |value| try self.storage.put(.integer, d.key, value),
-        .decimal => |value| try self.storage.put(.decimal, d.key, value),
-        .string => |value| try self.storage.put(.string, d.key, value),
+    const i = switch (d.type) {
+        .integer => try self.storage.put(.integer, d.getKey(), d.field.integer),
+        .decimal => try self.storage.put(.decimal, d.getKey(), d.field.decimal),
+        .string => try self.storage.put(.string, d.getKey(), d.field.string),
     };
 
     self.storage.store.items[i].metadata = d.metadata;
@@ -705,12 +707,15 @@ pub fn COPY(self: Self, args: []const u8) !void {
     defer if (heap_allocated) self.storage.allocator.free(rawkey);
 
     var d = try Object.deserialize(self.storage.allocator, rawkey);
-    d.key = try self.storage.allocator.dupe(u8, dst);
+    {
+        const dup_key = try self.storage.allocator.dupe(u8, dst);
+        d.setKey(dup_key.ptr, dup_key.len);
+    }
 
-    const i = switch (d.field) {
-        .integer => |value| try self.storage.put(.integer, d.key, value),
-        .decimal => |value| try self.storage.put(.decimal, d.key, value),
-        .string => |value| try self.storage.put(.string, d.key, value),
+    const i = switch (d.type) {
+        .integer => try self.storage.put(.integer, d.getKey(), d.field.integer),
+        .decimal => try self.storage.put(.decimal, d.getKey(), d.field.decimal),
+        .string => try self.storage.put(.string, d.getKey(), d.field.string),
     };
 
     self.storage.store.items[i].metadata = d.metadata;
