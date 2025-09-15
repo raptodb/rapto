@@ -112,7 +112,7 @@ pub const Server = struct {
     /// Wrapper for client handler.
     /// This function handles errors.
     fn handleClientWrapper(self: *Self, client: *Client) void {
-        self.handleClient(client) catch |err| {
+        self.handleClient(client) catch |err| if (err != error.NotOpenForReading) {
             @branchHint(.unlikely);
 
             const msg = switch (err) {
