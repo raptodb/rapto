@@ -210,19 +210,27 @@ pub const Object = struct {
     /// Returns size of serialized object
     pub inline fn getSizeFromSerialized(self: *const Self) u64 {
         // field size is present if field type is string
-        const fieldsize: u64 = if (self.type == .string) self.field.string.len() else 0;
+        const fieldsize: u64 = switch (self.type) {
+            .integer, .decimal => 8,
+            .string => 8 + self.field.string.len(),
+        };
+
         // size is composed of key size (4 bytes)
         // + key length + field type (1 byte) +
-        // + field length + metadata (16 bytes)
-        const size: u64 = 4 + self.len + 1 + 8 + fieldsize + 16;
+        // + field size + metadata (16 bytes)
+        const size: u64 = 4 + self.len + 1 + fieldsize + 16;
         return size;
     }
 
     /// Returns size of object stored in RAM
     pub inline fn getSize(self: *const Self) u64 {
-        var size: u64 = 32; // min size for a object
-        size += self.len;
-        size += if (self.type == .string) self.field.string.len() + 1 else 0;
+        var size: u64 = 32; // size of object
+        size += 16; // metadata
+        size += self.len; // length of key
+        size = switch (self.type) { // field
+            .string => self.field.string.len(),
+            else => 0,
+        };
         return size;
     }
 
