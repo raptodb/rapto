@@ -641,15 +641,8 @@ pub fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
 ///
 /// Complexity O(n)
 pub fn RESTORE(self: Self, obj: []const u8) !void {
-    const d = try Object.deserialize(self.storage.allocator, obj);
-
-    const i = switch (d.type) {
-        .integer => try self.storage.put(.integer, d.getKey(), d.field.integer),
-        .decimal => try self.storage.put(.decimal, d.getKey(), d.field.decimal),
-        .string => try self.storage.put(.string, d.getKey(), d.field.string.get()),
-    };
-
-    self.storage.store.items[i].metadata = d.metadata;
+    const deserialized = try Object.deserialize(self.storage.allocator, obj);
+    try self.storage.dupe(deserialized, deserialized.getKey());
 }
 
 /// Removes all keys from database.
@@ -703,22 +696,9 @@ pub inline fn SAVE(self: Self, logger: *log.Logger) !void {
 /// Complexity O(n+n)
 pub fn COPY(self: Self, args: []const u8) !void {
     const key, const dst = try utils.kvFormat(args);
-    const rawkey, const heap_allocated = try self.DUMP(key);
-    defer if (heap_allocated) self.storage.allocator.free(rawkey);
+    const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
-    var d = try Object.deserialize(self.storage.allocator, rawkey);
-    {
-        const dup_key = try self.storage.allocator.dupe(u8, dst);
-        d.setKey(dup_key.ptr, dup_key.len);
-    }
-
-    const i = switch (d.type) {
-        .integer => try self.storage.put(.integer, d.getKey(), d.field.integer),
-        .decimal => try self.storage.put(.decimal, d.getKey(), d.field.decimal),
-        .string => try self.storage.put(.string, d.getKey(), d.field.string.get()),
-    };
-
-    self.storage.store.items[i].metadata = d.metadata;
+    try self.storage.dupe(obj, dst);
 }
 
 test "reftest" {
