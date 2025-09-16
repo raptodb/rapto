@@ -68,7 +68,8 @@ pub inline fn appendNoGrowing(
     item: T,
 ) error{OutOfMemory}!void {
     try array.ensureTotalCapacityPrecise(allocator, array.items.len + 1);
-    array.appendAssumeCapacity(item);
+    array.items.len += 1;
+    array.items[array.items.len - 1] = item;
 }
 
 /// Parses enum value type from string.
