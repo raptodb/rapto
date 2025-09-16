@@ -641,8 +641,8 @@ pub fn DUMP(self: Self, key: []const u8) !struct { []const u8, bool } {
 ///
 /// Complexity O(n)
 pub fn RESTORE(self: Self, obj: []const u8) !void {
-    const deserialized = try Object.deserialize(self.storage.allocator, obj);
-    try self.storage.dupe(deserialized, deserialized.getKey());
+    var deserialized = try Object.deserialize(self.storage.allocator, obj);
+    try self.storage.dupe(&deserialized, deserialized.getKey());
 }
 
 /// Removes all keys from database.
