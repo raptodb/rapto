@@ -42,22 +42,41 @@ ptr: [*:0]u8,
 
 /// Initializes string field duping it with allocator.
 /// String must have a length less than 2^64-1.
-pub inline fn initAlloc(_: Self, allocator: std.mem.Allocator, string: []const u8) error{ OutOfMemory, TypeOverflow }!Self {
-    return .init(undefined, try allocator.dupeZ(u8, @constCast(string)));
+pub inline fn initAlloc(allocator: std.mem.Allocator, string: []const u8) error{ OutOfMemory, TypeOverflow }!Self {
+    return .init(try allocator.dupeZ(u8, @constCast(string)));
 }
 
 /// Initializes string field with string.
 /// String must have a length less than 2^64-1.
-pub inline fn init(_: Self, string: []u8) error{TypeOverflow}!Self {
+pub inline fn init(string: []u8) error{TypeOverflow}!Self {
     return if (string.len < std.math.maxInt(u64)) .{ .ptr = @ptrCast(string) } else error.TypeOverflow;
+}
+
+/// Deserialization method for StringField. Reads from IO reader.
+pub fn deserialize(reader: *std.Io.Reader, allocator: std.mem.Allocator) error{ OutOfMemory, TypeOverflow, EndOfStream, ReadFailed }!Self {
+    const fieldlen = try reader.takeInt(u64, comptime .little);
+
+    const str = try allocator.allocSentinel(u8, fieldlen, 0);
+    errdefer allocator.free(str);
+
+    try reader.readSliceAll(str);
+    return .init(str);
+}
+
+/// Serialization method for StringField. Writes from IO writer.
+pub fn serialize(self: Self, writer: *std.Io.Writer) error{WriteFailed}!void {
+    const ptr_len = self.len();
+    try writer.writeInt(u64, ptr_len, comptime .little);
+    try writer.writeAll(self.ptr[0..ptr_len]);
 }
 
 /// Copies string to current field string.
 /// If length is different to old field string make a realloc.
 /// String must have a length less than 2^64-1.
 pub fn set(self: *Self, allocator: std.mem.Allocator, string: []const u8) error{ OutOfMemory, TypeOverflow }!void {
-    if (self.len() != string.len) if (string.len < std.math.maxInt(u64)) {
-        const slice = try allocator.realloc(self.ptr[0 .. self.len() + 1], string.len + 1);
+    const ptr_len = self.len();
+    if (ptr_len != string.len) if (string.len < std.math.maxInt(u64)) {
+        const slice = try allocator.realloc(self.ptr[0 .. ptr_len + 1], string.len + 1);
         self.ptr = @ptrCast(slice.ptr);
         self.ptr[string.len] = 0;
     }

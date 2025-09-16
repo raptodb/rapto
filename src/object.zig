@@ -130,7 +130,7 @@ pub const Object = struct {
         obj.field = switch (field_type) {
             .integer => .{ .integer = value },
             .decimal => .{ .decimal = value },
-            .string => .{ .string = try obj.field.string.initAlloc(allocator, value) },
+            .string => .{ .string = try .initAlloc(allocator, value) },
         };
 
         return obj;
@@ -159,17 +159,8 @@ pub const Object = struct {
         obj.type = std.enums.fromInt(FieldType, try deserialized.takeByte()) orelse return error.UnsupportedType;
         obj.field = switch (obj.type) {
             .integer => .{ .integer = try deserialized.takeInt(i64, comptime .little) },
-            .decimal => .{ .decimal = @bitCast(try deserialized.takeInt(u64, comptime .little)) },
-            .string => blk: {
-                const fieldlen = try deserialized.takeInt(u64, comptime .little);
-
-                // for string: get length, then read string
-                const str = try allocator.allocSentinel(u8, fieldlen, 0);
-                errdefer allocator.free(str);
-
-                try deserialized.readSliceAll(str);
-                break :blk .{ .string = try obj.field.string.init(str) };
-            },
+            .decimal => .{ .decimal = @bitCast((try deserialized.takeArray(8)).*) },
+            .string => .{ .string = try .deserialize(&deserialized, allocator) },
         };
 
         return obj;
@@ -198,10 +189,7 @@ pub const Object = struct {
         switch (self.type) {
             .integer => try serialized.writeInt(i64, self.field.integer, comptime .little),
             .decimal => try serialized.writeAll(std.mem.asBytes(&self.field.decimal)),
-            .string => {
-                try serialized.writeInt(u64, self.field.string.len(), comptime .little);
-                try serialized.writeAll(self.field.string.get());
-            },
+            .string => try self.field.string.serialize(&serialized),
         }
 
         return serialized.buffered();
