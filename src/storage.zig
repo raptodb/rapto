@@ -235,6 +235,16 @@ pub const Storage = struct {
         return i;
     }
 
+    /// Duplicates object with same metadata and different key.
+    pub fn dupe(self: *Self, obj: *Object, key: []const u8) PutError!void {
+        const i = switch (obj.type) {
+            .integer => try self.put(.integer, key, obj.field.integer),
+            .decimal => try self.put(.decimal, key, obj.field.decimal),
+            .string => try self.put(.string, key, obj.field.string.get()),
+        };
+        self.store.items[i].metadata = obj.metadata;
+    }
+
     /// Removes item from index from store.
     /// If key is found, deallocates and removes it.
     pub noinline fn removeAtIndex(self: *Self, index: u64) error{ExcedeedSpaceLimit}!void {
