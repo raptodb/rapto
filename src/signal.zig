@@ -56,11 +56,11 @@ pub fn hsignal() void {
             const msg = switch (sig) {
                 SIGINT => return,
                 SIGABRT => switch (ABRT_ctx) {
-                    .OOM => "OUT-OF-MEMORY: no RAM space. EXIT.",
-                    .OOD => "OUT-OF-DISK: no disk space. EXIT. ",
-                    .UE => "UNEXPECTED ERROR. EXIT.           ",
+                    .OOM => "OUT-OF-MEMORY: no RAM space. EXIT.\n",
+                    .OOD => "OUT-OF-DISK: no disk space. EXIT. \n",
+                    .UE => "UNEXPECTED ERROR. EXIT.           \n",
                 },
-                SIGTERM => "SIGTERM received. EXIT.           ",
+                SIGTERM => "SIGTERM received. EXIT.           \n",
                 else => unreachable,
             };
 
