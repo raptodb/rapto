@@ -62,8 +62,8 @@ pub inline fn parseStringType(value: []const u8) []const u8 {
 
 /// Appends item to std.ArrayList with growing of 1.
 pub inline fn appendNoGrowing(
-    allocator: std.mem.Allocator,
     comptime T: type,
+    allocator: std.mem.Allocator,
     array: *std.ArrayList(T),
     item: T,
 ) error{OutOfMemory}!void {

@@ -152,7 +152,7 @@ pub const Server = struct {
 
             // add current client to list
             // of connected clients
-            try utils.appendNoGrowing(self.allocator, *Client, &self.clients, client);
+            try utils.appendNoGrowing(*Client, self.allocator, &self.clients, client);
         }
 
         client.log(self.logger, .info, "Connected.", .{});

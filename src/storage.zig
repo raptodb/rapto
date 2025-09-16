@@ -314,7 +314,7 @@ pub const Storage = struct {
         // if allocator is not std.heap.FixedBufferAllocator
         if (self.conf.db_size == null) {
             // add to list growing memory 1 at a time
-            try utils.appendNoGrowing(self.allocator, Object, &self.store, obj);
+            try utils.appendNoGrowing(Object, self.allocator, &self.store, obj);
         }
         // if allocator allocates in stack
         else try self.store.append(self.allocator, obj);

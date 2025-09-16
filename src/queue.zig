@@ -51,7 +51,7 @@ pub fn ThreadSafeQueue(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            try appendNoGrowing(allocator, T, &self.queue, item);
+            try appendNoGrowing(T, allocator, &self.queue, item);
             self.cond.signal();
         }
 
