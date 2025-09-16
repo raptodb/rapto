@@ -57,8 +57,8 @@ pub inline fn init(_: Self, string: []u8) error{TypeOverflow}!Self {
 /// String must have a length less than 2^64-1.
 pub fn set(self: *Self, allocator: std.mem.Allocator, string: []const u8) error{ OutOfMemory, TypeOverflow }!void {
     if (self.len() != string.len) if (string.len < std.math.maxInt(u64)) {
-        const slice = try allocator.realloc(self.get(), string.len + 1);
-        self.ptr = @ptrCast(slice);
+        const slice = try allocator.realloc(self.ptr[0 .. self.len() + 1], string.len + 1);
+        self.ptr = @ptrCast(slice.ptr);
         self.ptr[string.len] = 0;
     }
     // string overflows for length
@@ -69,7 +69,7 @@ pub fn set(self: *Self, allocator: std.mem.Allocator, string: []const u8) error{
 
 /// Returns string field as mutable array.
 pub inline fn get(self: Self) []u8 {
-    return std.mem.sliceTo(self.ptr, 0);
+    return self.ptr[0..self.len()];
 }
 
 /// Returns length of string field.
