@@ -74,11 +74,11 @@ pub fn SET(self: Self, args: []const u8) !void {
 
     // detects value type from syntax,
     // parses correlated value and put on store
-    switch (try utils.valueTypeFromSerialized(value)) {
-        .integer => _ = try self.storage.put(.integer, key, try utils.parseIntType(value)),
-        .decimal => _ = try self.storage.put(.decimal, key, try utils.parseDecimalType(value)),
-        .string => _ = try self.storage.put(.string, key, utils.parseStringType(value)),
-    }
+    _ = switch (try utils.valueTypeFromSerialized(value)) {
+        .integer => try self.storage.put(.integer, key, try utils.parseIntType(value)),
+        .decimal => try self.storage.put(.decimal, key, try utils.parseDecimalType(value)),
+        .string => try self.storage.put(.string, key, utils.parseStringType(value)),
+    };
 }
 
 /// Increments/decrements `integer` or `decimal` value.
