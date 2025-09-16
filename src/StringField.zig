@@ -81,3 +81,9 @@ pub inline fn len(self: Self) u64 {
 pub inline fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.ptr[0 .. self.len() + 1]);
 }
+
+// module tested in `object.zig`
+
+test "reftest" {
+    _ = std.testing.refAllDeclsRecursive(@This());
+}

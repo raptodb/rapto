@@ -51,6 +51,7 @@ test {
     _ = @import("Query.zig");
     _ = @import("queue.zig");
     _ = @import("storage.zig");
+    _ = @import("StringField.zig");
     _ = @import("utils.zig");
 
     @import("std").testing.refAllDecls(@This());
