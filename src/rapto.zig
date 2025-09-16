@@ -148,7 +148,7 @@ inline fn exitProcedure(storage: *Storage, queue: *ThreadSafeQueue(Query)) void 
 
     snap.snap(storage, &logger, false) catch {};
     // send quit to main putting null client on queue
-    queue.put(storage.allocator, .{}) catch std.process.abort();
+    queue.put(storage.allocator, .{}) catch signal.OOM();
 }
 
 /// Footer for actions.
