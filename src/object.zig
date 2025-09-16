@@ -36,6 +36,8 @@ const std = @import("std");
 
 const signal = @import("signal.zig");
 
+const StringField = @import("StringField.zig");
+
 /// Represents database object with key, value and metadata.
 /// Optimized for L1/L2 cache hit. Aligned of 32 byte.
 pub const Object = struct {
@@ -62,8 +64,8 @@ pub const Object = struct {
         decimal: f64,
 
         /// String is byte array data.
-        /// Limit size: 2^64.
-        string: *[]u8,
+        /// Limit size: 2^64-1.
+        string: StringField,
     } = undefined,
 
     /// Stores metadata information associated with a key.
@@ -75,6 +77,7 @@ pub const Object = struct {
         return self.key[0..self.len];
     }
 
+    /// Set key through pointer and length.
     pub inline fn setKey(self: *Self, key: [*]u8, len: u64) void {
         self.key = key;
         self.len = @intCast(len);
@@ -102,7 +105,7 @@ pub const Object = struct {
     };
 
     pub const SetError = error{ TypeOverflow, OutOfMemory };
-    pub const DeserializeError = error{ EndOfStream, UnsupportedType, OutOfMemory, ReadFailed };
+    pub const DeserializeError = error{ TypeOverflow, EndOfStream, UnsupportedType, OutOfMemory, ReadFailed };
 
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
@@ -127,11 +130,7 @@ pub const Object = struct {
         obj.field = switch (field_type) {
             .integer => .{ .integer = value },
             .decimal => .{ .decimal = value },
-            .string => blk: {
-                const str = try allocator.create([]u8);
-                str.* = try allocator.dupe(u8, value.*);
-                break :blk .{ .string = str };
-            },
+            .string => .{ .string = try obj.field.string.initAlloc(allocator, value) },
         };
 
         return obj;
@@ -165,11 +164,11 @@ pub const Object = struct {
                 const fieldlen = try deserialized.takeInt(u64, comptime .little);
 
                 // for string: get length, then read string
-                const str = try allocator.create([]u8);
-                str.* = try deserialized.readAlloc(allocator, fieldlen);
+                const str = try allocator.allocSentinel(u8, fieldlen, 0);
                 errdefer allocator.free(str);
 
-                break :blk .{ .string = str };
+                try deserialized.readSliceAll(str);
+                break :blk .{ .string = try obj.field.string.init(str) };
             },
         };
 
@@ -200,8 +199,8 @@ pub const Object = struct {
             .integer => try serialized.writeInt(i64, self.field.integer, comptime .little),
             .decimal => try serialized.writeAll(std.mem.asBytes(&self.field.decimal)),
             .string => {
-                try serialized.writeInt(u64, self.field.string.len, comptime .little);
-                try serialized.writeAll(self.field.string.*);
+                try serialized.writeInt(u64, self.field.string.len(), comptime .little);
+                try serialized.writeAll(self.field.string.get());
             },
         }
 
@@ -211,7 +210,7 @@ pub const Object = struct {
     /// Returns size of serialized object
     pub inline fn getSizeFromSerialized(self: *const Self) u64 {
         // field size is present if field type is string
-        const fieldsize: u64 = if (self.type == .string) self.field.string.len else 0;
+        const fieldsize: u64 = if (self.type == .string) self.field.string.len() else 0;
         // size is composed of key size (4 bytes)
         // + key length + field type (1 byte) +
         // + field length + metadata (16 bytes)
@@ -223,17 +222,16 @@ pub const Object = struct {
     pub inline fn getSize(self: *const Self) u64 {
         var size: u64 = 32; // min size for a object
         size += self.len;
-        size += if (self.type == .string) self.field.string.len else 0;
+        size += if (self.type == .string) self.field.string.len() + 1 else 0;
         return size;
     }
 
     /// Frees all allocated memory associated with this object
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         // if field is string, deallocates it
-        if (self.type == .string) {
-            allocator.free(self.field.string.*);
-            allocator.destroy(self.field.string);
-        }
+        if (self.type == .string)
+            self.field.string.deinit(allocator);
+
         // deallocated key
         allocator.free(self.getKey());
         allocator.destroy(self.metadata);
@@ -256,7 +254,7 @@ test "set" {
     var dobj = try Object.set(std.testing.allocator, .decimal, dkey, dvalue);
     defer dobj.deinit(std.testing.allocator);
 
-    var sobj = try Object.set(std.testing.allocator, .string, skey, &svalue);
+    var sobj = try Object.set(std.testing.allocator, .string, skey, svalue);
     defer sobj.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings(ikey, iobj.getKey());
@@ -264,14 +262,14 @@ test "set" {
     try std.testing.expectEqualStrings(dkey, dobj.getKey());
     try std.testing.expect(dvalue == dobj.field.decimal);
     try std.testing.expectEqualStrings(skey, sobj.getKey());
-    try std.testing.expectEqualStrings(svalue, sobj.field.string.*);
+    try std.testing.expectEqualStrings(svalue, sobj.field.string.get());
 }
 
 test "serialize and deserialize" {
     const key = "keyname";
     const value: []const u8 = "serialized string";
 
-    var obj = try Object.set(std.testing.allocator, .string, key, &value);
+    var obj = try Object.set(std.testing.allocator, .string, key, value);
     defer obj.deinit(std.testing.allocator);
 
     const serialized = try obj.serialize(std.testing.allocator);
@@ -281,7 +279,7 @@ test "serialize and deserialize" {
     defer deserialized.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings(obj.getKey(), deserialized.getKey());
-    try std.testing.expectEqualStrings(obj.field.string.*, deserialized.field.string.*);
+    try std.testing.expectEqualStrings(obj.field.string.get(), deserialized.field.string.get());
     try std.testing.expectEqual(obj.metadata.access_times, deserialized.metadata.access_times);
     try std.testing.expectEqual(obj.metadata.last_access, deserialized.metadata.last_access);
 }

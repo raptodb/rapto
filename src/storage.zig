@@ -204,19 +204,11 @@ pub const Storage = struct {
         if (field_type == obj.type) {
             @branchHint(.likely);
 
-            obj.field = switch (field_type) {
-                .integer => .{ .integer = value },
-                .decimal => .{ .decimal = value },
-                .string => blk: {
-
-                    // conv value to anotyher pouinter
-                    if (value.len != obj.field.string.len)
-                        obj.field.string.* = try self.allocator.realloc(obj.field.string.*, value.len);
-
-                    @memcpy(obj.field.string.*, value.*);
-                    break :blk .{ .string = obj.field.string };
-                },
-            };
+            switch (field_type) {
+                .integer => obj.field.integer = value,
+                .decimal => obj.field.decimal = value,
+                .string => try obj.field.string.set(self.allocator, value),
+            }
 
             obj.metadata.update();
         }
@@ -358,7 +350,7 @@ test "storage" {
     defer storage.deinit();
 
     const v1: []const u8 = "bar";
-    const index1 = try storage.put(.string, "foo", &v1);
+    const index1 = try storage.put(.string, "foo", v1);
     try std.testing.expect(index1 == 0);
 
     const index2 = try storage.put(.integer, "num", 42);
@@ -366,18 +358,18 @@ test "storage" {
 
     const obj1 = storage.get("foo") orelse return error.TestExpectedObject;
     try std.testing.expectEqualStrings("foo", obj1.getKey());
-    try std.testing.expectEqualStrings("bar", obj1.field.string.*);
+    try std.testing.expectEqualStrings("bar", obj1.field.string.get());
 
     const obj2 = storage.get("num") orelse return error.TestExpectedObject;
     try std.testing.expect(obj2.field.integer == 42);
 
     // overwriting
     const v2: []const u8 = "baz";
-    const index3 = try storage.put(.string, "foo", &v2);
+    const index3 = try storage.put(.string, "foo", v2);
     try std.testing.expect(index1 == index3 - 1); // index1 promoted after put
 
     const obj3 = storage.get("foo") orelse return error.TestExpectedObject;
-    try std.testing.expectEqualStrings("baz", obj3.field.string.*);
+    try std.testing.expectEqualStrings("baz", obj3.field.string.get());
 
     try storage.removeAtIndex(index1);
     try std.testing.expect(storage.get("num") == null);

@@ -77,7 +77,7 @@ pub fn SET(self: Self, args: []const u8) !void {
     switch (try utils.valueTypeFromSerialized(value)) {
         .integer => _ = try self.storage.put(.integer, key, try utils.parseIntType(value)),
         .decimal => _ = try self.storage.put(.decimal, key, try utils.parseDecimalType(value)),
-        .string => _ = try self.storage.put(.string, key, &utils.parseStringType(value)),
+        .string => _ = try self.storage.put(.string, key, utils.parseStringType(value)),
     }
 }
 
@@ -191,7 +191,7 @@ pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
     obj.metadata.update();
 
     if (obj.type == .string) {
-        const value = try std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string.*});
+        const value = try std.fmt.allocPrint(self.storage.allocator, "\"{s}\"", .{obj.field.string.get()});
         return .{ value, true };
     }
 
@@ -497,7 +497,7 @@ pub inline fn IDLE(self: Self, key: []const u8) !struct { []const u8, bool } {
 /// Complexity O(n)
 pub inline fn LEN(self: Self, key: []const u8) !struct { []const u8, bool } {
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
-    const size = if (obj.type == .string) obj.field.string.len else 8;
+    const size = if (obj.type == .string) obj.field.string.len() else 8;
 
     // use preallocated buffer on stack
     var buf: [20]u8 = undefined;
@@ -646,7 +646,7 @@ pub fn RESTORE(self: Self, obj: []const u8) !void {
     const i = switch (d.type) {
         .integer => try self.storage.put(.integer, d.getKey(), d.field.integer),
         .decimal => try self.storage.put(.decimal, d.getKey(), d.field.decimal),
-        .string => try self.storage.put(.string, d.getKey(), d.field.string),
+        .string => try self.storage.put(.string, d.getKey(), d.field.string.get()),
     };
 
     self.storage.store.items[i].metadata = d.metadata;
@@ -715,7 +715,7 @@ pub fn COPY(self: Self, args: []const u8) !void {
     const i = switch (d.type) {
         .integer => try self.storage.put(.integer, d.getKey(), d.field.integer),
         .decimal => try self.storage.put(.decimal, d.getKey(), d.field.decimal),
-        .string => try self.storage.put(.string, d.getKey(), d.field.string),
+        .string => try self.storage.put(.string, d.getKey(), d.field.string.get()),
     };
 
     self.storage.store.items[i].metadata = d.metadata;
