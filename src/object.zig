@@ -240,13 +240,11 @@ pub const Object = struct {
     }
 };
 
-test "set" {
+test "integer/decimal set" {
     const ikey = "integerkey";
     const ivalue: i64 = 42;
     const dkey = "decimalkey";
     const dvalue: f64 = 3.14;
-    const skey = "stringkey";
-    const svalue: []const u8 = "text in key";
 
     var iobj = try Object.set(std.testing.allocator, .integer, ikey, ivalue);
     defer iobj.deinit(std.testing.allocator);
@@ -254,15 +252,27 @@ test "set" {
     var dobj = try Object.set(std.testing.allocator, .decimal, dkey, dvalue);
     defer dobj.deinit(std.testing.allocator);
 
-    var sobj = try Object.set(std.testing.allocator, .string, skey, svalue);
-    defer sobj.deinit(std.testing.allocator);
-
     try std.testing.expectEqualStrings(ikey, iobj.getKey());
     try std.testing.expect(ivalue == iobj.field.integer);
     try std.testing.expectEqualStrings(dkey, dobj.getKey());
     try std.testing.expect(dvalue == dobj.field.decimal);
-    try std.testing.expectEqualStrings(skey, sobj.getKey());
-    try std.testing.expectEqualStrings(svalue, sobj.field.string.get());
+}
+
+test "string set" {
+    const key = "stringkey";
+    const value: []const u8 = "text in key";
+
+    var obj = try Object.set(std.testing.allocator, .string, key, value);
+    defer obj.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualStrings(key, obj.getKey());
+    try std.testing.expectEqualStrings(value, obj.field.string.get());
+
+    const value2: []const u8 = "new text for this test";
+    try obj.field.string.set(std.testing.allocator, value2);
+
+    try std.testing.expectEqualStrings(value2, obj.field.string.get());
+    try std.testing.expect(value2.len == obj.field.string.len());
 }
 
 test "serialize and deserialize" {
