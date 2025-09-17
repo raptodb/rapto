@@ -125,7 +125,7 @@ pub inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u
 /// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
 pub const spawn = struct {
     fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
-        return std.Thread.spawn(.{}, func, args) catch return error.ThreadError;
+        return std.Thread.spawn(comptime .{}, func, args) catch return error.ThreadError;
     }
 }.inner;
 
