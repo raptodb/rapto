@@ -36,6 +36,8 @@ const std = @import("std");
 
 const FieldType = @import("object.zig").Object.FieldType;
 
+const hash = std.hash.XxHash3.hash;
+
 /// Custom integer parsing with
 /// default i64 type and MismatchType error.
 pub inline fn parseIntType(value: []const u8) error{MismatchType}!i64 {
@@ -92,11 +94,6 @@ pub fn valueTypeFromSerialized(noalias value: []const u8) error{TypeOverflow}!Fi
     return .integer;
 }
 
-/// Default hash algorithm with xxHash3.
-inline fn hash(noalias value: []const u8) u64 {
-    return std.hash.XxHash3.hash(0, value);
-}
-
 /// Advanced equal function with vectorization and hashing
 /// checking. Faster if len <= 16.
 pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool {
@@ -107,7 +104,7 @@ pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool
     }
 
     // hash checking usually does not match
-    else if (hash(a) != hash(b)) {
+    else if (hash(0, a) != hash(0, b)) {
         @branchHint(.likely);
         return false;
     }
