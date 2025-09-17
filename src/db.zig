@@ -76,13 +76,13 @@ pub fn SET(self: Self, args: []const u8) !void {
     // it is encapsulated with ""
     _ = if (value[0] == '"' and value[value.len - 1] == '"')
         // value is string if it is encapsulated with ""
-        try self.storage.put(.string, key, utils.parseStringType(value))
+        try self.storage.put(.string, key, value[1 .. value.len - 1])
     else if (std.mem.lastIndexOfScalar(u8, value, '.') != null)
         // value is decimal if contains a dot
-        try self.storage.put(.decimal, key, try utils.parseDecimalType(value))
+        try self.storage.put(.decimal, key, try utils.parseNumeric(f64, value))
     else
         // probably a integer
-        try self.storage.put(.integer, key, try utils.parseIntType(value));
+        try self.storage.put(.integer, key, try utils.parseNumeric(i64, value));
 }
 
 /// Increments/decrements `integer` or `decimal` value.
@@ -110,7 +110,7 @@ pub fn UPDATE(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
     const key, const string_value = try utils.kvFormat(args);
-    const value = try utils.parseDecimalType(string_value);
+    const value = try utils.parseNumeric(f64, string_value);
 
     const obj = self.storage.get(key) orelse return error.KeyNotFound;
 
@@ -411,7 +411,7 @@ pub inline fn FREQ(self: Self, arg: []const u8) !struct { []const u8, bool } {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
-        obj.metadata.access_times = try utils.parseUintType(string_value);
+        obj.metadata.access_times = try utils.parseNumeric(u64, string_value);
     }
     // if freq is to get
     else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;
@@ -447,7 +447,7 @@ pub inline fn LAST(self: Self, arg: []const u8) !struct { []const u8, bool } {
         const key, const string_value = args;
 
         obj = self.storage.get(key) orelse return error.KeyNotFound;
-        obj.metadata.last_access = try utils.parseIntType(string_value);
+        obj.metadata.last_access = try utils.parseNumeric(i64, string_value);
     }
     // if last access is to get
     else |_| obj = self.storage.get(arg) orelse return error.KeyNotFound;

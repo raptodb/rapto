@@ -38,28 +38,14 @@ const FieldType = @import("object.zig").Object.FieldType;
 
 const hash = std.hash.XxHash3.hash;
 
-/// Custom integer parsing with
-/// default i64 type and MismatchType error.
-pub inline fn parseIntType(value: []const u8) error{MismatchType}!i64 {
-    return std.fmt.parseInt(i64, value, 10) catch return error.MismatchType;
-}
-
-/// Custom integer parsing with
-/// default u64 type and MismatchType error.
-pub inline fn parseUintType(value: []const u8) error{MismatchType}!u64 {
-    return std.fmt.parseInt(u64, value, 10) catch return error.MismatchType;
-}
-
-/// Custom decimal parsing with
-/// default f64 type and MismatchType error.
-pub inline fn parseDecimalType(value: []const u8) error{MismatchType}!f64 {
-    return std.fmt.parseFloat(f64, value) catch return error.MismatchType;
-}
-
-/// Custom string parsing with MismatchType
-/// error. Removes incapsulation of "" and returns it slice.
-pub inline fn parseStringType(value: []const u8) []const u8 {
-    return value[1 .. value.len - 1];
+/// Custom integer/decimal parsing with MismatchType error.
+pub inline fn parseNumeric(comptime T: type, value: []const u8) error{MismatchType}!T {
+    const parsed = switch (@typeInfo(T)) {
+        .int => std.fmt.parseInt(T, value, 10),
+        .float => std.fmt.parseFloat(T, value),
+        else => unreachable,
+    };
+    return parsed catch error.MismatchType;
 }
 
 /// Appends item to std.ArrayList with growing of 1.
