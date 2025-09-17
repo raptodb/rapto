@@ -37,6 +37,12 @@ const std = @import("std");
 const FieldType = @import("object.zig").Object.FieldType;
 
 const hash = std.hash.XxHash3.hash;
+/// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
+pub const spawn = struct {
+    fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
+        return std.Thread.spawn(comptime .{}, func, args) catch return error.ThreadError;
+    }
+}.inner;
 
 /// Custom integer/decimal parsing with MismatchType error.
 pub inline fn parseNumeric(comptime T: type, value: []const u8) error{MismatchType}!T {
@@ -87,13 +93,6 @@ pub inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u
     const sep: u64 = std.mem.indexOfScalarPos(u8, args, 1, ' ') orelse return error.MissingTokens;
     return .{ args[0..sep], args[sep + 1 ..] };
 }
-
-/// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
-pub const spawn = struct {
-    fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
-        return std.Thread.spawn(comptime .{}, func, args) catch return error.ThreadError;
-    }
-}.inner;
 
 test "key value format" {
     const key1, const value1 = try kvFormat("key value");
