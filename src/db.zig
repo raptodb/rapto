@@ -139,7 +139,7 @@ pub fn RENAME(self: Self, args: []const u8) !void {
     var old_index: ?u64 = null;
 
     var i: u64 = self.storage.store.items.len;
-    while (i > 0) {
+    while (i != 0) {
         i -= 1;
 
         const obj = &self.storage.store.items[i];
@@ -278,7 +278,7 @@ pub fn LIST(self: Self) !struct { []const u8, bool } {
 
     // in order of priority
     var i: u64 = len;
-    while (i > 0) {
+    while (i != 0) {
         i -= 1;
         keys.appendAssumeCapacity(self.storage.store.items[i].getKey());
     }
@@ -652,7 +652,7 @@ pub fn RESTORE(self: Self, obj: []const u8) !void {
 /// Complexity O(n)
 pub fn ERASE(self: Self) !void {
     var i: u64 = self.storage.store.items.len;
-    while (i > 0) {
+    while (i != 0) {
         i -= 1;
         try self.storage.removeAtIndex(i);
     }

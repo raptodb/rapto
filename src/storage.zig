@@ -152,7 +152,7 @@ pub const Storage = struct {
         var writer = self.file.writerStreaming(&buf);
 
         var i: u64 = self.store.items.len;
-        while (i > 0) {
+        while (i != 0) {
             i -= 1;
 
             // serialize object, serialized
@@ -263,7 +263,7 @@ pub const Storage = struct {
     /// if object is found updates the metadata and promotes.
     pub fn search(self: *Self, noalias key: []const u8) ?u64 {
         var i: u64 = self.store.items.len;
-        while (i > 0) {
+        while (i != 0) {
             @branchHint(.likely);
 
             i -= 1;
