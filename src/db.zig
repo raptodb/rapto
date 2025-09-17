@@ -72,13 +72,17 @@ pub fn SET(self: Self, args: []const u8) !void {
 
     const key, const value = try utils.kvFormat(args);
 
-    // detects value type from syntax,
-    // parses correlated value and put on store
-    _ = switch (try utils.valueTypeFromSerialized(value)) {
-        .integer => try self.storage.put(.integer, key, try utils.parseIntType(value)),
-        .decimal => try self.storage.put(.decimal, key, try utils.parseDecimalType(value)),
-        .string => try self.storage.put(.string, key, utils.parseStringType(value)),
-    };
+    // check if value is string if
+    // it is encapsulated with ""
+    _ = if (value[0] == '"' and value[value.len - 1] == '"')
+        // value is string if it is encapsulated with ""
+        try self.storage.put(.string, key, utils.parseStringType(value))
+    else if (std.mem.lastIndexOfScalar(u8, value, '.') != null)
+        // value is decimal if contains a dot
+        try self.storage.put(.decimal, key, try utils.parseDecimalType(value))
+    else
+        // probably a integer
+        try self.storage.put(.integer, key, try utils.parseIntType(value));
 }
 
 /// Increments/decrements `integer` or `decimal` value.

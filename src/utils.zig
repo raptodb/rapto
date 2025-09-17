@@ -74,26 +74,6 @@ pub inline fn appendNoGrowing(
     array.items[array.items.len - 1] = item;
 }
 
-/// Parses enum value type from string.
-pub fn valueTypeFromSerialized(noalias value: []const u8) error{TypeOverflow}!FieldType {
-    // check if value is string if
-    // it is encapsulated with ""
-    if (std.mem.startsWith(u8, value, "\"") and std.mem.endsWith(u8, value, "\"")) {
-        if (value.len > std.math.maxInt(u32)) {
-            @branchHint(.unlikely);
-            return error.TypeOverflow;
-        }
-
-        return .string;
-    }
-    // check if value is decimal if
-    // contains a dot
-    else if (std.mem.indexOfScalar(u8, value, '.') != null)
-        return .decimal;
-    // probably a integer
-    return .integer;
-}
-
 /// Advanced equal function with vectorization and hashing
 /// checking. Faster if len <= 16.
 pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool {
