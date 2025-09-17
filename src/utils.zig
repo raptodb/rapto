@@ -114,8 +114,11 @@ pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool
 }
 
 /// Split a text with space separator.
+/// Useful to split key and arguments.
 pub inline fn kvFormat(args: []const u8) error{MissingTokens}!struct { []const u8, []const u8 } {
-    const sep = std.mem.indexOfScalar(u8, args, ' ') orelse return error.MissingTokens;
+    // starting from 1st index because key
+    // has a minimum length of 1
+    const sep: u64 = std.mem.indexOfScalarPos(u8, args, 1, ' ') orelse return error.MissingTokens;
     return .{ args[0..sep], args[sep + 1 ..] };
 }
 
