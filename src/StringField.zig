@@ -40,16 +40,17 @@ const Self = @This();
 /// Limit size: 2^64-1.
 ptr: [*:0]u8,
 
-/// Initializes string field duping it with allocator.
-/// String must have a length less than 2^64-1.
-pub inline fn initAlloc(allocator: std.mem.Allocator, string: []const u8) error{ OutOfMemory, TypeOverflow }!Self {
-    return .init(try allocator.dupeZ(u8, @constCast(string)));
-}
-
 /// Initializes string field with string.
 /// String must have a length less than 2^64-1.
 pub inline fn init(string: []u8) error{TypeOverflow}!Self {
     return if (string.len < std.math.maxInt(u64)) .{ .ptr = @ptrCast(string) } else error.TypeOverflow;
+}
+
+/// Serialization method for StringField. Writes from IO writer.
+pub fn serialize(self: Self, writer: *std.Io.Writer) error{WriteFailed}!void {
+    const ptr_len = self.len();
+    try writer.writeInt(u64, ptr_len, comptime .little);
+    try writer.writeAll(self.ptr[0..ptr_len]);
 }
 
 /// Deserialization method for StringField. Reads from IO reader.
@@ -61,13 +62,6 @@ pub fn deserialize(reader: *std.Io.Reader, allocator: std.mem.Allocator) error{ 
 
     try reader.readSliceAll(str);
     return .init(str);
-}
-
-/// Serialization method for StringField. Writes from IO writer.
-pub fn serialize(self: Self, writer: *std.Io.Writer) error{WriteFailed}!void {
-    const ptr_len = self.len();
-    try writer.writeInt(u64, ptr_len, comptime .little);
-    try writer.writeAll(self.ptr[0..ptr_len]);
 }
 
 /// Copies string to current field string.

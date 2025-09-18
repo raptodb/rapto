@@ -130,7 +130,7 @@ pub const Object = struct {
         obj.field = switch (field_type) {
             .integer => .{ .integer = value },
             .decimal => .{ .decimal = value },
-            .string => .{ .string = try .initAlloc(allocator, value) },
+            .string => .{ .string = try .init(try allocator.dupeZ(u8, value)) },
         };
 
         return obj;
