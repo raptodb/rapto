@@ -36,7 +36,6 @@ const std = @import("std");
 
 const FieldType = @import("object.zig").Object.FieldType;
 
-const hash = std.hash.XxHash3.hash;
 /// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
 pub const spawn = struct {
     fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
@@ -70,19 +69,23 @@ pub inline fn appendNoGrowing(
 /// checking. Faster if len <= 16.
 pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool {
     if (a.len != b.len) return false;
-    if (a.len <= 16) {
-        @branchHint(.likely);
-        return std.mem.eql(u8, a, b);
+    if (a.len > 16) {
+        @branchHint(.unlikely);
+
+        if (!equalHashes(a, b)) return false;
     }
 
-    // hash checking usually does not match
-    else if (hash(0, a) != hash(0, b)) {
-        @branchHint(.likely);
-        return false;
-    }
+    // compare if strings are shorter than 16
+    // or hashes are equals
+    return std.mem.eql(u8, a, b);
+}
 
-    // if hashes are equals, compare
-    else return std.mem.eql(u8, a, b);
+/// Helper for `advancedCompare()`. Compares 2 XxHash3 hashes
+/// and return true if hashes are equals.
+inline fn equalHashes(noalias a: []const u8, noalias b: []const u8) bool {
+    const hash_a = std.hash.XxHash3.hash(comptime 0, a);
+    const hash_b = std.hash.XxHash3.hash(comptime 0, b);
+    return hash_a == hash_b;
 }
 
 /// Split a text with space separator.
