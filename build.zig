@@ -38,7 +38,6 @@ const defaultSystemLibs = [_][]const u8{"lz4"};
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
         .name = "raptodb",
@@ -54,7 +53,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
-            .optimize = optimize,
+            .optimize = .ReleaseFast,
             .single_threaded = false,
         }),
     });
