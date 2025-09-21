@@ -75,7 +75,6 @@ pub const ResolveError = Storage.PutError || error{
     UnsupportedType,
     NoKeysFound,
     UnknownArgument,
-    ExcedeedSpaceLimit,
     NoPersistence,
     OutOfMemory,
 };

@@ -69,7 +69,6 @@ pub noinline fn expandResolveError(err: ResolveError) []const u8 {
         error.InvalidMetadata => "ERR: metadata is corrupted.",
         error.NoKeysFound => "ERR: no keys found.",
         error.UnknownArgument => "ERR: invalid argument.",
-        error.ExcedeedSpaceLimit => "ERR: excedeed db space limit.",
         error.NoPersistence => "ERR: persistence disabled from server.",
         error.WriteFailed, error.ReadFailed => "ERR: IO failed.",
         error.UnsupportedType => "ERR: type is unrecognized or unsupported.",
@@ -104,7 +103,6 @@ pub noinline fn expandServerSessionError(err: ServerSessionError) []const u8 {
         error.ThreadError => "Cannot start thread.",
         error.BindError => "Cannot bind. Try to change port or try next time.",
         error.LoadingError => "Cannot load from storage. Read error occurred.",
-        error.ExcedeedSpaceLimit => "Cannot load from storage. Space limit excedeed.",
         error.OpenError => "Cannot open storage file.",
         else => "Unrecognized connection error.",
     };

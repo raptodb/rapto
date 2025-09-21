@@ -607,12 +607,6 @@ pub fn DB(self: Self, arg: []const u8) !struct { []const u8, bool } {
                 .{ std.fmt.bufPrint(&buf, "{d}", .{size}) catch unreachable, false }
             else
                 .{ "ALLRAM", false }
-        else if (utils.advancedCompare(arg, "size"))
-            .{ std.fmt.bufPrint(
-                &buf,
-                "{d}",
-                .{if (self.storage.conf.db_size) |size| size - self.storage.store_cap else std.math.maxInt(u64) - self.storage.store_cap},
-            ) catch unreachable, false }
         else
             error.UnknownArgument;
     };
@@ -652,11 +646,11 @@ pub fn RESTORE(self: Self, obj: []const u8) !void {
 /// This function has no arguments.
 ///
 /// Complexity O(n)
-pub fn ERASE(self: Self) !void {
+pub fn ERASE(self: Self) void {
     var i: u64 = self.storage.store.items.len;
     while (i != 0) {
         i -= 1;
-        try self.storage.removeAtIndex(i);
+        self.storage.removeAtIndex(i);
     }
 }
 
@@ -673,7 +667,7 @@ pub inline fn DEL(self: Self, key: []const u8) !void {
     @branchHint(.likely);
 
     const index = self.storage.search(key) orelse return error.KeyNotFound;
-    try self.storage.removeAtIndex(index);
+    self.storage.removeAtIndex(index);
 }
 
 /// Saves a snapshot of database

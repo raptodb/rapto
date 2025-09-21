@@ -54,16 +54,11 @@ pub const Storage = struct {
     /// Store of objects.
     store: std.ArrayList(Object),
 
-    /// Store capacity.
-    /// Should be changed with addition
-    /// or subtraction of object size.
-    store_cap: u64,
-
     conf: *RaptoConfig,
 
-    pub const LoadError = error{ LoadingError, ExcedeedSpaceLimit, OutOfMemory };
+    pub const LoadError = error{ LoadingError, OutOfMemory };
     pub const SaveError = error{ FileSeek, FileSync, WriteFailed, OutOfMemory, OutOfDisk };
-    pub const PutError = error{ TypeOverflow, ExcedeedSpaceLimit, OutOfMemory };
+    pub const PutError = error{ TypeOverflow, OutOfMemory };
 
     /// Initializes storage with an allocator, file and size in bytes.
     pub fn init(allocator: std.mem.Allocator, file: std.fs.File, conf: *RaptoConfig) Self {
@@ -71,7 +66,6 @@ pub const Storage = struct {
             .allocator = allocator,
             .file = file,
             .store = std.ArrayList(Object).initCapacity(allocator, 0) catch unreachable,
-            .store_cap = conf.db_size orelse std.math.maxInt(u64),
             .conf = conf,
         };
     }
@@ -99,10 +93,6 @@ pub const Storage = struct {
 
             reader.interface.readSliceAll(compressed) catch return error.LoadingError;
 
-            // decompression occupies a max 255 times more than compressed,
-            // for this reason, check firstly if it doesn't excedeed space limit
-            _ = std.math.sub(u64, self.store_cap, compressed.len *| 255) catch return error.ExcedeedSpaceLimit;
-
             // if it assumes it can allocate the compressed size for 255 times, decompresses
             const decompressed = lz4.decompress(self.allocator, compressed);
             self.allocator.free(compressed);
@@ -117,9 +107,6 @@ pub const Storage = struct {
                     return error.OutOfMemory;
                 };
                 errdefer obj.deinit(self.allocator);
-
-                // update capacity with loaded object
-                try self.removeCapacity(obj.getSize());
 
                 try self.store.append(self.allocator, obj);
                 i += 1; // increment loaded items
@@ -215,10 +202,6 @@ pub const Storage = struct {
         // if field type is not same, overwrites
         // object saving the same metadata
         else {
-            // restore size without this object,
-            // then add size with updated object
-            try self.addCapacity(obj.getSize());
-
             // update value and metadata
             var metadata = obj.metadata;
             metadata.update();
@@ -227,9 +210,6 @@ pub const Storage = struct {
 
             obj.* = try .set(self.allocator, field_type, key, value);
             obj.metadata = metadata;
-
-            // update capacity with updated object
-            try self.removeCapacity(obj.getSize());
         }
 
         return i;
@@ -247,11 +227,8 @@ pub const Storage = struct {
 
     /// Removes item from index from store.
     /// If key is found, deallocates and removes it.
-    pub noinline fn removeAtIndex(self: *Self, index: u64) error{ExcedeedSpaceLimit}!void {
+    pub noinline fn removeAtIndex(self: *Self, index: u64) void {
         var obj: *Object = @constCast(&self.store.orderedRemove(index));
-
-        // add capacity
-        try self.addCapacity(obj.getSize());
 
         // deallocate object and shrink
         obj.deinit(self.allocator);
@@ -299,18 +276,6 @@ pub const Storage = struct {
         std.sort.insertion(Object, self.store.items, {}, comptime compareLRU);
     }
 
-    /// Adds capacity when an item is freed.
-    pub inline fn addCapacity(self: *Self, size: u64) error{ExcedeedSpaceLimit}!void {
-        const v = std.math.add(u64, self.store_cap, size);
-        self.store_cap = v catch return error.ExcedeedSpaceLimit;
-    }
-
-    /// Removes capacity when an item is added.
-    pub inline fn removeCapacity(self: *Self, size: u64) error{ExcedeedSpaceLimit}!void {
-        const v = std.math.sub(u64, self.store_cap, size);
-        self.store_cap = v catch return error.ExcedeedSpaceLimit;
-    }
-
     /// Appends new object at head of the list.
     /// Returns the index of object.
     pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
@@ -318,16 +283,12 @@ pub const Storage = struct {
         var obj: Object = try .set(self.allocator, field_type, key, value);
         errdefer obj.deinit(self.allocator);
 
-        // update store capacity
-        try self.removeCapacity(obj.getSize());
-
         // if allocator is not std.heap.FixedBufferAllocator
-        if (self.conf.db_size == null) {
+        if (self.conf.db_size == null)
             // add to list growing memory 1 at a time
-            try utils.appendNoGrowing(Object, self.allocator, &self.store, obj);
-        }
-        // if allocator allocates in stack
-        else try self.store.append(self.allocator, obj);
+            try utils.appendNoGrowing(Object, self.allocator, &self.store, obj)
+        else // if allocator allocates in stack
+            try self.store.append(self.allocator, obj);
 
         // promote skipped because the array is reversed.
         // now the obj is already on the head.
@@ -381,7 +342,7 @@ test "storage" {
     const obj3 = storage.get("foo") orelse return error.TestExpectedObject;
     try std.testing.expectEqualStrings("baz", obj3.field.string.get());
 
-    try storage.removeAtIndex(index1);
+    storage.removeAtIndex(index1);
     try std.testing.expect(storage.get("num") == null);
 
     const index4 = storage.search("foo") orelse return error.TestExpectedObject;
