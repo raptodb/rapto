@@ -82,20 +82,22 @@ pub fn ThreadSafeQueue(comptime T: type) type {
 }
 
 test "queue" {
+    const allocator = std.testing.allocator;
+
     var q: ThreadSafeQueue(i32) = .{};
-    defer q.deinit(std.testing.allocator);
+    defer q.deinit(allocator);
 
-    try q.put(std.testing.allocator, 32);
-    try q.put(std.testing.allocator, 21);
-    try q.put(std.testing.allocator, 0);
-    try q.put(std.testing.allocator, 16);
-    try q.put(std.testing.allocator, 500);
+    try q.put(allocator, 32);
+    try q.put(allocator, 21);
+    try q.put(allocator, 0);
+    try q.put(allocator, 16);
+    try q.put(allocator, 500);
 
-    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 32);
-    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 21);
-    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 0);
-    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 16);
-    try std.testing.expect(q.waitAndPop(std.testing.allocator) == 500);
+    try std.testing.expect(q.waitAndPop(allocator) == 32);
+    try std.testing.expect(q.waitAndPop(allocator) == 21);
+    try std.testing.expect(q.waitAndPop(allocator) == 0);
+    try std.testing.expect(q.waitAndPop(allocator) == 16);
+    try std.testing.expect(q.waitAndPop(allocator) == 500);
 }
 
 test "reftest" {
