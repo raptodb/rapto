@@ -34,7 +34,6 @@
 
 const std = @import("std");
 
-
 /// Thread-safe item with get and put method.
 /// When item is empty, get waits waitAndPut that puts item.
 /// When item is not empty, put waits waitAndGet that retrieves item.
