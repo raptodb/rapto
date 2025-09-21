@@ -51,8 +51,8 @@ const Zprof = @import("zprof.zig").Zprof;
 const Profiler = @import("zprof.zig").Profiler;
 const Server = @import("server.zig").Server;
 const Storage = @import("storage.zig").Storage;
-const Query = @import("Query.zig");
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
+const Query = @import("query.zig").Query;
 
 pub const ServerSessionError = Server.BindError || Storage.LoadError || error{
     NoCapacity,

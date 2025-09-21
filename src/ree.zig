@@ -37,7 +37,7 @@ const RAPTO_VERSION = @import("rapto.zig").RAPTO_VERSION;
 const std = @import("std");
 
 const ResolveError = @import("rapto.zig").ResolveError;
-const QueryParsingError = @import("Query.zig").QueryParsingError;
+const QueryParsingError = @import("query.zig").Query.QueryParsingError;
 const OptionsError = @import("options.zig").RaptoConfig.OptionsError;
 const ClientError = @import("server.zig").Server.ClientError;
 const ServerSessionError = @import("rapto.zig").ServerSessionError;

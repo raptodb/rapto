@@ -48,8 +48,8 @@ test {
     // Tested modules
     _ = @import("lz4.zig");
     _ = @import("object.zig");
-    _ = @import("Query.zig");
     _ = @import("queue.zig");
+    _ = @import("query.zig");
     _ = @import("storage.zig");
     _ = @import("StringField.zig");
     _ = @import("utils.zig");

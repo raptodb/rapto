@@ -30,7 +30,7 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of queries queue management.
+//! It contains the implementation of query parsing.
 
 const std = @import("std");
 
@@ -41,50 +41,7 @@ const utils = @import("utils.zig");
 
 const Profiler = @import("zprof.zig").Profiler;
 const Storage = @import("storage.zig").Storage;
-const Client = @import("Client.zig");
-
-const Self = @This();
-
-/// Client that make query.
-client: ?*Client = null,
-
-raw_query: []const u8 = undefined,
-command: Command = undefined,
-args: []const u8 = undefined,
-
-pub const QueryParsingError = error{ EmptyQuery, CommandNotFound };
-
-/// Parses raw query to valid query. Divides the
-/// query in command and arguments, associated to
-/// client that make request.
-pub fn fromText(client: *Client, raw_query: []const u8) QueryParsingError!Self {
-    const trimmed = std.mem.trim(u8, raw_query, " ");
-    if (trimmed.len == 0) {
-        @branchHint(.unlikely);
-        return error.EmptyQuery;
-    }
-    const space_index = std.mem.indexOfScalar(u8, trimmed, ' ') orelse trimmed.len;
-
-    var q: Self = .{ .client = client };
-    q.raw_query = raw_query;
-    q.command = Command.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
-    q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
-
-    return q;
-}
-
-/// Parses query from enum and optional arguments.
-/// Finally, self.raw_query must be freed.
-pub fn fromEnum(allocator: std.mem.Allocator, command: Command, args: ?[]const u8) error{OutOfMemory}!Self {
-    const command_name = @tagName(command);
-
-    var q: Self = .{};
-    q.raw_query = try std.fmt.allocPrint(allocator, "{s} {s}", .{ command_name, args orelse "" });
-    q.command = command;
-    q.args = q.raw_query[command_name.len + 1 ..];
-
-    return q;
-}
+const Client = @import("client.zig").Client;
 
 /// List of Rapto commands.
 /// Sectioned by functionality.
@@ -133,6 +90,51 @@ pub const Command = enum(u8) {
     }
 };
 
+pub const Query = struct {
+    const Self = @This();
+
+    /// Client that make query.
+    client: ?*Client = null,
+
+    raw_query: []const u8 = undefined,
+    command: Command = undefined,
+    args: []const u8 = undefined,
+
+    pub const QueryParsingError = error{ EmptyQuery, CommandNotFound };
+
+    /// Parses raw query to valid query. Divides the
+    /// query in command and arguments, associated to
+    /// client that make request.
+    pub fn fromText(client: *Client, raw_query: []const u8) QueryParsingError!Self {
+        const trimmed = std.mem.trim(u8, raw_query, " ");
+        if (trimmed.len == 0) {
+            @branchHint(.unlikely);
+            return error.EmptyQuery;
+        }
+        const space_index = std.mem.indexOfScalar(u8, trimmed, ' ') orelse trimmed.len;
+
+        var q: Self = .{ .client = client };
+        q.raw_query = raw_query;
+        q.command = Command.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
+        q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
+
+        return q;
+    }
+
+    /// Parses query from enum and optional arguments.
+    /// Finally, self.raw_query must be freed.
+    pub fn fromEnum(allocator: std.mem.Allocator, command: Command, args: ?[]const u8) error{OutOfMemory}!Self {
+        const command_name = @tagName(command);
+
+        var q: Self = .{};
+        q.raw_query = try std.fmt.allocPrint(allocator, "{s} {s}", .{ command_name, args orelse "" });
+        q.command = command;
+        q.args = q.raw_query[command_name.len + 1 ..];
+
+        return q;
+    }
+};
+
 test "command parsing" {
     try std.testing.expect(Command.parse("GET") == .GET);
     try std.testing.expect(Command.parse("TYPE") == .TYPE);
@@ -146,7 +148,7 @@ test "command parsing" {
 }
 
 test "parse query from text" {
-    const q = try fromText(undefined, "PING abc def");
+    const q: Query = try .fromText(undefined, "PING abc def");
 
     try std.testing.expect(q.command == .PING);
     try std.testing.expectEqualSlices(u8, "abc def", q.args);
@@ -154,7 +156,7 @@ test "parse query from text" {
 }
 
 test "parse query from enum" {
-    const q = try fromEnum(std.testing.allocator, .PING, "abc def");
+    const q: Query = try .fromEnum(std.testing.allocator, .PING, "abc def");
     defer std.testing.allocator.free(q.raw_query);
 
     try std.testing.expect(q.command == .PING);
