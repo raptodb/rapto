@@ -355,7 +355,7 @@ fn compareLRU(_: void, a: Object, b: Object) bool {
 }
 
 test "storage" {
-    var conf = RaptoConfig{};
+    var conf: RaptoConfig = .{};
     var storage = Storage.init(std.testing.allocator, undefined, &conf);
     defer storage.deinit();
 

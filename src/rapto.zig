@@ -183,7 +183,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     try snap.startAutosnap(storage, &logger, conf.save, &modc);
 
     // create queue for queries
-    var queue = ThreadSafeQueue(Query){};
+    var queue: ThreadSafeQueue(Query) = .{};
     defer queue.deinit(allocator);
 
     // bind server
@@ -206,7 +206,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     logger.info("Started server addr={f}; LISTENING...", .{conf.addr.?});
 
     // setup db commands with same parameter storage
-    const db = cmds{ .storage = storage };
+    const db: cmds = .{ .storage = storage };
     while (true) {
         // waits a query from shared queue with
         // client handlers, when query is occurred

@@ -150,7 +150,7 @@ pub const RaptoConfig = struct {
         // skip executable path
         _ = args.skip();
 
-        var opts = Self{};
+        var opts: Self = .{};
 
         var value = args.next() orelse return error.MissingMode;
 

@@ -70,7 +70,7 @@ pub const Server = struct {
         queue: *ThreadSafeQueue(Query),
         conf: *RaptoConfig,
     ) BindError!Self {
-        var at_addr = std.net.Address{ .in = conf.addr.? };
+        var at_addr: std.net.Address = .{ .in = conf.addr.? };
         const server = at_addr.listen(.{}) catch return error.BindError;
 
         return Self{

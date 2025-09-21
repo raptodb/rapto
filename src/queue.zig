@@ -82,7 +82,7 @@ pub fn ThreadSafeQueue(comptime T: type) type {
 }
 
 test "queue" {
-    var q = ThreadSafeQueue(i32){};
+    var q: ThreadSafeQueue(i32) = .{};
     defer q.deinit(std.testing.allocator);
 
     try q.put(std.testing.allocator, 32);

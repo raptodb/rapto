@@ -116,7 +116,7 @@ pub const Object = struct {
             return error.TypeOverflow;
         }
 
-        var obj = Object{};
+        var obj: Object = .{};
 
         {
             const dup_key = try allocator.dupe(u8, key);
@@ -140,7 +140,7 @@ pub const Object = struct {
     pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) DeserializeError!Self {
         var deserialized: std.Io.Reader = .fixed(data);
 
-        var obj = Object{};
+        var obj: Object = .{};
 
         const keylen = try deserialized.takeInt(u32, comptime .little);
         {

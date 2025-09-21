@@ -65,7 +65,7 @@ pub fn fromText(client: *Client, raw_query: []const u8) QueryParsingError!Self {
     }
     const space_index = std.mem.indexOfScalar(u8, trimmed, ' ') orelse trimmed.len;
 
-    var q = Self{ .client = client };
+    var q: Self = .{ .client = client };
     q.raw_query = raw_query;
     q.command = Command.parse(trimmed[0..space_index]) orelse return error.CommandNotFound;
     q.args = if (space_index < trimmed.len) trimmed[space_index + 1 ..] else "";
@@ -78,7 +78,7 @@ pub fn fromText(client: *Client, raw_query: []const u8) QueryParsingError!Self {
 pub fn fromEnum(allocator: std.mem.Allocator, command: Command, args: ?[]const u8) error{OutOfMemory}!Self {
     const command_name = @tagName(command);
 
-    var q = Self{};
+    var q: Self = .{};
     q.raw_query = try std.fmt.allocPrint(allocator, "{s} {s}", .{ command_name, args orelse "" });
     q.command = command;
     q.args = q.raw_query[command_name.len + 1 ..];
