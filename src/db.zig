@@ -162,10 +162,8 @@ pub fn RENAME(self: Self, args: []const u8) !void {
     if (old_index) |index| {
         const obj = &self.storage.store.items[index];
 
-        if (obj.len != new_key.len) {
-            const key = try self.storage.allocator.realloc(obj.key[0..obj.len], new_key.len);
-            obj.setKey(key.ptr, key.len);
-        }
+        if (obj.len != new_key.len)
+            obj.setKey(try self.storage.allocator.realloc(obj.key[0..obj.len], new_key.len));
 
         @memcpy(obj.key, new_key);
         obj.metadata.update();

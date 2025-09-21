@@ -78,9 +78,9 @@ pub const Object = struct {
     }
 
     /// Set key through pointer and length.
-    pub inline fn setKey(self: *Self, key: [*]u8, len: u64) void {
-        self.key = key;
-        self.len = @intCast(len);
+    pub inline fn setKey(self: *Self, key: []u8) void {
+        self.key = key.ptr;
+        self.len = @intCast(key.len);
     }
 
     pub const FieldType = enum(u8) { integer, decimal, string };
@@ -118,14 +118,12 @@ pub const Object = struct {
 
         var obj: Object = .{};
 
-        {
-            const dup_key = try allocator.dupe(u8, key);
-            obj.setKey(dup_key.ptr, dup_key.len);
-        }
+        obj.setKey(try allocator.dupe(u8, key));
         errdefer allocator.free(obj.getKey());
 
         obj.metadata = try allocator.create(Metadata);
         obj.metadata.update();
+
         obj.type = field_type;
         obj.field = switch (field_type) {
             .integer => .{ .integer = value },
@@ -143,11 +141,11 @@ pub const Object = struct {
         var obj: Object = .{};
 
         const keylen = try deserialized.takeInt(u32, comptime .little);
-        {
-            const key = try deserialized.readAlloc(allocator, keylen);
-            obj.setKey(key.ptr, keylen);
-        }
-        errdefer allocator.free(obj.getKey());
+
+        const key = try deserialized.readAlloc(allocator, keylen);
+        errdefer allocator.free(key);
+
+        obj.setKey(key);
 
         obj.metadata = try allocator.create(Metadata);
         obj.metadata.* = .{
