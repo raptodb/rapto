@@ -30,76 +30,58 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of thread safe queue.
+//! It contains the implementation of atomic cell.
 
 const std = @import("std");
 
-const appendNoGrowing = @import("utils.zig").appendNoGrowing;
-
-/// Thread safe queue with mutex locking
-/// and thread conditions. Hightly optimized.
-pub fn ThreadSafeQueue(comptime T: type) type {
+pub fn AtomicCell(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        queue: std.ArrayList(T) = .empty,
+        shared: ?T = null,
         mutex: std.Thread.Mutex = .{},
         cond: std.Thread.Condition = .{},
 
-        /// Puts an item on queue.
-        pub fn put(self: *Self, allocator: std.mem.Allocator, item: T) error{OutOfMemory}!void {
+        pub fn waitAndPut(self: *Self, item: T) void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            try appendNoGrowing(T, allocator, &self.queue, item);
-            self.cond.signal();
-        }
-
-        /// Wait any item on queue, after waiting
-        /// returns it.
-        pub fn waitAndPop(self: *Self, allocator: std.mem.Allocator) T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            while (self.queue.items.len == 0) {
+            while (self.shared != null) {
                 @branchHint(.unlikely);
                 self.cond.wait(&self.mutex);
             }
 
-            const item = self.queue.orderedRemove(0);
-            defer self.queue.shrinkAndFree(allocator, self.queue.items.len);
-
-            return item;
+            self.shared = item;
+            self.cond.signal();
         }
 
-        /// Deinits queue and deallocates
-        /// all unpopped items.
-        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-            self.queue.deinit(allocator);
-            self.* = undefined;
+        pub fn waitAndGet(self: *Self) T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            while (self.shared == null) {
+                @branchHint(.unlikely);
+                self.cond.wait(&self.mutex);
+            }
+
+            const item = self.shared.?;
+            self.shared = null;
+            self.cond.signal();
+
+            return item;
         }
     };
 }
 
-test "queue" {
-    const allocator = std.testing.allocator;
+test "atomic cell" {
+    var cell: AtomicCell(u32) = .{};
 
-    var q: ThreadSafeQueue(i32) = .{};
-    defer q.deinit(allocator);
+    cell.waitAndPut(50);
+    try std.testing.expect(cell.waitAndGet() == 50);
 
-    try q.put(allocator, 32);
-    try q.put(allocator, 21);
-    try q.put(allocator, 0);
-    try q.put(allocator, 16);
-    try q.put(allocator, 500);
+    cell.waitAndPut(2);
+    try std.testing.expect(cell.waitAndGet() == 2);
 
-    try std.testing.expect(q.waitAndPop(allocator) == 32);
-    try std.testing.expect(q.waitAndPop(allocator) == 21);
-    try std.testing.expect(q.waitAndPop(allocator) == 0);
-    try std.testing.expect(q.waitAndPop(allocator) == 16);
-    try std.testing.expect(q.waitAndPop(allocator) == 500);
-}
-
-test "reftest" {
-    _ = std.testing.refAllDeclsRecursive(@This());
+    cell.waitAndPut(1205);
+    try std.testing.expect(cell.waitAndGet() == 1205);
 }

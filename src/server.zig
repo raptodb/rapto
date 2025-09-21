@@ -43,8 +43,8 @@ const utils = @import("utils.zig");
 const log = @import("log.zig");
 const ree = @import("ree.zig");
 
-const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
-const Query = @import("Query.zig");
+const AtomicCell = @import("atomic_cell.zig").AtomicCell;
+const Query = @import("query.zig").Query;
 const RaptoConfig = @import("options.zig").RaptoConfig;
 const Client = @import("client.zig").Client;
 
@@ -56,7 +56,7 @@ pub const Server = struct {
 
     server: std.net.Server,
     clients: std.ArrayList(*Client),
-    queue: *ThreadSafeQueue(Query),
+    cell: *AtomicCell(Query),
 
     conf: *RaptoConfig,
 
@@ -67,7 +67,7 @@ pub const Server = struct {
     pub fn bind(
         allocator: std.mem.Allocator,
         logger: *log.Logger,
-        queue: *ThreadSafeQueue(Query),
+        cell: *AtomicCell(Query),
         conf: *RaptoConfig,
     ) BindError!Self {
         var at_addr: std.net.Address = .{ .in = conf.addr.? };
@@ -78,7 +78,7 @@ pub const Server = struct {
             .logger = logger,
             .server = server,
             .clients = try .initCapacity(allocator, 0),
-            .queue = queue,
+            .cell = cell,
             .conf = conf,
         };
     }
@@ -158,7 +158,7 @@ pub const Server = struct {
         client.log(self.logger, .info, "Connected.", .{});
 
         // receive query from client
-        // and add to queue
+        // and put to shared cell
         while (true) while (client.recv(self.allocator)) |raw_query| {
             // very hot branch!!
             @branchHint(.likely);
@@ -176,9 +176,9 @@ pub const Server = struct {
                 continue;
             };
 
-            // adding query to queue associated with client.
+            // adding query to atomic cell associated with client.
             // useful to return the response.
-            try self.queue.put(self.allocator, query);
+            self.cell.waitAndPut(query);
         }
         // an error is occurred during
         // stream reading

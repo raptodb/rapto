@@ -46,9 +46,9 @@ test {
     _ = @import("snap.zig");
 
     // Tested modules
+    _ = @import("atomic_cell.zig");
     _ = @import("lz4.zig");
     _ = @import("object.zig");
-    _ = @import("queue.zig");
     _ = @import("query.zig");
     _ = @import("storage.zig");
     _ = @import("StringField.zig");

@@ -51,8 +51,8 @@ const Zprof = @import("zprof.zig").Zprof;
 const Profiler = @import("zprof.zig").Profiler;
 const Server = @import("server.zig").Server;
 const Storage = @import("storage.zig").Storage;
-const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 const Query = @import("query.zig").Query;
+const AtomicCell = @import("atomic_cell.zig").AtomicCell;
 
 pub const ServerSessionError = Server.BindError || Storage.LoadError || error{
     NoCapacity,
@@ -87,7 +87,7 @@ var quit: bool = false;
 /// Opens a file, if does not exist, creates it.
 /// After, if file exist loads and prefetchs items to RAM.
 /// Returns capacity of storage and `std.fs.File`.
-inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
+fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
     var exist: bool = true;
 
     const file: std.fs.File = if (std.fs.cwd().openFile(conf.db_path.?, .{ .mode = .read_write })) |f| blk: {
@@ -143,17 +143,17 @@ inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage
 }
 
 /// Procedure of normal quitting.
-inline fn exitProcedure(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
+fn exitProcedure(storage: *Storage, cell: *AtomicCell(Query)) void {
     @branchHint(.cold);
 
     snap.snap(storage, &logger, false) catch {};
-    // send quit to main putting null client on queue
-    queue.put(storage.allocator, .{}) catch signal.OOM();
+    // send quit to main putting null client on cell
+    cell.waitAndPut(.{});
 }
 
 /// Footer for actions.
-fn footerActions(storage: *Storage, queue: *ThreadSafeQueue(Query)) void {
-    defer exitProcedure(storage, queue);
+fn footerActions(storage: *Storage, cell: *AtomicCell(Query)) void {
+    defer exitProcedure(storage, cell);
 
     var c: [1]u8 = undefined;
     while (true) {
@@ -182,19 +182,18 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // thread with auto save config
     try snap.startAutosnap(storage, &logger, conf.save, &modc);
 
-    // create queue for queries
-    var queue: ThreadSafeQueue(Query) = .{};
-    defer queue.deinit(allocator);
+    // create thread-safe cell to share queries
+    var cell: AtomicCell(Query) = .{};
 
     // bind server
-    var session = try Server.bind(allocator, &logger, &queue, conf);
+    var session = try Server.bind(allocator, &logger, &cell, conf);
     defer session.deinit();
     // listen connections
     const t1 = try utils.spawn(Server.listen, .{&session});
     t1.detach();
 
     // start handler for actions
-    const t2 = try utils.spawn(footerActions, .{ storage, &queue });
+    const t2 = try utils.spawn(footerActions, .{ storage, &cell });
     t2.detach();
     // enable footer for server,
     // if conf is set, footer is enabled
@@ -208,10 +207,10 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
     // setup db commands with same parameter storage
     const db: cmds = .{ .storage = storage };
     while (true) {
-        // waits a query from shared queue with
+        // waits a query from shared cell with
         // client handlers, when query is occurred
         // returns task with query and client information
-        const task = queue.waitAndPop(allocator);
+        const task = cell.waitAndGet();
         if (task.client) |client| {
             @branchHint(.likely);
             defer allocator.free(task.raw_query);
@@ -267,7 +266,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
 
                 // shutdowns the server
                 .DOWN => {
-                    exitProcedure(storage, &queue);
+                    exitProcedure(storage, &cell);
                     break;
                 },
             };
