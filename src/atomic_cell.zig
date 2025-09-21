@@ -34,6 +34,10 @@
 
 const std = @import("std");
 
+
+/// Thread-safe item with get and put method.
+/// When item is empty, get waits waitAndPut that puts item.
+/// When item is not empty, put waits waitAndGet that retrieves item.
 pub fn AtomicCell(comptime T: type) type {
     return struct {
         const Self = @This();
