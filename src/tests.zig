@@ -35,7 +35,7 @@
 test {
     // NOTE: These modules cannot be tested over semantic.
     // They require the original server boot.
-    _ = @import("Client.zig");
+    _ = @import("client.zig");
     _ = @import("db.zig");
     _ = @import("log.zig");
     _ = @import("options.zig");

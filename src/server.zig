@@ -46,7 +46,7 @@ const ree = @import("ree.zig");
 const ThreadSafeQueue = @import("queue.zig").ThreadSafeQueue;
 const Query = @import("Query.zig");
 const RaptoConfig = @import("options.zig").RaptoConfig;
-const Client = @import("Client.zig");
+const Client = @import("client.zig").Client;
 
 pub const Server = struct {
     const Self = @This();
