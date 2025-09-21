@@ -87,7 +87,7 @@ var quit: bool = false;
 /// Opens a file, if does not exist, creates it.
 /// After, if file exist loads and prefetchs items to RAM.
 /// Returns capacity of storage and `std.fs.File`.
-fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
+inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
     var exist: bool = true;
 
     const file: std.fs.File = if (std.fs.cwd().openFile(conf.db_path.?, .{ .mode = .read_write })) |f| blk: {
