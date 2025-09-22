@@ -47,11 +47,11 @@ test {
 
     // Tested modules
     _ = @import("atomic_cell.zig");
+    _ = @import("field.zig");
     _ = @import("lz4.zig");
     _ = @import("object.zig");
     _ = @import("query.zig");
     _ = @import("storage.zig");
-    _ = @import("StringField.zig");
     _ = @import("utils.zig");
 
     @import("std").testing.refAllDecls(@This());

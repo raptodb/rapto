@@ -35,8 +35,7 @@
 const std = @import("std");
 
 const signal = @import("signal.zig");
-
-const StringField = @import("StringField.zig");
+const field = @import("field.zig");
 
 /// Represents database object with key, value and metadata.
 /// Optimized for L1/L2 cache hit. Aligned of 32 byte.
@@ -65,7 +64,7 @@ pub const Object = struct {
 
         /// String is byte array data.
         /// Limit size: 2^64-1.
-        string: StringField,
+        string: field.String,
     } = undefined,
 
     /// Stores metadata information associated with a key.
