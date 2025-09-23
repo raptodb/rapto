@@ -131,8 +131,6 @@ pub const Client = struct {
     pub fn setupSockopt(self: *Self) std.posix.SetSockOptError!void {
         const val: u32 = 1;
 
-        // enable REUSEADDR to use same address more frequently
-        try self.setsockopt(std.posix.SOL.SOCKET, std.posix.SO.REUSEADDR, std.mem.asBytes(&val));
         // disable Nagle's algorithm and optimizes network performance
         try self.setsockopt(std.posix.IPPROTO.TCP, std.posix.TCP.NODELAY, std.mem.asBytes(&val));
 

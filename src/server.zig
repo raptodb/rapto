@@ -71,7 +71,7 @@ pub const Server = struct {
         conf: *RaptoConfig,
     ) BindError!Self {
         var at_addr: std.net.Address = .{ .in = conf.addr.? };
-        const server = at_addr.listen(.{}) catch return error.BindError;
+        const server = at_addr.listen(.{ .reuse_address = true }) catch return error.BindError;
 
         return Self{
             .allocator = allocator,
