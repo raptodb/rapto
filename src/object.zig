@@ -56,11 +56,11 @@ pub const Object = struct {
     /// Decimal and integer fields are used for
     /// fast math operations.
     field: union {
-        /// Integer value
-        integer: i64,
+        /// Integer value: conventional i64.
+        integer: field.Integer,
 
-        /// Decimal value
-        decimal: f64,
+        /// Decimal value: conventional f64.
+        decimal: field.Decimal,
 
         /// String is byte array data.
         /// Limit size: 2^64-1.
