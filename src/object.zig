@@ -117,8 +117,9 @@ pub const Object = struct {
         var obj: Object = .{};
 
         const duped_key = try allocator.dupe(u8, key);
-        obj.setKey(duped_key);
         errdefer allocator.free(duped_key);
+        
+        obj.setKey(duped_key);
 
         obj.metadata = try allocator.create(Metadata);
         obj.metadata.update();
@@ -140,7 +141,6 @@ pub const Object = struct {
         var obj: Object = .{};
 
         const keylen = try deserialized.takeInt(u32, comptime .little);
-
         const key = try deserialized.readAlloc(allocator, keylen);
         errdefer allocator.free(key);
 
