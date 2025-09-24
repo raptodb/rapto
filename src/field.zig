@@ -34,6 +34,40 @@
 
 const std = @import("std");
 
+/// Enum of field type identifier.
+pub const Type = enum(u8) {
+    integer,
+    decimal,
+    string,
+
+    /// Returns type from argument of query.
+    pub fn fromStringQuery(string: []const u8) Type {
+        // check if is string if
+        // it is encapsulated with ""
+        return if (string[0] == '"' and string[string.len - 1] == '"')
+            // is string if it is encapsulated with ""
+            .string
+        else if (std.mem.lastIndexOfScalar(u8, string, '.') != null)
+            // is decimal if contains a dot
+            .decimal
+        else
+            // probably a integer
+            .integer;
+    }
+
+    /// Evaluates type from integer. If integer has not
+    /// correspondences with enum, returns error.UnsupportedType.
+    pub inline fn fromInt(int: u8) error{UnsupportedType}!Type {
+        return std.enums.fromInt(Type, int) orelse error.UnsupportedType;
+    }
+};
+
+/// Field of signed 64-bit integer.
+pub const Integer = i64;
+
+/// Field of Double-precision floating-point.
+pub const Decimal = f64;
+
 /// Field of byte-array rappresentation.
 pub const String = struct {
     const Self = @This();

@@ -37,11 +37,11 @@ const std = @import("std");
 const snap = @import("snap.zig");
 const log = @import("log.zig");
 const utils = @import("utils.zig");
+const field = @import("field.zig");
 
 const Profiler = @import("zprof.zig").Profiler;
 const Storage = @import("storage.zig").Storage;
 const Object = @import("object.zig").Object;
-const FieldType = Object.FieldType;
 
 const Self = @This();
 
@@ -71,18 +71,13 @@ pub fn SET(self: Self, args: []const u8) !void {
     @branchHint(.likely);
 
     const key, const value = try utils.kvFormat(args);
+    const field_type: field.Type = .fromStringQuery(value);
 
-    // check if value is string if
-    // it is encapsulated with ""
-    _ = if (value[0] == '"' and value[value.len - 1] == '"')
-        // value is string if it is encapsulated with ""
-        try self.storage.put(.string, key, value[1 .. value.len - 1])
-    else if (std.mem.lastIndexOfScalar(u8, value, '.') != null)
-        // value is decimal if contains a dot
-        try self.storage.put(.decimal, key, try utils.parseNumeric(f64, value))
-    else
-        // probably a integer
-        try self.storage.put(.integer, key, try utils.parseNumeric(i64, value));
+    _ = switch (field_type) {
+        .integer => try self.storage.put(.integer, key, try utils.parseNumeric(i64, value)),
+        .decimal => try self.storage.put(.decimal, key, try utils.parseNumeric(f64, value)),
+        .string => try self.storage.put(.string, key, value[1 .. value.len - 1]),
+    };
 }
 
 /// Increments/decrements `integer` or `decimal` value.

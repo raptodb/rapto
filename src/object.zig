@@ -49,7 +49,7 @@ pub const Object = struct {
 
     /// Type identifier of field. Available types
     /// are integer, decimal and string.
-    type: FieldType = undefined,
+    type: field.Type = undefined,
     /// Field of object storing the actual data.
     /// String is used as byte array for serialization
     /// of more complex contents.
@@ -82,7 +82,6 @@ pub const Object = struct {
         self.len = @intCast(key.len);
     }
 
-    pub const FieldType = enum(u8) { integer, decimal, string };
     pub const Metadata = struct {
         /// Count of read, write operations.
         /// Also called FREQ.
@@ -108,7 +107,7 @@ pub const Object = struct {
 
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
-    pub fn set(allocator: std.mem.Allocator, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) SetError!Self {
+    pub fn set(allocator: std.mem.Allocator, comptime field_type: field.Type, noalias key: []const u8, noalias value: anytype) SetError!Self {
         // check key length for a limit of 2^8
         if (key.len > std.math.maxInt(u8)) {
             @branchHint(.unlikely);
@@ -117,8 +116,9 @@ pub const Object = struct {
 
         var obj: Object = .{};
 
-        obj.setKey(try allocator.dupe(u8, key));
-        errdefer allocator.free(obj.getKey());
+        const duped_key = try allocator.dupe(u8, key);
+        obj.setKey(duped_key);
+        errdefer allocator.free(duped_key);
 
         obj.metadata = try allocator.create(Metadata);
         obj.metadata.update();
@@ -153,7 +153,7 @@ pub const Object = struct {
         };
 
         // select from field type
-        obj.type = std.enums.fromInt(FieldType, try deserialized.takeByte()) orelse return error.UnsupportedType;
+        obj.type = try .fromInt(try deserialized.takeByte());
         obj.field = switch (obj.type) {
             .integer => .{ .integer = try deserialized.takeInt(i64, comptime .little) },
             .decimal => .{ .decimal = @bitCast((try deserialized.takeArray(8)).*) },

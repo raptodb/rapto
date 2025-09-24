@@ -37,9 +37,9 @@ const std = @import("std");
 const signal = @import("signal.zig");
 const lz4 = @import("lz4.zig");
 const utils = @import("utils.zig");
+const field = @import("field.zig");
 
 const Object = @import("object.zig").Object;
-const FieldType = Object.FieldType;
 const RaptoConfig = @import("options.zig").RaptoConfig;
 
 /// Store of objects.
@@ -179,7 +179,7 @@ pub const Storage = struct {
     /// Puts item in the store and return index. If exist, overwrite it.
     /// If not exist, stores item on head of array, as most
     /// priority element for LRU policy.
-    pub fn put(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
+    pub fn put(self: *Self, comptime field_type: field.Type, noalias key: []const u8, noalias value: anytype) PutError!u64 {
         const i = self.search(key) orelse
             // if key does not exist
             return self.append(field_type, key, value);
@@ -278,7 +278,7 @@ pub const Storage = struct {
 
     /// Appends new object at head of the list.
     /// Returns the index of object.
-    pub fn append(self: *Self, comptime field_type: FieldType, noalias key: []const u8, noalias value: anytype) PutError!u64 {
+    pub fn append(self: *Self, comptime field_type: field.Type, noalias key: []const u8, noalias value: anytype) PutError!u64 {
         // create new object
         var obj: Object = try .set(self.allocator, field_type, key, value);
         errdefer obj.deinit(self.allocator);
