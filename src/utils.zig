@@ -34,8 +34,6 @@
 
 const std = @import("std");
 
-const FieldType = @import("object.zig").Object.FieldType;
-
 /// Alias of std.Thread.spawn. Just abbreviated and adapted to Rapto.
 pub const spawn = struct {
     fn inner(comptime func: anytype, args: anytype) error{ThreadError}!std.Thread {
@@ -67,7 +65,7 @@ pub inline fn appendNoGrowing(
 
 /// Advanced equal function with vectorization and hashing
 /// checking. Faster if len <= 16.
-pub inline fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool {
+pub fn advancedCompare(noalias a: []const u8, noalias b: []const u8) bool {
     if (a.len != b.len) return false;
     if (a.len > 16) {
         @branchHint(.unlikely);
