@@ -73,13 +73,11 @@ pub const String = struct {
     const Self = @This();
 
     /// The pointer to byte array.
-    /// Limit size: 2^64-1.
     ptr: [*:0]u8,
 
     /// Initializes string field with string.
-    /// String must have a length less than 2^64-1.
-    pub inline fn init(string: []u8) error{TypeOverflow}!Self {
-        return if (string.len < std.math.maxInt(u64)) .{ .ptr = @ptrCast(string) } else error.TypeOverflow;
+    pub inline fn init(string: []u8) Self {
+        return .{ .ptr = @ptrCast(string) };
     }
 
     /// Serialization method for field.String. Writes from IO writer.
@@ -90,7 +88,7 @@ pub const String = struct {
     }
 
     /// Deserialization method for field.String. Reads from IO reader.
-    pub fn deserialize(reader: *std.Io.Reader, allocator: std.mem.Allocator) error{ OutOfMemory, TypeOverflow, EndOfStream, ReadFailed }!Self {
+    pub fn deserialize(reader: *std.Io.Reader, allocator: std.mem.Allocator) error{ OutOfMemory, EndOfStream, ReadFailed }!Self {
         const fieldlen = try reader.takeInt(u64, comptime .little);
 
         const str = try allocator.allocSentinel(u8, fieldlen, 0);
@@ -102,16 +100,13 @@ pub const String = struct {
 
     /// Copies string to current field string.
     /// If length is different to old field string make a realloc.
-    /// String must have a length less than 2^64-1.
-    pub fn set(self: *Self, allocator: std.mem.Allocator, string: []const u8) error{ OutOfMemory, TypeOverflow }!void {
+    pub fn set(self: *Self, allocator: std.mem.Allocator, string: []const u8) error{OutOfMemory}!void {
         const ptr_len = self.len();
-        if (ptr_len != string.len) if (string.len < std.math.maxInt(u64)) {
+        if (ptr_len != string.len) {
             const slice = try allocator.realloc(self.ptr[0 .. ptr_len + 1], string.len + 1);
             self.ptr = @ptrCast(slice.ptr);
             self.ptr[string.len] = 0;
         }
-        // string overflows for length
-        else return error.TypeOverflow;
 
         @memcpy(self.ptr[0..string.len], string);
     }

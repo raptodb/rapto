@@ -63,7 +63,7 @@ pub const Object = struct {
         decimal: field.Decimal,
 
         /// String is byte array data.
-        /// Limit size: 2^64-1.
+        /// No limit size, field.String is null-terminated.
         string: field.String,
     } = undefined,
 
@@ -128,7 +128,7 @@ pub const Object = struct {
         obj.field = switch (field_type) {
             .integer => .{ .integer = value },
             .decimal => .{ .decimal = value },
-            .string => .{ .string = try .init(try allocator.dupeZ(u8, value)) },
+            .string => .{ .string = .init(try allocator.dupeZ(u8, value)) },
         };
 
         return obj;
