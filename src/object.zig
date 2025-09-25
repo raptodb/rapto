@@ -226,12 +226,12 @@ pub const Object = struct {
 
     /// Returns size of object stored in RAM
     pub inline fn getSize(self: *const Self) u64 {
-        var size: u64 = 32; // size of object
+        var size: u64 = 24; // size of object
         size += 16; // metadata
         size += self.len; // length of key
-        size = switch (self.type) { // field
-            .string => self.field.string.len(),
-            else => 0,
+        size += switch (self.type) { // field
+            .string => 8 + self.field.string.len(),
+            else => 8,
         };
         return size;
     }
