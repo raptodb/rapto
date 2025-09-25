@@ -38,13 +38,15 @@ const signal = @import("signal.zig");
 const field = @import("field.zig");
 
 /// Represents database object with key, value and metadata.
-/// Optimized for L1/L2 cache hit. Aligned of 32 byte.
+/// Optimized for L1/L2 cache hit. Static size of 32 byte to
+/// help CPU for cache line storing.
 pub const Object = struct {
     const Self = @This();
 
     /// The length of key.
-    len: u32 = undefined,
+    len: u32 = 0,
     /// Pointer to key.
+    /// Limit of size of 2^32.
     key: [*]u8 = undefined,
 
     /// Type identifier of field. Available types
@@ -76,10 +78,19 @@ pub const Object = struct {
         return self.key[0..self.len];
     }
 
-    /// Set key through pointer and length.
-    pub inline fn setKey(self: *Self, key: []u8) void {
+    /// Sets key with cache L1/L2 prefetching on pointer.
+    /// Key length must be lower than 2^32.
+    pub fn setKey(self: *Self, noalias key: []u8) error{TypeOverflow}!void {
+        if (key.len > std.math.maxInt(u32)) {
+            @branchHint(.unlikely);
+            return error.TypeOverflow;
+        }
+
         self.key = key.ptr;
         self.len = @intCast(key.len);
+
+        // prefeching with cache locality on L1/L2
+        @prefetch(self.key, .{ .locality = 2 });
     }
 
     pub const Metadata = struct {
@@ -102,24 +113,20 @@ pub const Object = struct {
         }
     };
 
-    pub const SetError = error{ TypeOverflow, OutOfMemory };
-    pub const DeserializeError = error{ TypeOverflow, EndOfStream, UnsupportedType, OutOfMemory, ReadFailed };
-
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
-    pub fn set(allocator: std.mem.Allocator, comptime field_type: field.Type, noalias key: []const u8, noalias value: anytype) SetError!Self {
-        // check key length for a limit of 2^8
-        if (key.len > std.math.maxInt(u8)) {
-            @branchHint(.unlikely);
-            return error.TypeOverflow;
-        }
-
+    pub fn set(
+        allocator: std.mem.Allocator,
+        comptime field_type: field.Type,
+        noalias key: []const u8,
+        noalias value: anytype,
+    ) error{ OutOfMemory, TypeOverflow }!Self {
         var obj: Object = .{};
 
         const duped_key = try allocator.dupe(u8, key);
         errdefer allocator.free(duped_key);
-        
-        obj.setKey(duped_key);
+
+        try obj.setKey(duped_key);
 
         obj.metadata = try allocator.create(Metadata);
         obj.metadata.update();
@@ -135,7 +142,13 @@ pub const Object = struct {
     }
 
     /// Return struct from serialized data.
-    pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) DeserializeError!Self {
+    pub noinline fn deserialize(allocator: std.mem.Allocator, noalias data: []const u8) error{
+        TypeOverflow,
+        EndOfStream,
+        UnsupportedType,
+        OutOfMemory,
+        ReadFailed,
+    }!Self {
         var deserialized: std.Io.Reader = .fixed(data);
 
         var obj: Object = .{};
@@ -144,7 +157,7 @@ pub const Object = struct {
         const key = try deserialized.readAlloc(allocator, keylen);
         errdefer allocator.free(key);
 
-        obj.setKey(key);
+        try obj.setKey(key);
 
         // set metadata
         obj.metadata = try allocator.create(Metadata);
