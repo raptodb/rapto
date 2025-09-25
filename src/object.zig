@@ -146,17 +146,21 @@ pub const Object = struct {
 
         obj.setKey(key);
 
+        // set metadata
         obj.metadata = try allocator.create(Metadata);
         obj.metadata.* = .{
             .access_times = try deserialized.takeInt(u64, comptime .little),
             .last_access = try deserialized.takeInt(i64, comptime .little),
         };
 
-        // select from field type
+        // fill field from selected field type
         obj.type = try .fromInt(try deserialized.takeByte());
         obj.field = switch (obj.type) {
             .integer => .{ .integer = try deserialized.takeInt(i64, comptime .little) },
-            .decimal => .{ .decimal = @bitCast((try deserialized.takeArray(8)).*) },
+            .decimal => blk: {
+                const arr = try deserialized.takeArray(8);
+                break :blk .{ .decimal = @bitCast(arr.*) };
+            },
             .string => .{ .string = try .deserialize(&deserialized, allocator) },
         };
 
@@ -185,7 +189,7 @@ pub const Object = struct {
         // if value is string, add size
         switch (self.type) {
             .integer => try serialized.writeInt(i64, self.field.integer, comptime .little),
-            .decimal => try serialized.writeAll(std.mem.asBytes(&self.field.decimal)),
+            .decimal => try serialized.writeAll(@ptrCast(&self.field.decimal)),
             .string => try self.field.string.serialize(&serialized),
         }
 

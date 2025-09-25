@@ -82,10 +82,7 @@ pub const Storage = struct {
             // get size of compressed object.
             // if it fails, data is fully loaded
             const size = reader.interface.takeInt(u64, .little) catch break;
-            if (size == 0) {
-                @branchHint(.unlikely);
-                break;
-            }
+            if (size == 0) break;
 
             // get compressed object with length
             const compressed = try self.allocator.alloc(u8, size);
@@ -93,7 +90,6 @@ pub const Storage = struct {
 
             reader.interface.readSliceAll(compressed) catch return error.LoadingError;
 
-            // if it assumes it can allocate the compressed size for 255 times, decompresses
             const decompressed = lz4.decompress(self.allocator, compressed);
             self.allocator.free(compressed);
 
@@ -151,35 +147,28 @@ pub const Storage = struct {
             defer self.allocator.free(compressed);
 
             // append size and serialized Object to file
-            writer.interface.writeInt(u64, compressed.len, comptime .little) catch {
-                @branchHint(.unlikely);
-                return if (writer.err.? == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
-            };
-            writer.interface.writeAll(compressed) catch {
-                @branchHint(.unlikely);
-                return if (writer.err.? == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
-            };
+            writer.interface.writeInt(u64, compressed.len, comptime .little) catch break;
+            writer.interface.writeAll(compressed) catch break;
         }
 
-        writer.interface.flush() catch {
+        if (writer.err) |err| {
             @branchHint(.unlikely);
-            return if (writer.err.? == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
-        };
-        self.file.sync() catch return error.FileSync;
-    }
+            return if (err == error.NoSpaceLeft) error.OutOfDisk else error.WriteFailed;
+        }
 
-    /// Retrieves object from the store using the specified key.
-    /// When key is found, promote.
-    /// If key does not exist, returns null.
-    pub inline fn get(self: *Self, noalias key: []const u8) ?*Object {
-        const index = self.search(key) orelse return null;
-        return &self.store.items[index];
+        try writer.interface.flush();
+        self.file.sync() catch return error.FileSync;
     }
 
     /// Puts item in the store and return index. If exist, overwrite it.
     /// If not exist, stores item on head of array, as most
     /// priority element for LRU policy.
-    pub fn put(self: *Self, comptime field_type: field.Type, noalias key: []const u8, noalias value: anytype) PutError!u64 {
+    pub fn put(
+        self: *Self,
+        comptime field_type: field.Type,
+        noalias key: []const u8,
+        noalias value: anytype,
+    ) PutError!u64 {
         const i = self.search(key) orelse
             // if key does not exist
             return self.append(field_type, key, value);
@@ -215,24 +204,12 @@ pub const Storage = struct {
         return i;
     }
 
-    /// Duplicates object with same metadata and different key.
-    pub fn dupe(self: *Self, obj: *Object, key: []const u8) PutError!void {
-        const i = switch (obj.type) {
-            .integer => try self.put(.integer, key, obj.field.integer),
-            .decimal => try self.put(.decimal, key, obj.field.decimal),
-            .string => try self.put(.string, key, obj.field.string.get()),
-        };
-        self.store.items[i].metadata = obj.metadata;
-    }
-
-    /// Removes item from index from store.
-    /// If key is found, deallocates and removes it.
-    pub noinline fn removeAtIndex(self: *Self, index: u64) void {
-        var obj: *Object = @constCast(&self.store.orderedRemove(index));
-
-        // deallocate object and shrink
-        obj.deinit(self.allocator);
-        self.store.shrinkAndFree(self.allocator, self.store.items.len);
+    /// Retrieves object from the store using the specified key.
+    /// When key is found, promote.
+    /// If key does not exist, returns null.
+    pub inline fn get(self: *Self, noalias key: []const u8) ?*Object {
+        const index = self.search(key) orelse return null;
+        return &self.store.items[index];
     }
 
     /// Searches object in store and return its index.
@@ -276,6 +253,16 @@ pub const Storage = struct {
         std.sort.insertion(Object, self.store.items, {}, comptime compareLRU);
     }
 
+    /// Duplicates object with same metadata and different key.
+    pub fn dupe(self: *Self, obj: *Object, key: []const u8) PutError!void {
+        const i = switch (obj.type) {
+            .integer => try self.put(.integer, key, obj.field.integer),
+            .decimal => try self.put(.decimal, key, obj.field.decimal),
+            .string => try self.put(.string, key, obj.field.string.get()),
+        };
+        self.store.items[i].metadata = obj.metadata;
+    }
+
     /// Appends new object at head of the list.
     /// Returns the index of object.
     pub fn append(self: *Self, comptime field_type: field.Type, noalias key: []const u8, noalias value: anytype) PutError!u64 {
@@ -293,6 +280,16 @@ pub const Storage = struct {
         // promote skipped because the array is reversed.
         // now the obj is already on the head.
         return self.store.items.len - 1;
+    }
+
+    /// Removes item from index from store.
+    /// If key is found, deallocates and removes it.
+    pub noinline fn removeAtIndex(self: *Self, index: u64) void {
+        var obj: *Object = @constCast(&self.store.orderedRemove(index));
+
+        // deallocate object and shrink
+        obj.deinit(self.allocator);
+        self.store.shrinkAndFree(self.allocator, self.store.items.len);
     }
 
     /// Deinits storage.
