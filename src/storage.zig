@@ -269,10 +269,10 @@ pub const Storage = struct {
         return front_index;
     }
 
-    /// Prefetch storage with insertion sorting
+    /// Sorts storage with insertion sorting
     /// algorithm. Sorting is in ascendent
     /// order for LRU policy.
-    pub inline fn prefetch(self: *Self) void {
+    pub inline fn sort(self: *Self) void {
         std.sort.insertion(Object, self.store.items, {}, comptime compareLRU);
     }
 
@@ -309,7 +309,7 @@ pub const Storage = struct {
 };
 
 /// compareFn function for LRU policy.
-/// This function is useful for prefetching after load to RAM.
+/// This function is useful for sorting after load to RAM.
 fn compareLRU(_: void, a: Object, b: Object) bool {
     // compare last access with ascendent order
     return a.metadata.last_access < b.metadata.last_access;

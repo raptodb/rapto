@@ -376,7 +376,7 @@ pub fn STAIL(self: Self, key: []const u8) !void {
 ///
 /// Complexity O(n²)
 pub inline fn SORT(self: Self) void {
-    self.storage.prefetch();
+    self.storage.sort();
 }
 
 /// Gets or sets access times of a key.

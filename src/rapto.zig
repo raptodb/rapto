@@ -84,7 +84,7 @@ var profiler: *Profiler = undefined;
 var quit: bool = false;
 
 /// Opens a file, if does not exist, creates it.
-/// After, if file exist loads and prefetchs items to RAM.
+/// After, if file exist loads and sorts items to RAM.
 /// Returns capacity of storage and `std.fs.File`.
 inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage {
     var exist: bool = true;
@@ -115,17 +115,17 @@ inline fn getStorage(allocator: std.mem.Allocator, conf: *RaptoConfig) !*Storage
     // initialize storage
     var storage = Storage.init(allocator, file, conf);
 
-    // if database exist load items
-    // and prefetch from RAM
+    // if database exist loads items
+    // and sorts from RAM
     if (exist) {
-        logger.info("Opened storage file. Loading and prefetching have started.", .{});
+        logger.info("Opened storage file. Loading and sorting have started.", .{});
 
         var elap = std.time.Timer.start() catch unreachable;
 
         // load items to RAM
         const obj_count = try storage.load();
-        // prefetching storage with sorting
-        storage.prefetch();
+        // sorting storage with sorting
+        storage.sort();
 
         const since = @as(f64, @floatFromInt(elap.read())) / std.time.ns_per_s;
 
