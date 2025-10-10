@@ -264,10 +264,7 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
                 },
 
                 // shutdowns the server
-                .DOWN => {
-                    exitProcedure(storage, &cell);
-                    break;
-                },
+                .DOWN => break,
             };
 
             const response, const heap_allocated = content catch |err| blk: {
@@ -277,14 +274,13 @@ fn serverSession(allocator: std.mem.Allocator, conf: *RaptoConfig) ServerSession
                     else => break :blk .{ ree.expandResolveError(err), false },
                 }
             };
-            defer if (heap_allocated) allocator.free(response);
 
             // sends the response to client
             client.send(response) catch {};
+            if (heap_allocated) allocator.free(response);
 
             // increment counter of storage modifies
-            if (conf.save != null)
-                _ = modc.fetchAdd(1, .seq_cst);
+            if (conf.save != null) _ = modc.fetchAdd(1, .seq_cst);
         }
         // if client is null,
         // quit is detected
