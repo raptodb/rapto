@@ -285,10 +285,11 @@ pub const Storage = struct {
     /// Removes item from index from store.
     /// If key is found, deallocates and removes it.
     pub noinline fn removeAtIndex(self: *Self, index: u64) void {
+        var obj = self.store.items[index];
         self.store.replaceRangeAssumeCapacity(index, 1, &.{});
 
         // deallocate object and shrink
-        self.store.items[index].deinit(self.allocator);
+        obj.deinit(self.allocator);
         self.store.shrinkAndFree(self.allocator, self.store.items.len);
     }
 
