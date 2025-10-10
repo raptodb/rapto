@@ -229,9 +229,9 @@ pub const Object = struct {
         var size: u64 = 24; // size of object
         size += 16; // metadata
         size += self.len; // length of key
-        size += switch (self.type) { // field
-            .string => 8 + self.field.string.len(),
-            else => 8,
+        size += 8 + switch (self.type) { // field
+            .string => self.field.string.len(),
+            else => 0,
         };
         return size;
     }
