@@ -72,6 +72,25 @@ pub const Object = struct {
     /// Stores metadata information associated with a key.
     /// This includes usage metrics.
     metadata: *Metadata = undefined,
+    pub const Metadata = struct {
+        /// Count of read, write operations.
+        /// Also called FREQ.
+        access_times: u64 = 0,
+
+        /// Last access in timestamp (us).
+        /// Useful for storage prefetching with LRU-policy.
+        /// Also called LAST.
+        last_access: i64 = undefined,
+
+        /// Updates the metadata when the object is accessed.
+        /// This increments the access counter and refreshes the last access timestamp.
+        pub inline fn update(self: *@This()) void {
+            // The saturation addition prevents counter overflow
+            // and improves performance.
+            self.access_times +|= 1;
+            self.last_access = @intCast(std.time.microTimestamp());
+        }
+    };
 
     /// Retrieves key with length.
     pub inline fn getKey(self: *const Self) []const u8 {
@@ -92,26 +111,6 @@ pub const Object = struct {
         // prefeching with cache locality on L1/L2
         @prefetch(self.key, .{ .locality = 2 });
     }
-
-    pub const Metadata = struct {
-        /// Count of read, write operations.
-        /// Also called FREQ.
-        access_times: u64 = 0,
-
-        /// Last access in timestamp (us).
-        /// Useful for storage prefetching with LRU-policy.
-        /// Also called LAST.
-        last_access: i64 = undefined,
-
-        /// Updates the metadata when the object is accessed.
-        /// This increments the access counter and refreshes the last access timestamp.
-        pub inline fn update(self: *@This()) void {
-            // The saturation addition prevents counter overflow
-            // and improves performance.
-            self.access_times +|= 1;
-            self.last_access = @intCast(std.time.microTimestamp());
-        }
-    };
 
     /// Initizializes object with key-value and metadata.
     /// If object is already set, insert self parameter.
