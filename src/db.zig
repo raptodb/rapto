@@ -207,7 +207,7 @@ pub inline fn GET(self: Self, key: []const u8) !struct { []const u8, bool } {
         },
 
         // string already handled
-        else => unreachable,
+        .string => unreachable,
     };
 
     return .{ slice, false };
