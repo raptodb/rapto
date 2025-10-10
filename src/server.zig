@@ -146,7 +146,6 @@ pub const Server = struct {
             try client.send("OK");
 
             // try to get name of client
-
             const name = try client.recv(self.allocator);
             client.name = if (name.len > 0) name else null;
 
