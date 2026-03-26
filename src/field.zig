@@ -1,6 +1,6 @@
 //! BSD 3-Clause License
 //!
-//! Copyright (c) raptodb
+//! Copyright (c) Raptodb
 //! Copyright (c) Andrea Vaccaro
 //! All rights reserved.
 //!
@@ -30,10 +30,25 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of testing module.
+//! It contains the implementation of fields.
 
-comptime {
-    // Tested modules
-    _ = @import("zprof.zig");
-    _ = @import("field.zig");
+pub const Types = @import("field/types.zig").Types;
+pub const ScalarItem = @import("field/scalar.zig").ScalarItem;
+
+pub const Void = @import("field/scalar.zig").Void;
+pub const Integer = @import("field/scalar.zig").Integer;
+pub const Decimal = @import("field/scalar.zig").Decimal;
+pub const Flag = @import("field/scalar.zig").Flag;
+pub const String = @import("field/scalar.zig").String;
+pub const Point = @import("field/scalar.zig").Point;
+
+pub const List = @import("field/collection.zig").List;
+pub const Map = @import("field/collection.zig").Map;
+
+pub const splitSerialized = @import("field/types.zig").splitSerialized;
+
+test {
+    _ = @import("field/types.zig");
+    _ = @import("field/scalar.zig");
+    _ = @import("field/collection.zig");
 }
