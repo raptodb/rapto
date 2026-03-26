@@ -1,0 +1,138 @@
+//! BSD 3-Clause License
+//!
+//! Copyright (c) Raptodb
+//! Copyright (c) Andrea Vaccaro
+//! All rights reserved.
+//!
+//! Redistribution and use in source and binary forms, with or without
+//! modification, are permitted provided that the following conditions are met:
+//!
+//! 1. Redistributions of source code must retain the above copyright notice, this
+//!    list of conditions and the following disclaimer.
+//!
+//! 2. Redistributions in binary form must reproduce the above copyright notice,
+//!    this list of conditions and the following disclaimer in the documentation
+//!    and/or other materials provided with the distribution.
+//!
+//! 3. Neither the name of the copyright holder nor the names of its
+//!    contributors may be used to endorse or promote products derived from
+//!    this software without specific prior written permission.
+//!
+//! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+//! AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+//! IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//! DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+//! FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+//! DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//! SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+//! CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+//! OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//!
+//! This file is part of "Rapto".
+//! It contains the implementation of type tags.
+
+const std = @import("std");
+
+// A Rapto's [serialized] (RS) is representation of [field_type][content].
+// Content is the raw bytes of field, instead, the value
+// is the representation of content with the return type of get().
+//
+// Consequently, serializeContentToWriter must write ONLY [content]
+// and any function that accepts Content, must be accept also [field_type].
+//
+// RS is also used to represent a value to send to the client.
+
+/// Splits serialized into [field_type:u8][content].
+/// Instead, see `Types.serializeToWriter` to build [serialized].
+pub fn splitSerialized(
+    serialized: []const u8,
+) error{ InvalidFormat, UnknownType }!struct { Types, []const u8 } {
+    if (serialized.len == 0) return error.InvalidFormat;
+    const field_type: Types = try .fromInt(serialized[0]);
+    const content = if (serialized.len > 1) serialized[1..] else &.{};
+    return .{ field_type, content };
+}
+
+/// Enumeration of all field types. The quantity of field types
+/// must be equal or under 8: the field type is saved on 3 LSB
+/// bits of tagged pointer.
+pub const Types = enum(u3) {
+    // scalar types
+    void = 0,
+    integer,
+    decimal,
+    flag,
+    string,
+    point,
+
+    // collection types
+    list,
+    map,
+
+    pub fn fromInt(int: anytype) error{UnknownType}!Types {
+        return std.enums.fromInt(Types, int) orelse error.UnknownType;
+    }
+
+    /// Serializes field type and content to writer as [field_type][content].
+    pub fn serializeToWriter(
+        self: Types,
+        writer: *std.Io.Writer,
+        content: []const u8,
+    ) error{WriteFailed}!void {
+        try self.serializeTypeToWriter(writer);
+        try writer.writeAll(content);
+    }
+
+    pub fn serializeTypeToWriter(self: Types, writer: *std.Io.Writer) error{WriteFailed}!void {
+        try writer.writeByte(@intFromEnum(self));
+    }
+};
+
+test "Types" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expect(try Types.fromInt(0) == .void);
+    try std.testing.expect(try Types.fromInt(1) == .integer);
+    try std.testing.expect(try Types.fromInt(2) == .decimal);
+    try std.testing.expect(try Types.fromInt(3) == .flag);
+    try std.testing.expect(try Types.fromInt(4) == .string);
+    try std.testing.expect(try Types.fromInt(5) == .point);
+    try std.testing.expect(try Types.fromInt(6) == .list);
+    try std.testing.expect(try Types.fromInt(7) == .map);
+
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    defer allocating.deinit();
+
+    try Types.serializeTypeToWriter(.void, &allocating.writer);
+    try std.testing.expect(0 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.integer, &allocating.writer);
+    try std.testing.expect(1 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.decimal, &allocating.writer);
+    try std.testing.expect(2 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.flag, &allocating.writer);
+    try std.testing.expect(3 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.string, &allocating.writer);
+    try std.testing.expect(4 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.point, &allocating.writer);
+    try std.testing.expect(5 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.list, &allocating.writer);
+    try std.testing.expect(6 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Types.serializeTypeToWriter(.map, &allocating.writer);
+    try std.testing.expect(7 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+}
