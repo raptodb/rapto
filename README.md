@@ -1,5 +1,5 @@
 ### This branch is dedicated to a complete redesign of the entire architecture. The database completely changes its data storage model, task management, and the entire system.
-### When this branch is ready to go, it will be merged with `unstable` branch and the documentation and presentation will be changed.
+### When this branch is ready to go, the documentation and presentation will be changed; at this moment this README is not updated/valid.
 
 <br><br>
 
