@@ -59,8 +59,6 @@ pub fn build(b: *std.Build) void {
     });
     linkDefaultLibs(lib_unit_tests);
 
-
-
     // add step for testing
     const run_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
