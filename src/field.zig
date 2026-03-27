@@ -30,7 +30,7 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of fields.
+//! It contains the implementation of fields API.
 
 pub const Types = @import("field/types.zig").Types;
 pub const ScalarItem = @import("field/scalar.zig").ScalarItem;
