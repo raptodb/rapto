@@ -170,4 +170,8 @@ const Map = std.HashMapUnmanaged(
     65,
 );
 
-// TODO: tests
+test {
+    _ = @import("memory/object.zig");
+    // placed for convetions, tagged pointer has not tests
+    _ = @import("memory/tagged_pointer.zig");
+}

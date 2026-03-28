@@ -411,4 +411,139 @@ pub const Ref = struct {
     }
 };
 
-// TODO: tests
+test "Ref" {
+    const allocator = std.testing.allocator;
+
+    const integer_content: [8]u8 = blk: {
+        var buf: [8]u8 = undefined;
+        std.mem.writeInt(i64, &buf, 42, .little);
+        break :blk buf;
+    };
+
+    {
+        var key: Key = try .init(allocator, "my_key", .integer);
+        defer key.deinit(allocator);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+        defer f.deinit(allocator, .integer);
+
+        const ref: Ref = .init(&key, &f);
+
+        try std.testing.expectEqualStrings("my_key", ref.key());
+        try std.testing.expectEqual(.integer, ref.type());
+    }
+
+    {
+        var key: Key = try .init(allocator, "aaa", .integer);
+        defer key.deinit(allocator);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+        defer f.deinit(allocator, .integer);
+
+        const ref: Ref = .init(&key, &f);
+        try ref.setKey(allocator, "bbb");
+
+        try std.testing.expectEqualStrings("bbb", ref.key());
+        try std.testing.expectEqual(.integer, ref.type());
+    }
+
+    {
+        var key: Key = try .init(allocator, "short", .integer);
+        defer key.deinit(allocator);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+        defer f.deinit(allocator, .integer);
+
+        const ref: Ref = .init(&key, &f);
+        try ref.setKey(allocator, "a_much_longer_key");
+
+        try std.testing.expectEqualStrings("a_much_longer_key", ref.key());
+        try std.testing.expectEqual(.integer, ref.type());
+    }
+
+    {
+        var key: Key = try .init(allocator, "valid", .integer);
+        defer key.deinit(allocator);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+        defer f.deinit(allocator, .integer);
+
+        const ref: Ref = .init(&key, &f);
+        try std.testing.expectError(error.InvalidKey, ref.setKey(allocator, "in\x00valid"));
+
+        try std.testing.expectEqualStrings("valid", ref.key());
+        try std.testing.expectEqual(.integer, ref.type());
+    }
+
+    {
+        const integer_20_content: [8]u8 = blk: {
+            var buf: [8]u8 = undefined;
+            std.mem.writeInt(i64, &buf, 20, .little);
+            break :blk buf;
+        };
+
+        var key: Key = try .init(allocator, "my_key", .integer);
+        defer key.deinit(allocator);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+        defer f.deinit(allocator, .integer);
+
+        const ref: Ref = .init(&key, &f);
+        try ref.setValue(allocator, .integer, &integer_20_content);
+
+        try std.testing.expectEqualStrings("my_key", ref.key());
+        try std.testing.expectEqual(.integer, ref.type());
+    }
+
+    {
+        var key: Key = try .init(allocator, "my_key", .integer);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+
+        const ref: Ref = .init(&key, &f);
+        try ref.setValue(allocator, .string, "hello");
+
+        try std.testing.expectEqualStrings("my_key", ref.key());
+        try std.testing.expectEqual(.string, ref.type());
+
+        ref.deinit(allocator);
+    }
+
+    {
+        var key: Key = try .init(allocator, "evolving", .integer);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+
+        const ref: Ref = .init(&key, &f);
+
+        try ref.setValue(allocator, .string, "step one");
+        try std.testing.expectEqualStrings("evolving", ref.key());
+        try std.testing.expectEqual(.string, ref.type());
+
+        const decimal_content: [8]u8 = @bitCast(@as(f64, 9.81));
+        try ref.setValue(allocator, .decimal, &decimal_content);
+        try std.testing.expectEqualStrings("evolving", ref.key());
+        try std.testing.expectEqual(.decimal, ref.type());
+
+        const flag_content: [8]u8 = blk: {
+            var buf: [8]u8 = undefined;
+            std.mem.writeInt(u64, &buf, 1, .little);
+            break :blk buf;
+        };
+        try ref.setValue(allocator, .flag, &flag_content);
+        try std.testing.expectEqualStrings("evolving", ref.key());
+        try std.testing.expectEqual(.flag, ref.type());
+
+        ref.deinit(allocator);
+    }
+
+    {
+        var key: Key = try .init(allocator, "old_key", .integer);
+        var f: Field = try .init(allocator, .integer, &integer_content);
+
+        const ref: Ref = .init(&key, &f);
+
+        try ref.setKey(allocator, "new_key");
+        try std.testing.expectEqualStrings("new_key", ref.key());
+        try std.testing.expectEqual(.integer, ref.type());
+
+        try ref.setValue(allocator, .string, "hello");
+        try std.testing.expectEqualStrings("new_key", ref.key());
+        try std.testing.expectEqual(.string, ref.type());
+
+        ref.deinit(allocator);
+    }
+}

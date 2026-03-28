@@ -36,4 +36,5 @@ comptime {
     // Tested modules
     _ = @import("zprof.zig");
     _ = @import("field.zig");
+    _ = @import("Memory.zig");
 }
