@@ -59,11 +59,11 @@ pub fn put(
     const entry = try self.map.getOrPutAdapted(
         self.allocator,
         key,
-        SearchContext,
+        SearchContext{},
     );
 
-    // key_ptr.* and value_ptr are internal pointers
-    const ref: object.Ref = .init(self, entry.key_ptr.*, entry.value_ptr);
+    // key_ptr and value_ptr are internal pointers
+    const ref: object.Ref = .init(self, entry.key_ptr, entry.value_ptr);
 
     if (entry.found_existing) {
         try ref.setValue(self.allocator, field_type, content);
@@ -81,8 +81,8 @@ pub fn put(
 pub fn search(self: *Memory, key: []const u8) ?object.Ref {
     if (self.map.count() == 0) return null;
 
-    const entry = self.map.getEntryAdapted(key, SearchContext) orelse return null;
-    return .init(self, entry.key_ptr.*, entry.value_ptr);
+    const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse return null;
+    return .init(self, entry.key_ptr, entry.value_ptr);
 }
 
 /// Removes key from memory. Associated object.Ref will be invalidated.
@@ -123,7 +123,7 @@ pub const Iterator = struct {
 
     pub fn next(self: *Iterator) ?object.Ref {
         const entry = self.wrapped_iterator.next() orelse return null;
-        return .init(self.memory, entry.key_ptr.*, entry.value_ptr);
+        return .init(self.memory, entry.key_ptr, entry.value_ptr);
     }
 
     pub fn skip(self: *Iterator) void {
@@ -147,7 +147,7 @@ const SearchContext = struct {
     pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
         return b.isEqualTo(a);
     }
-}{};
+};
 
 const PutContext = struct {
     pub fn hash(_: @This(), s: object.Key) u64 {
@@ -161,7 +161,7 @@ const PutContext = struct {
         while (lhs[i] == rhs[i] and lhs[i] != 0) i += 1;
         return lhs[i] == rhs[i];
     }
-}{};
+};
 
 const Map = std.HashMapUnmanaged(
     object.Key,

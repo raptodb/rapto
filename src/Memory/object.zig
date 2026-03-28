@@ -118,7 +118,7 @@ pub const Key = struct {
             buf[key.len] = 0;
 
             ptr = @ptrCast(buf);
-            self.ptr = .initPointer(ptr);
+            self.ptr.setPointer(ptr);
         }
 
         @memcpy(ptr[0..key.len], key);
@@ -151,7 +151,7 @@ pub const Key = struct {
 
     pub fn getFieldType(self: Key) field.Types {
         const tag = self.ptr.getTag();
-        return .fromInt(tag);
+        return field.Types.fromInt(tag) catch unreachable;
     }
 
     pub fn setFieldType(self: *Key, field_type: field.Types) void {
@@ -219,13 +219,13 @@ pub const Field = struct {
         allocator: std.mem.Allocator,
         field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType }!Field {
+    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!Field {
         return .{
             .value = switch (field_type) {
                 .void => .{ .void = .init() },
-                .integer => .{ .integer = .init(content) },
-                .decimal => .{ .decimal = .init(content) },
-                .flag => .{ .flag = .init(content) },
+                .integer => .{ .integer = try .init(content) },
+                .decimal => .{ .decimal = try .init(content) },
+                .flag => .{ .flag = try .init(content) },
                 .string => .{ .string = try .init(allocator, content) },
                 .point => .{ .point = try .init(allocator, content) },
                 .list => .{ .list = try .init(allocator, content) },
@@ -239,7 +239,7 @@ pub const Field = struct {
         allocator: std.mem.Allocator,
         field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType }!void {
+    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
         return switch (field_type) {
             .void => self.value.void.set(),
             .integer => self.value.integer.set(content),
@@ -258,11 +258,11 @@ pub const Field = struct {
         old_field_type: field.Types,
         new_field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType }!void {
+    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
         // deallocate previous field first
         self.deinit(allocator, old_field_type);
 
-        const new_field: Field = .init(allocator, new_field_type, content);
+        const new_field: Field = try .init(allocator, new_field_type, content);
         self.value = new_field.value;
     }
 
@@ -325,10 +325,10 @@ pub const Field = struct {
 /// Safe reference adapter to a Key-Field representation as key-value.
 /// This allows safe operations on key or field while keeping the fields separate.
 pub const Ref = struct {
-    key_ptr: Key, // Key is already a pointer
+    key_ptr: *Key,
     value_ptr: *Field,
 
-    pub fn init(key_ptr: Key, value_ptr: *Field) Ref {
+    pub fn init(key_ptr: *Key, value_ptr: *Field) Ref {
         return .{ .key_ptr = key_ptr, .value_ptr = value_ptr };
     }
 
@@ -375,7 +375,7 @@ pub const Ref = struct {
         allocator: std.mem.Allocator,
         field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType }!void {
+    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
         const current_field_type = self.type();
 
         if (field_type != current_field_type) {
@@ -389,7 +389,7 @@ pub const Ref = struct {
             );
 
             // update tag to new field type
-            self.key_ptr.setFieldType(field_type);
+            return self.key_ptr.setFieldType(field_type);
         }
 
         return self.value_ptr.setAsSameType(allocator, field_type, content);
