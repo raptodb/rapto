@@ -39,7 +39,7 @@ const std = @import("std");
 pub const Flag = struct {
     value: Status,
 
-    const Status = enum(u64) {
+    pub const Status = enum(u64) {
         false = 0,
         true = 1,
 
