@@ -136,7 +136,7 @@ pub fn iterator(self: *Memory) Iterator {
 }
 
 const std = @import("std");
-const object = @import("memory/object.zig");
+const object = @import("Memory/object.zig");
 
 const Types = @import("field.zig").Types;
 
@@ -171,7 +171,7 @@ const Map = std.HashMapUnmanaged(
 );
 
 test {
-    _ = @import("memory/object.zig");
+    _ = @import("Memory/object.zig");
     // placed for convetions, tagged pointer has not tests
-    _ = @import("memory/tagged_pointer.zig");
+    _ = @import("Memory/tagged_pointer.zig");
 }
