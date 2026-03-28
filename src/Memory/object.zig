@@ -414,11 +414,7 @@ pub const Ref = struct {
 test "Ref" {
     const allocator = std.testing.allocator;
 
-    const integer_content: [8]u8 = blk: {
-        var buf: [8]u8 = undefined;
-        std.mem.writeInt(i64, &buf, 42, .little);
-        break :blk buf;
-    };
+    const integer_content: [8]u8 = @bitCast(@as(i64, 42));
 
     {
         var key: Key = try .init(allocator, "my_key", .integer);
