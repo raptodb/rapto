@@ -111,12 +111,3 @@ pub const ScalarItem = union(enum) {
         }
     }
 };
-
-test {
-    _ = @import("scalar/void.zig");
-    _ = @import("scalar/integer.zig");
-    _ = @import("scalar/decimal.zig");
-    _ = @import("scalar/flag.zig");
-    _ = @import("scalar/string.zig");
-    _ = @import("scalar/point.zig");
-}

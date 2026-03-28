@@ -30,7 +30,7 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of build system and testing.
+//! It contains the implementation of build system.
 
 const std = @import("std");
 
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
 
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tests.zig"),
+            .root_source_file = b.path("src/unit_tests.zig"),
             .target = target,
             .optimize = optimize,
             .single_threaded = false,

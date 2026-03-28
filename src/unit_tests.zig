@@ -30,11 +30,23 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of testing module.
+//! It contains the implementation of unit tests.
 
 comptime {
-    // Tested modules
-    _ = @import("zprof.zig");
-    _ = @import("field.zig");
     _ = @import("Memory.zig");
+    _ = @import("Memory/object.zig");
+    _ = @import("Memory/tagged_pointer.zig");
+    _ = @import("field.zig");
+    _ = @import("field/collection.zig");
+    _ = @import("field/collection/list.zig");
+    _ = @import("field/collection/map.zig");
+    _ = @import("field/scalar.zig");
+    _ = @import("field/scalar/decimal.zig");
+    _ = @import("field/scalar/flag.zig");
+    _ = @import("field/scalar/integer.zig");
+    _ = @import("field/scalar/point.zig");
+    _ = @import("field/scalar/string.zig");
+    _ = @import("field/scalar/void.zig");
+    _ = @import("field/types.zig");
+    _ = @import("zprof.zig");
 }

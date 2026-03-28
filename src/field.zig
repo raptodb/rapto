@@ -46,9 +46,3 @@ pub const List = @import("field/collection.zig").List;
 pub const Map = @import("field/collection.zig").Map;
 
 pub const splitSerialized = @import("field/types.zig").splitSerialized;
-
-test {
-    _ = @import("field/types.zig");
-    _ = @import("field/scalar.zig");
-    _ = @import("field/collection.zig");
-}

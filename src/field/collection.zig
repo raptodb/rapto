@@ -34,8 +34,3 @@
 
 pub const List = @import("collection/list.zig").List;
 pub const Map = @import("collection/map.zig").Map;
-
-test {
-    _ = @import("collection/list.zig");
-    _ = @import("collection/map.zig");
-}

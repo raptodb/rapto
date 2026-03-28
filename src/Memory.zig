@@ -32,6 +32,10 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of memory.
 
+const std = @import("std");
+const object = @import("Memory/object.zig");
+
+const Types = @import("field.zig").Types;
 const Memory = @This();
 
 allocator: std.mem.Allocator,
@@ -135,11 +139,6 @@ pub fn iterator(self: *Memory) Iterator {
     return .init(self, self.map.iterator());
 }
 
-const std = @import("std");
-const object = @import("Memory/object.zig");
-
-const Types = @import("field.zig").Types;
-
 const SearchContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {
         return std.hash.Wyhash.hash(0, s);
@@ -169,9 +168,3 @@ const Map = std.HashMapUnmanaged(
     PutContext,
     65,
 );
-
-test {
-    _ = @import("Memory/object.zig");
-    // placed for convetions, tagged pointer has not tests
-    _ = @import("Memory/tagged_pointer.zig");
-}
