@@ -65,7 +65,7 @@ pub fn TaggedPointer(comptime T: type) type {
         }
 
         pub fn setPointer(self: *Self, ptr: T) void {
-            self.value = @intFromPtr(ptr) | (self.ptr & tag_mask);
+            self.ptr = @intFromPtr(ptr) | (self.ptr & tag_mask);
         }
 
         pub fn setTag(self: *Self, tag: Tag) void {
