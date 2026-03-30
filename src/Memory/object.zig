@@ -301,21 +301,16 @@ pub const Ref = struct {
     key_ptr: *Key,
     value_ptr: *Field,
 
-    pub fn init(key_ptr: *Key, value_ptr: *Field) Ref {
+    pub fn wrap(key_ptr: *Key, value_ptr: *Field) Ref {
         return .{ .key_ptr = key_ptr, .value_ptr = value_ptr };
     }
 
-    pub fn deinit(self: *const Ref, allocator: std.mem.Allocator) void {
-        self.key_ptr.deinit(allocator);
-        self.value_ptr.deinit(allocator, self.type());
-    }
-
-    pub fn key(self: *const Ref) []const u8 {
+    pub fn key(self: Ref) []const u8 {
         return self.key_ptr.get();
     }
 
     pub fn value(
-        self: *const Ref,
+        self: Ref,
         comptime field_type: field.Types,
     ) Field.Value.ReturnType(field_type) {
         std.debug.assert(self.type() == field_type);
@@ -371,7 +366,7 @@ pub const Ref = struct {
     /// Serialized content of field to writer.
     /// NOTE: content does not contains [field_type] according to Rapto's serialized (SR).
     pub fn serializeContentToWriter(
-        self: *const Ref,
+        self: Ref,
         writer: *std.Io.Writer,
     ) error{WriteFailed}!void {
         const field_type = self.type();
@@ -379,7 +374,7 @@ pub const Ref = struct {
     }
 
     /// Returns type of field exploiting tag of pointer to key.
-    pub fn @"type"(self: *const Ref) field.Types {
+    pub fn @"type"(self: Ref) field.Types {
         return self.key_ptr.getFieldType();
     }
 };

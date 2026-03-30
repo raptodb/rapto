@@ -21,9 +21,10 @@ pub fn init(allocator: std.mem.Allocator) Memory {
 
 pub fn deinit(self: *Memory) void {
     var iter = self.iterator();
-    while (iter.next()) |ref|
-        ref.deinit();
-
+    while (iter.next()) |ref| {
+        ref.key_ptr.deinit(self.allocator);
+        ref.value_ptr.deinit(self.allocator);
+    }
     self.map.deinit(self.allocator);
 }
 
@@ -39,8 +40,7 @@ pub fn put(
         SearchContext{},
     );
 
-    // key_ptr and value_ptr are internal pointers
-    const ref: object.Ref = .init(self, entry.key_ptr, entry.value_ptr);
+    const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
 
     if (entry.found_existing) {
         try ref.setValue(self.allocator, field_type, content);
@@ -59,15 +59,15 @@ pub fn search(self: *Memory, key: []const u8) ?object.Ref {
     if (self.map.count() == 0) return null;
 
     const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse return null;
-    return .init(self, entry.key_ptr, entry.value_ptr);
+    return .wrap(entry.key_ptr, entry.value_ptr);
 }
 
 /// Removes key from memory. Associated object.Ref will be invalidated.
 pub fn remove(self: *Memory, key: []const u8) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
-
-    ref.deinit();
     self.map.removeByPtr(ref.key_ptr);
+    ref.key_ptr.deinit(self.allocator);
+    ref.value_ptr.deinit(self.allocator);
 }
 
 pub fn count(self: *const Memory) u64 {
@@ -100,7 +100,7 @@ pub const Iterator = struct {
 
     pub fn next(self: *Iterator) ?object.Ref {
         const entry = self.wrapped_iterator.next() orelse return null;
-        return .init(self.memory, entry.key_ptr, entry.value_ptr);
+        return .wrap(entry.key_ptr, entry.value_ptr);
     }
 
     pub fn skip(self: *Iterator) void {
