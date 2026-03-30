@@ -388,7 +388,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "my_key", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try std.testing.expectEqualStrings("my_key", ref.key());
@@ -399,7 +399,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "aaa", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try ref.setKey(allocator, "bbb");
@@ -412,7 +412,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "short", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try ref.setKey(allocator, "a_much_longer_key");
@@ -425,7 +425,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "valid", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try std.testing.expectError(error.InvalidKey, ref.setKey(allocator, "in\x00valid"));
@@ -439,7 +439,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "my_key", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try ref.setValue(allocator, .integer, &integer_20_content);
@@ -452,7 +452,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "my_key", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try ref.setValue(allocator, .string, "hello");
@@ -465,7 +465,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "evolving", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try ref.setValue(allocator, .string, "step one");
@@ -487,7 +487,7 @@ test "Ref" {
         var key: Key = try .init(allocator, "old_key", .integer);
         var f: Field = try .init(allocator, .integer, &integer_content);
 
-        const ref: Ref = .init(&key, &f);
+        const ref: Ref = .wrap(&key, &f);
         defer ref.deinit(allocator);
 
         try ref.setKey(allocator, "new_key");
