@@ -301,6 +301,7 @@ pub const Ref = struct {
     key_ptr: *Key,
     value_ptr: *Field,
 
+    /// Wraps pointers to Key and field into Ref. Does not take ownership.
     pub fn wrap(key_ptr: *Key, value_ptr: *Field) Ref {
         return .{ .key_ptr = key_ptr, .value_ptr = value_ptr };
     }
