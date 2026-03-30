@@ -21,5 +21,8 @@ comptime {
     _ = @import("field/scalar/string.zig");
     _ = @import("field/scalar/void.zig");
     _ = @import("field/types.zig");
+    _ = @import("Task.zig");
+    _ = @import("Task/Query.zig");
+    _ = @import("Task/Query/Flags.zig");
     _ = @import("zprof.zig");
 }

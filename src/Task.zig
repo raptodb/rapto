@@ -57,3 +57,52 @@ pub const Iterator = struct {
         return try .parse(query);
     }
 };
+
+pub fn iterator(self: *const Task) Iterator {
+    return .init(self.pipeline);
+}
+
+test "Task" {
+    const allocator = std.testing.allocator;
+
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    defer allocating.deinit();
+    const writer = &allocating.writer;
+
+    const queries = [_]struct {
+        command: Query.Command,
+        flags: Query.Flags,
+        args: []const []const u8,
+    }{
+        .{ .command = .PING, .flags = .{}, .args = &.{} },
+        .{ .command = .SET, .flags = .{ .noreply = true }, .args = &.{ "k", "v" } },
+    };
+
+    for (queries) |q| {
+        var qw: std.Io.Writer.Allocating = .init(allocator);
+        defer qw.deinit();
+        try Query.serializeToWriter(&qw.writer, q.command, q.flags, q.args);
+        const serialized = qw.writer.buffered();
+        try writer.writeInt(u32, @truncate(serialized.len), .little);
+        try writer.writeAll(serialized);
+    }
+
+    const pipeline = try allocator.dupe(u8, writer.buffered());
+    const task: Task = .init(pipeline, null);
+    defer task.deinit(allocator);
+
+    try std.testing.expect(task.timestamp != 0);
+
+    var it = task.iterator();
+    for (queries) |expected| {
+        const q = try it.next().?;
+        try std.testing.expectEqual(expected.command, q.command);
+        try std.testing.expectEqual(expected.flags.noreply, q.flags.noreply);
+        var args = q.args;
+        for (expected.args) |a|
+            try std.testing.expectEqualStrings(a, args.next().?);
+        try std.testing.expectEqual(null, args.next());
+    }
+
+    try std.testing.expectEqual(null, it.next());
+}

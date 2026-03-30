@@ -143,3 +143,113 @@ fn serializeStringToWriter(writer: *std.Io.Writer, value: []const u8) error{Writ
     try writer.writeInt(u32, @truncate(value.len), .little);
     return writer.writeAll(value);
 }
+
+test "Flags" {
+    var buffer: [512]u8 = undefined;
+
+    const cases = [_]Flags{
+        .{ .noreply = false, .free = false, .by = .any },
+        .{ .noreply = true, .free = false, .by = .{ .index = 42 } },
+        .{ .noreply = false, .free = true, .by = .{ .range = .{ .from = 5, .to = 15 } } },
+        .{ .noreply = true, .free = true, .by = .{ .key = "abc" } },
+    };
+
+    for (cases) |original| {
+        var writer: std.Io.Writer = .fixed(&buffer);
+
+        try original.serializeToWriter(&writer);
+
+        const parsed: Flags = try .parse(writer.buffered());
+
+        try std.testing.expectEqual(original.noreply, parsed.noreply);
+        try std.testing.expectEqual(original.free, parsed.free);
+
+        switch (original.by) {
+            .any => switch (parsed.by) {
+                .any => {},
+                else => return error.TestFailure,
+            },
+            .index => |v| switch (parsed.by) {
+                .index => |pv| try std.testing.expectEqual(v, pv),
+                else => return error.TestFailure,
+            },
+            .range => |r| switch (parsed.by) {
+                .range => |pr| {
+                    try std.testing.expectEqual(r.from, pr.from);
+                    try std.testing.expectEqual(r.to, pr.to);
+                },
+                else => return error.TestFailure,
+            },
+            .key => |k| switch (parsed.by) {
+                .key => |pk| try std.testing.expectEqualStrings(k, pk),
+                else => return error.TestFailure,
+            },
+        }
+    }
+
+    {
+        var stream = std.io.fixedBufferStream(&buffer);
+        const w = &stream.writer();
+
+        try w.writeByte(@intFromEnum(Flags.Tag.byindex));
+        try w.writeInt(u32, 99, .little);
+
+        try w.writeByte(@intFromEnum(Flags.Tag.noreply));
+        try w.writeByte(1);
+
+        try w.writeByte(@intFromEnum(Flags.Tag.free));
+        try w.writeByte(1);
+
+        const parsed = try Flags.parse(stream.getWritten());
+
+        try std.testing.expect(parsed.noreply);
+        try std.testing.expect(parsed.free);
+
+        switch (parsed.by) {
+            .index => |v| try std.testing.expectEqual(@as(u32, 99), v),
+            else => return error.TestFailure,
+        }
+    }
+
+    {
+        const parsed: Flags = try .parse(&[_]u8{});
+        try std.testing.expect(!parsed.noreply);
+        try std.testing.expect(!parsed.free);
+
+        switch (parsed.by) {
+            .any => {},
+            else => return error.TestFailure,
+        }
+    }
+
+    {
+        const data = [_]u8{0xFF};
+        try std.testing.expectError(error.UnknownFlag, Flags.parse(&data));
+    }
+
+    {
+        var stream = std.io.fixedBufferStream(&buffer);
+        const w = &stream.writer();
+
+        try w.writeByte(@intFromEnum(Flags.Tag.byindex));
+
+        try std.testing.expectError(
+            error.InvalidFormat,
+            Flags.parse(stream.getWritten()),
+        );
+    }
+
+    {
+        var stream = std.io.fixedBufferStream(&buffer);
+        const w = &stream.writer();
+
+        try w.writeByte(@intFromEnum(Flags.Tag.bykey));
+        try w.writeInt(u32, 10, .little);
+        try w.writeByte(1);
+
+        try std.testing.expectError(
+            error.InvalidFormat,
+            Flags.parse(stream.getWritten()),
+        );
+    }
+}

@@ -140,6 +140,47 @@ pub fn serializeToWriter(
         try writer.writeAll(arg);
     }
 }
+
+test "Query" {
+    const Case = struct {
+        command: Query.Command,
+        flags: Query.Flags,
+        args: []const []const u8,
+    };
+
+    const cases = [_]Case{
+        .{ .command = .PING, .flags = .{}, .args = &.{} },
+        .{ .command = .GET, .flags = .{ .by = .{ .index = 42 } }, .args = &.{"key"} },
+        .{
+            .command = .GET,
+            .flags = .{ .by = .{ .range = .{ .from = 10, .to = 20 } } },
+            .args = &.{ "a", "b" },
+        },
+        .{ .command = .GET, .flags = .{ .by = .{ .key = "mykey" } }, .args = &.{"arg"} },
+        .{ .command = .GET, .flags = .{ .by = .any }, .args = &.{} },
+        .{ .command = .ERASE, .flags = .{ .free = true }, .args = &.{"target"} },
+        .{ .command = .SET, .flags = .{ .noreply = true }, .args = &.{ "key", "value" } },
+        .{
+            .command = .LIST,
+            .flags = .{ .noreply = true, .free = true, .by = .{ .range = .{ .from = 0, .to = 99 } } },
+            .args = &.{ "a", "b", "c" },
+        },
+        .{ .command = .DOWN, .flags = .{}, .args = &.{} },
+    };
+
+    for (cases) |case| {
+        var buffer: [512]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&buffer);
+
+        try serializeToWriter(&writer, case.command, case.flags, case.args);
+
+        const q: Query = try Query.parse(writer.buffered());
+
+        try std.testing.expectEqual(case.command, q.command);
+        try std.testing.expectEqual(case.flags.noreply, q.flags.noreply);
+        try std.testing.expectEqual(case.flags.free, q.flags.free);
+
+        try std.testing.expectEqual(
             std.meta.activeTag(case.flags.by),
             std.meta.activeTag(q.flags.by),
         );
