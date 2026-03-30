@@ -389,7 +389,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try std.testing.expectEqualStrings("my_key", ref.key());
         try std.testing.expectEqual(.integer, ref.type());
@@ -400,7 +403,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try ref.setKey(allocator, "bbb");
 
@@ -413,7 +419,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try ref.setKey(allocator, "a_much_longer_key");
 
@@ -426,7 +435,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try std.testing.expectError(error.InvalidKey, ref.setKey(allocator, "in\x00valid"));
         try std.testing.expectEqualStrings("valid", ref.key());
@@ -440,7 +452,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try ref.setValue(allocator, .integer, &integer_20_content);
 
@@ -453,7 +468,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try ref.setValue(allocator, .string, "hello");
 
@@ -466,7 +484,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try ref.setValue(allocator, .string, "step one");
         try std.testing.expectEqualStrings("evolving", ref.key());
@@ -488,7 +509,10 @@ test "Ref" {
         var f: Field = try .init(allocator, .integer, &integer_content);
 
         const ref: Ref = .wrap(&key, &f);
-        defer ref.deinit(allocator);
+        defer {
+            ref.key_ptr.deinit(allocator);
+            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
+        }
 
         try ref.setKey(allocator, "new_key");
         try std.testing.expectEqualStrings("new_key", ref.key());

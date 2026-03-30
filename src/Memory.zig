@@ -67,7 +67,7 @@ pub fn remove(self: *Memory, key: []const u8) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
     self.map.removeByPtr(ref.key_ptr);
     ref.key_ptr.deinit(self.allocator);
-    ref.value_ptr.deinit(self.allocator);
+    ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
 }
 
 pub fn count(self: *const Memory) u64 {
@@ -76,16 +76,20 @@ pub fn count(self: *const Memory) u64 {
 
 pub fn clear(self: *Memory) void {
     var iter = self.iterator();
-    while (iter.next()) |ref|
-        ref.deinit();
+    while (iter.next()) |ref| {
+        ref.key_ptr.deinit(self.allocator);
+        ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
+    }
 
     self.map.clearRetainingCapacity();
 }
 
 pub fn free(self: *Memory) void {
     var iter = self.iterator();
-    while (iter.next()) |ref|
-        ref.deinit();
+    while (iter.next()) |ref| {
+        ref.key_ptr.deinit(self.allocator);
+        ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
+    }
 
     self.map.clearAndFree(self.allocator);
 }
