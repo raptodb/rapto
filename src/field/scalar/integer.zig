@@ -31,8 +31,8 @@ pub const Integer = struct {
         return @sizeOf(i64);
     }
 
-    pub fn add(self: *Integer, value: i64) error{Overflow}!void {
-        const updated_value = try std.math.add(i64, self.get(), value);
+    pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
+        const updated_value = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
         std.mem.writeInt(i64, self.raw[0..], updated_value, .little);
     }
 

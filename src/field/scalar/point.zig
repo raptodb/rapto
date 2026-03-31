@@ -57,7 +57,7 @@ pub const Point = struct {
         allocator.destroy(self.value);
     }
 
-    pub fn translate(self: Point, delta: Axis) error{Overflow}!void {
+    pub fn translate(self: Point, delta: Axis) error{MathOverflow}!void {
         const dx = delta.x.get();
         const dy = delta.y.get();
         const dz = delta.z.get();
@@ -168,7 +168,7 @@ test "Point" {
     try delta.set(delta_writer.buffered());
 
     try std.testing.expectError(
-        error.Overflow,
+        error.MathOverflow,
         p.translate(delta.get()),
     );
 }

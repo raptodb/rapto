@@ -30,10 +30,10 @@ pub const Decimal = struct {
         return @sizeOf(f64);
     }
 
-    pub fn add(self: *Decimal, value: f64) error{Overflow}!void {
+    pub fn add(self: *Decimal, value: f64) error{MathOverflow}!void {
         const updated_value = self.get() + value;
         if (!std.math.isFinite(updated_value))
-            return error.Overflow;
+            return error.MathOverflow;
 
         self.raw = @bitCast(updated_value);
     }
