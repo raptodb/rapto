@@ -36,6 +36,7 @@ pub fn init(pipeline: []const u8, replyFn: ?replyFnType) Task {
         .replyFn = replyFn,
     };
 }
+
 pub fn deinit(self: *const Task, allocator: std.mem.Allocator) void {
     allocator.free(self.pipeline);
 }
@@ -54,7 +55,7 @@ pub const Iterator = struct {
     ) ?error{ UnknownCommand, MismatchType, UnknownFlag, InvalidFormat }!Query {
         const len = self.reader.takeInt(u32, .little) catch return null;
         const query = self.reader.take(len) catch return null;
-        return try .parse(query);
+        return .parse(query);
     }
 };
 
