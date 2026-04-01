@@ -9,43 +9,43 @@ const std = @import("std");
 
 /// Decimal field type represents double-precision floating-point (FP64).
 /// This implementation is more efficient for decimal calculations.
-pub const Decimal = struct {
-    raw: [8]u8 = undefined,
+const Decimal = @This();
 
-    pub fn init(content: []const u8) error{MismatchType}!Decimal {
-        if (content.len != 8) return error.MismatchType;
-        return .{ .raw = content[0..8].* };
-    }
+raw: [8]u8 = undefined,
 
-    pub fn set(self: *Decimal, content: []const u8) error{MismatchType}!void {
-        if (content.len != 8) return error.MismatchType;
-        self.raw = content[0..8].*;
-    }
+pub fn init(content: []const u8) error{MismatchType}!Decimal {
+    if (content.len != 8) return error.MismatchType;
+    return .{ .raw = content[0..8].* };
+}
 
-    pub fn get(self: Decimal) f64 {
-        return @bitCast(self.raw);
-    }
+pub fn set(self: *Decimal, content: []const u8) error{MismatchType}!void {
+    if (content.len != 8) return error.MismatchType;
+    self.raw = content[0..8].*;
+}
 
-    pub fn len(_: Decimal) u64 {
-        return @sizeOf(f64);
-    }
+pub fn get(self: Decimal) f64 {
+    return @bitCast(self.raw);
+}
 
-    pub fn add(self: *Decimal, value: f64) error{MathOverflow}!void {
-        const updated_value = self.get() + value;
-        if (!std.math.isFinite(updated_value))
-            return error.MathOverflow;
+pub fn len(_: Decimal) u64 {
+    return @sizeOf(f64);
+}
 
-        self.raw = @bitCast(updated_value);
-    }
+pub fn add(self: *Decimal, value: f64) error{MathOverflow}!void {
+    const updated_value = self.get() + value;
+    if (!std.math.isFinite(updated_value))
+        return error.MathOverflow;
 
-    pub fn isApproxEqualTo(self: Decimal, value: f64) bool {
-        return std.math.approxEqAbs(f64, self.get(), value, 1e-12);
-    }
+    self.raw = @bitCast(updated_value);
+}
 
-    pub fn serializeContentToWriter(self: Decimal, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try writer.writeAll(self.raw[0..]);
-    }
-};
+pub fn isApproxEqualTo(self: Decimal, value: f64) bool {
+    return std.math.approxEqAbs(f64, self.get(), value, 1e-12);
+}
+
+pub fn serializeContentToWriter(self: Decimal, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try writer.writeAll(self.raw[0..]);
+}
 
 test "Decimal" {
     const allocator = std.testing.allocator;

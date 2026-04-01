@@ -10,36 +10,36 @@ const std = @import("std");
 /// Integer field type represents signed integer of 64 bits.
 /// This implementation is more efficient for integer calculations.
 /// Useful for counters, timestamps and identifiers.
-pub const Integer = struct {
-    raw: [8]u8 = undefined,
+const Integer = @This();
 
-    pub fn init(content: []const u8) error{MismatchType}!Integer {
-        if (content.len != 8) return error.MismatchType;
-        return .{ .raw = content[0..8].* };
-    }
+raw: [8]u8 = undefined,
 
-    pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
-        if (content.len != 8) return error.MismatchType;
-        self.raw = content[0..8].*;
-    }
+pub fn init(content: []const u8) error{MismatchType}!Integer {
+    if (content.len != 8) return error.MismatchType;
+    return .{ .raw = content[0..8].* };
+}
 
-    pub fn get(self: Integer) i64 {
-        return std.mem.readInt(i64, self.raw[0..], .little);
-    }
+pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
+    if (content.len != 8) return error.MismatchType;
+    self.raw = content[0..8].*;
+}
 
-    pub fn len(_: Integer) u64 {
-        return @sizeOf(i64);
-    }
+pub fn get(self: Integer) i64 {
+    return std.mem.readInt(i64, self.raw[0..], .little);
+}
 
-    pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
-        const updated_value = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
-        std.mem.writeInt(i64, self.raw[0..], updated_value, .little);
-    }
+pub fn len(_: Integer) u64 {
+    return @sizeOf(i64);
+}
 
-    pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try writer.writeAll(self.raw[0..]);
-    }
-};
+pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
+    const updated_value = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
+    std.mem.writeInt(i64, self.raw[0..], updated_value, .little);
+}
+
+pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try writer.writeAll(self.raw[0..]);
+}
 
 test "Integer" {
     const allocator = std.testing.allocator;

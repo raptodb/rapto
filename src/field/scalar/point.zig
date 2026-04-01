@@ -7,72 +7,71 @@
 
 const std = @import("std");
 
+/// Point field type represented as spatial
+/// coordinates with x, y and z decimal axes.
+const Point = @This();
 const Decimal = @import("../scalar.zig").Decimal;
 
-/// Point field type represented as spatial coordinates with
-/// x, y and z decimal axes.
-pub const Point = struct {
-    value: *Axis,
+pub const Axis = struct {
+    x: Decimal,
+    y: Decimal,
+    z: Decimal,
 
-    pub const Axis = struct {
-        x: Decimal,
-        y: Decimal,
-        z: Decimal,
+    pub fn parse(serialized: []const u8) error{ InvalidFormat, MismatchType }!Axis {
+        if (serialized.len != (Decimal{}).len() * 3) return error.InvalidFormat;
 
-        pub fn parse(serialized: []const u8) error{ InvalidFormat, MismatchType }!Axis {
-            if (serialized.len != (Decimal{}).len() * 3) return error.InvalidFormat;
-
-            return .{
-                .x = try .init(serialized[0..8]),
-                .y = try .init(serialized[8..16]),
-                .z = try .init(serialized[16..24]),
-            };
-        }
-    };
-
-    pub fn init(
-        allocator: std.mem.Allocator,
-        content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType }!Point {
-        const axis_ptr = try allocator.create(Axis);
-        errdefer allocator.destroy(axis_ptr);
-
-        axis_ptr.* = try .parse(content);
-        return .{ .value = axis_ptr };
-    }
-
-    pub fn set(self: Point, content: []const u8) error{ InvalidFormat, MismatchType }!void {
-        self.value.* = try .parse(content);
-    }
-
-    pub fn get(self: Point) Axis {
-        return self.value.*;
-    }
-
-    pub fn len(_: Point) u64 {
-        return @sizeOf(Axis);
-    }
-
-    pub fn deinit(self: Point, allocator: std.mem.Allocator) void {
-        allocator.destroy(self.value);
-    }
-
-    pub fn translate(self: Point, delta: Axis) error{MathOverflow}!void {
-        const dx = delta.x.get();
-        const dy = delta.y.get();
-        const dz = delta.z.get();
-
-        try self.value.x.add(dx);
-        try self.value.y.add(dy);
-        try self.value.z.add(dz);
-    }
-
-    pub fn serializeContentToWriter(self: Point, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try self.value.x.serializeContentToWriter(writer);
-        try self.value.y.serializeContentToWriter(writer);
-        try self.value.z.serializeContentToWriter(writer);
+        return .{
+            .x = try .init(serialized[0..8]),
+            .y = try .init(serialized[8..16]),
+            .z = try .init(serialized[16..24]),
+        };
     }
 };
+
+value: *Axis,
+
+pub fn init(
+    allocator: std.mem.Allocator,
+    content: []const u8,
+) error{ OutOfMemory, InvalidFormat, MismatchType }!Point {
+    const axis_ptr = try allocator.create(Axis);
+    errdefer allocator.destroy(axis_ptr);
+
+    axis_ptr.* = try .parse(content);
+    return .{ .value = axis_ptr };
+}
+
+pub fn set(self: Point, content: []const u8) error{ InvalidFormat, MismatchType }!void {
+    self.value.* = try .parse(content);
+}
+
+pub fn get(self: Point) Axis {
+    return self.value.*;
+}
+
+pub fn len(_: Point) u64 {
+    return @sizeOf(Axis);
+}
+
+pub fn deinit(self: Point, allocator: std.mem.Allocator) void {
+    allocator.destroy(self.value);
+}
+
+pub fn translate(self: Point, delta: Axis) error{MathOverflow}!void {
+    const dx = delta.x.get();
+    const dy = delta.y.get();
+    const dz = delta.z.get();
+
+    try self.value.x.add(dx);
+    try self.value.y.add(dy);
+    try self.value.z.add(dz);
+}
+
+pub fn serializeContentToWriter(self: Point, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try self.value.x.serializeContentToWriter(writer);
+    try self.value.y.serializeContentToWriter(writer);
+    try self.value.z.serializeContentToWriter(writer);
+}
 
 test "Point" {
     const allocator = std.testing.allocator;

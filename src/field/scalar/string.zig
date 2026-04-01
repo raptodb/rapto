@@ -8,71 +8,71 @@
 const std = @import("std");
 
 /// String field type represented as raw bytes data.
-pub const String = struct {
-    /// Pointer to byte array. The first 4 bytes
-    /// header represents the length of string.
-    ptr: [*]u8,
+const String = @This();
 
-    pub const HeaderType: type = u32;
-    pub const header_size: u64 = @sizeOf(HeaderType);
+/// Pointer to byte array. The first 4 bytes
+/// header represents the length of string.
+ptr: [*]u8,
 
-    pub fn init(allocator: std.mem.Allocator, serialized: []const u8) error{OutOfMemory}!String {
-        const str = try allocator.alloc(u8, header_size + serialized.len);
-        std.mem.writeInt(HeaderType, str[0..header_size], @truncate(serialized.len), .little);
-        @memcpy(str[header_size..], serialized);
+pub const HeaderType: type = u32;
+pub const header_size: u64 = @sizeOf(HeaderType);
 
-        return .{ .ptr = str.ptr };
+pub fn init(allocator: std.mem.Allocator, serialized: []const u8) error{OutOfMemory}!String {
+    const str = try allocator.alloc(u8, header_size + serialized.len);
+    std.mem.writeInt(HeaderType, str[0..header_size], @truncate(serialized.len), .little);
+    @memcpy(str[header_size..], serialized);
+
+    return .{ .ptr = str.ptr };
+}
+
+pub fn set(
+    self: *String,
+    allocator: std.mem.Allocator,
+    serialized: []const u8,
+) error{OutOfMemory}!void {
+    const length = self.len();
+
+    // serialized.len is never over std.math.maxInt(u32).
+    // each Task, has one or multiple query with a max length
+    // of std.math.maxInt(u32), so is impossible a loss.
+    std.debug.assert(serialized.len <= std.math.maxInt(u32));
+    const serialized_length: u32 = @truncate(serialized.len);
+
+    if (length != serialized_length) {
+        const slice: []u8 = try allocator.realloc(
+            self.ptr[0 .. header_size + length],
+            header_size + serialized_length,
+        );
+
+        self.ptr = slice.ptr;
+
+        std.mem.writeInt(
+            HeaderType,
+            self.ptr[0..header_size],
+            @truncate(serialized_length),
+            .little,
+        );
     }
 
-    pub fn set(
-        self: *String,
-        allocator: std.mem.Allocator,
-        serialized: []const u8,
-    ) error{OutOfMemory}!void {
-        const length = self.len();
+    @memcpy(self.ptr[header_size .. header_size + serialized_length], serialized);
+}
 
-        // serialized.len is never over std.math.maxInt(u32).
-        // each Task, has one or multiple query with a max length
-        // of std.math.maxInt(u32), so is impossible a loss.
-        std.debug.assert(serialized.len <= std.math.maxInt(u32));
-        const serialized_length: u32 = @truncate(serialized.len);
+pub fn get(self: String) []const u8 {
+    return self.ptr[header_size .. header_size + self.len()];
+}
 
-        if (length != serialized_length) {
-            const slice: []u8 = try allocator.realloc(
-                self.ptr[0 .. header_size + length],
-                header_size + serialized_length,
-            );
+/// Returns logical length of string content, excluding header.
+pub fn len(self: String) u32 {
+    return std.mem.readInt(HeaderType, self.ptr[0..header_size], .little);
+}
 
-            self.ptr = slice.ptr;
+pub fn deinit(self: String, allocator: std.mem.Allocator) void {
+    allocator.free(self.ptr[0 .. header_size + self.len()]);
+}
 
-            std.mem.writeInt(
-                HeaderType,
-                self.ptr[0..header_size],
-                @truncate(serialized_length),
-                .little,
-            );
-        }
-
-        @memcpy(self.ptr[header_size .. header_size + serialized_length], serialized);
-    }
-
-    pub fn get(self: String) []const u8 {
-        return self.ptr[header_size .. header_size + self.len()];
-    }
-
-    /// Returns logical length of string content, excluding header.
-    pub fn len(self: String) u32 {
-        return std.mem.readInt(HeaderType, self.ptr[0..header_size], .little);
-    }
-
-    pub fn deinit(self: String, allocator: std.mem.Allocator) void {
-        allocator.free(self.ptr[0 .. header_size + self.len()]);
-    }
-
-    pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try writer.writeAll(self.get());
-    }
-};
+pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try writer.writeAll(self.get());
+}
 
 test "String" {
     const allocator = std.testing.allocator;

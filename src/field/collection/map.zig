@@ -7,266 +7,265 @@
 
 const std = @import("std");
 
-const ScalarItem = @import("../scalar.zig").ScalarItem;
-const String = @import("../scalar.zig").String;
-const List = @import("../collection.zig").List;
-const Types = @import("../types.zig").Types;
-
-const splitSerialized = @import("../types.zig").splitSerialized;
-
 /// Map field type represented as hashmap of scalar type entries. Each entry has key as String and
 /// value as any scalar type field. The serialized Map has a prefixed-length layout for any item.
 /// The length header is 4 bytes. (In the example below, H refers to every byte of header)
 /// Example: [HHHH[serialized key A]HHHH[serialized value A]HHHH[serialized key B]...]
-pub const Map = struct {
-    value: *HashMap,
+const Map = @This();
+const ScalarItem = @import("../scalar.zig").ScalarItem;
+const String = @import("../scalar.zig").String;
+const List = @import("../collection.zig").List;
+const Types = @import("../../field.zig").Types;
 
-    pub const KeyHeaderType: type = String.HeaderType;
-    pub const ValueHeaderType: type = u32;
-    pub const key_header_size: u64 = String.header_size;
-    pub const value_header_size: u64 = @sizeOf(u32);
+const splitSerialized = @import("../../field.zig").splitSerialized;
 
-    pub const MapContext = struct {
-        pub fn hash(_: @This(), s: KeyString) u64 {
-            return std.hash.Wyhash.hash(0, s.get());
-        }
-        pub fn eql(_: @This(), a: KeyString, b: KeyString) bool {
-            return std.mem.eql(u8, a.get(), b.get());
-        }
-    };
+value: *HashMap,
 
-    pub const HashMap = std.HashMapUnmanaged(
-        KeyString,
-        ScalarItem,
-        MapContext,
-        std.hash_map.default_max_load_percentage,
-    );
+pub const KeyHeaderType: type = String.HeaderType;
+pub const ValueHeaderType: type = u32;
+pub const key_header_size: u64 = String.header_size;
+pub const value_header_size: u64 = @sizeOf(u32);
 
-    /// Slice wrapper of key string. Used as key of Map.
-    /// Duplicated and owned by Map, so the content of KeyString is never modified by Map.
-    pub const KeyString = struct {
-        str: []const u8,
-
-        pub fn init(content: []const u8) KeyString {
-            return .{ .str = content };
-        }
-
-        pub fn get(self: KeyString) []const u8 {
-            return self.str;
-        }
-    };
-
-    pub fn init(
-        allocator: std.mem.Allocator,
-        serialized: []const u8,
-    ) error{ InvalidFormat, UnknownType, MismatchType, OutOfMemory }!Map {
-        const map_ptr = try allocator.create(HashMap);
-        errdefer allocator.destroy(map_ptr);
-
-        map_ptr.* = .empty;
-        try putSerializedMap(map_ptr, allocator, serialized);
-        return .{ .value = map_ptr };
+pub const MapContext = struct {
+    pub fn hash(_: @This(), s: KeyString) u64 {
+        return std.hash.Wyhash.hash(0, s.get());
     }
-
-    pub fn set(
-        self: *Map,
-        allocator: std.mem.Allocator,
-        serialized: []const u8,
-    ) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
-        self.removeAll(allocator);
-        try putSerializedMap(self.value, allocator, serialized);
-    }
-
-    /// Keys are internally duplicated and owned by the Map.
-    /// Caller retains ownership of serialized input.
-    pub fn put(
-        self: Map,
-        allocator: std.mem.Allocator,
-        serialized_key: []const u8,
-        serialized_value: []const u8,
-    ) error{ OutOfMemory, MismatchType, InvalidFormat, UnknownType }!void {
-        const key_type, const key_content = try splitSerialized(serialized_key);
-        if (key_type != .string) return error.MismatchType;
-        const key: KeyString = .init(key_content);
-        const gop = try self.value.getOrPut(allocator, key);
-
-        const value_type, const value_content = try splitSerialized(serialized_value);
-        const new_value: ScalarItem = try .fromContent(allocator, value_type, value_content);
-        errdefer new_value.deinit(allocator);
-
-        if (gop.found_existing) {
-            gop.value_ptr.deinit(allocator);
-        } else {
-            const key_copy = try allocator.dupe(u8, key_content);
-            gop.key_ptr.* = .init(key_copy);
-        }
-
-        gop.value_ptr.* = new_value;
-    }
-
-    pub fn get(self: Map) HashMap.Iterator {
-        return self.value.iterator();
-    }
-
-    pub fn getByKey(
-        self: Map,
-        serialized: []const u8,
-    ) error{ MismatchType, MapKeyNotFound, InvalidFormat, UnknownType }!ScalarItem {
-        const key_type, const content = try splitSerialized(serialized);
-        if (key_type != .string) return error.MismatchType;
-
-        const key: KeyString = .init(content);
-        return self.value.get(key) orelse error.MapKeyNotFound;
-    }
-
-    pub fn removeByKey(
-        self: Map,
-        allocator: std.mem.Allocator,
-        serialized: []const u8,
-    ) error{ MismatchType, MapKeyNotFound, InvalidFormat, UnknownType }!void {
-        const key_type, const content = try splitSerialized(serialized);
-        if (key_type != .string) return error.MismatchType;
-
-        const key: KeyString = .init(content);
-        const entry = self.value.fetchRemove(key) orelse return error.MapKeyNotFound;
-        allocator.free(entry.key.str);
-        entry.value.deinit(allocator);
-    }
-
-    pub fn removeAll(self: Map, allocator: std.mem.Allocator) void {
-        var iterator = self.get();
-        while (iterator.next()) |entry| {
-            allocator.free(entry.key_ptr.str);
-            entry.value_ptr.deinit(allocator);
-        }
-        self.value.clearAndFree(allocator);
-    }
-
-    pub fn exists(
-        self: Map,
-        serialized: []const u8,
-    ) error{ MismatchType, InvalidFormat, UnknownType }!bool {
-        const key_type, const content = try splitSerialized(serialized);
-        if (key_type != .string) return error.MismatchType;
-
-        const key: KeyString = .init(content);
-        return self.value.contains(key);
-    }
-
-    pub fn count(self: Map) u64 {
-        return self.value.count();
-    }
-
-    pub fn deinit(self: Map, allocator: std.mem.Allocator) void {
-        self.removeAll(allocator);
-        self.value.deinit(allocator);
-        allocator.destroy(self.value);
-    }
-
-    pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try Types.serializeTypeToWriter(.list, writer);
-        var iterator = self.value.keyIterator();
-        while (iterator.next()) |key|
-            try serializeItem(writer, KeyHeaderType, key_header_size, key.*);
-    }
-
-    pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try Types.serializeTypeToWriter(.list, writer);
-        var iterator = self.value.valueIterator();
-        while (iterator.next()) |item|
-            try serializeItem(writer, ValueHeaderType, value_header_size, item.*);
-    }
-
-    pub fn serializeContentToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
-        var iterator = self.get();
-        while (iterator.next()) |pair| {
-            try serializeItem(writer, KeyHeaderType, key_header_size, pair.key_ptr.*);
-            try serializeItem(writer, ValueHeaderType, value_header_size, pair.value_ptr.*);
-        }
-    }
-
-    fn serializeItem(
-        writer: *std.Io.Writer,
-        comptime HeaderType: type,
-        comptime header_size: u64,
-        item: anytype,
-    ) error{WriteFailed}!void {
-        // each item is wrote as [length header][serialized]
-        // [serialized] is [field_type][content]
-
-        // reserve header, writer is derived from std.Io.Writer.Allocating
-        const start_header = writer.end;
-        // advancing
-        try writer.writeInt(HeaderType, 0, .little);
-
-        const start_serialized = writer.end;
-        switch (@TypeOf(item)) {
-            ScalarItem => try item.serializeToWriter(writer),
-            KeyString => try Types.serializeToWriter(.string, writer, item.get()),
-            else => unreachable,
-        }
-        const serialized_size: List.ItemHeaderType = @truncate(writer.end - start_serialized);
-
-        std.mem.writeInt(
-            List.ItemHeaderType,
-            writer.buffer[start_header .. start_header + header_size][0..header_size],
-            serialized_size,
-            .little,
-        );
-    }
-
-    fn putSerializedMap(
-        items: *HashMap,
-        allocator: std.mem.Allocator,
-        serialized: []const u8,
-    ) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
-        var iterator = try serializedEntriesIterator(serialized);
-        const self: Map = .{ .value = items };
-
-        while (try iterator.next()) |entry|
-            try self.put(allocator, entry.serialized_key, entry.serialized_value);
-    }
-
-    /// Iterator of serialized entries in a serialized Map.
-    const Iterator = struct {
-        reader: std.Io.Reader,
-
-        const Entry = struct {
-            serialized_key: []const u8,
-            serialized_value: []const u8,
-        };
-
-        fn init(serialized: []const u8) error{ MismatchType, UnknownType, InvalidFormat }!Iterator {
-            const field_type, const content = try splitSerialized(serialized);
-            if (field_type != .map) return error.MismatchType;
-            return .{ .reader = .fixed(content) };
-        }
-
-        /// Iterates the next serialized entry in the Map.
-        fn next(self: *Iterator) error{InvalidFormat}!?Entry {
-            const serialized_key = try self.takeSerialized(KeyHeaderType);
-            if (serialized_key == null) return null;
-            const serialized_value = try self.takeSerialized(ValueHeaderType);
-            if (serialized_value == null) return error.InvalidFormat;
-
-            return .{
-                .serialized_key = serialized_key.?,
-                .serialized_value = serialized_value.?,
-            };
-        }
-
-        fn takeSerialized(self: *Iterator, comptime HeaderType: type) error{InvalidFormat}!?[]const u8 {
-            const length = self.reader.takeInt(HeaderType, .little) catch return null;
-            return self.reader.take(length) catch error.InvalidFormat;
-        }
-    };
-
-    fn serializedEntriesIterator(
-        serialized: []const u8,
-    ) error{ MismatchType, UnknownType, InvalidFormat }!Iterator {
-        return .init(serialized);
+    pub fn eql(_: @This(), a: KeyString, b: KeyString) bool {
+        return std.mem.eql(u8, a.get(), b.get());
     }
 };
+
+pub const HashMap = std.HashMapUnmanaged(
+    KeyString,
+    ScalarItem,
+    MapContext,
+    std.hash_map.default_max_load_percentage,
+);
+
+/// Slice wrapper of key string. Used as key of Map.
+/// Duplicated and owned by Map, so the content of KeyString is never modified by Map.
+pub const KeyString = struct {
+    str: []const u8,
+
+    pub fn init(content: []const u8) KeyString {
+        return .{ .str = content };
+    }
+
+    pub fn get(self: KeyString) []const u8 {
+        return self.str;
+    }
+};
+
+pub fn init(
+    allocator: std.mem.Allocator,
+    serialized: []const u8,
+) error{ InvalidFormat, UnknownType, MismatchType, OutOfMemory }!Map {
+    const map_ptr = try allocator.create(HashMap);
+    errdefer allocator.destroy(map_ptr);
+
+    map_ptr.* = .empty;
+    try putSerializedMap(map_ptr, allocator, serialized);
+    return .{ .value = map_ptr };
+}
+
+pub fn set(
+    self: *Map,
+    allocator: std.mem.Allocator,
+    serialized: []const u8,
+) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
+    self.removeAll(allocator);
+    try putSerializedMap(self.value, allocator, serialized);
+}
+
+/// Keys are internally duplicated and owned by the Map.
+/// Caller retains ownership of serialized input.
+pub fn put(
+    self: Map,
+    allocator: std.mem.Allocator,
+    serialized_key: []const u8,
+    serialized_value: []const u8,
+) error{ OutOfMemory, MismatchType, InvalidFormat, UnknownType }!void {
+    const key_type, const key_content = try splitSerialized(serialized_key);
+    if (key_type != .string) return error.MismatchType;
+    const key: KeyString = .init(key_content);
+    const gop = try self.value.getOrPut(allocator, key);
+
+    const value_type, const value_content = try splitSerialized(serialized_value);
+    const new_value: ScalarItem = try .fromContent(allocator, value_type, value_content);
+    errdefer new_value.deinit(allocator);
+
+    if (gop.found_existing) {
+        gop.value_ptr.deinit(allocator);
+    } else {
+        const key_copy = try allocator.dupe(u8, key_content);
+        gop.key_ptr.* = .init(key_copy);
+    }
+
+    gop.value_ptr.* = new_value;
+}
+
+pub fn get(self: Map) HashMap.Iterator {
+    return self.value.iterator();
+}
+
+pub fn getByKey(
+    self: Map,
+    serialized: []const u8,
+) error{ MismatchType, MapKeyNotFound, InvalidFormat, UnknownType }!ScalarItem {
+    const key_type, const content = try splitSerialized(serialized);
+    if (key_type != .string) return error.MismatchType;
+
+    const key: KeyString = .init(content);
+    return self.value.get(key) orelse error.MapKeyNotFound;
+}
+
+pub fn removeByKey(
+    self: Map,
+    allocator: std.mem.Allocator,
+    serialized: []const u8,
+) error{ MismatchType, MapKeyNotFound, InvalidFormat, UnknownType }!void {
+    const key_type, const content = try splitSerialized(serialized);
+    if (key_type != .string) return error.MismatchType;
+
+    const key: KeyString = .init(content);
+    const entry = self.value.fetchRemove(key) orelse return error.MapKeyNotFound;
+    allocator.free(entry.key.str);
+    entry.value.deinit(allocator);
+}
+
+pub fn removeAll(self: Map, allocator: std.mem.Allocator) void {
+    var iterator = self.get();
+    while (iterator.next()) |entry| {
+        allocator.free(entry.key_ptr.str);
+        entry.value_ptr.deinit(allocator);
+    }
+    self.value.clearAndFree(allocator);
+}
+
+pub fn exists(
+    self: Map,
+    serialized: []const u8,
+) error{ MismatchType, InvalidFormat, UnknownType }!bool {
+    const key_type, const content = try splitSerialized(serialized);
+    if (key_type != .string) return error.MismatchType;
+
+    const key: KeyString = .init(content);
+    return self.value.contains(key);
+}
+
+pub fn count(self: Map) u64 {
+    return self.value.count();
+}
+
+pub fn deinit(self: Map, allocator: std.mem.Allocator) void {
+    self.removeAll(allocator);
+    self.value.deinit(allocator);
+    allocator.destroy(self.value);
+}
+
+pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try Types.serializeTypeToWriter(.list, writer);
+    var iterator = self.value.keyIterator();
+    while (iterator.next()) |key|
+        try serializeItem(writer, KeyHeaderType, key_header_size, key.*);
+}
+
+pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try Types.serializeTypeToWriter(.list, writer);
+    var iterator = self.value.valueIterator();
+    while (iterator.next()) |item|
+        try serializeItem(writer, ValueHeaderType, value_header_size, item.*);
+}
+
+pub fn serializeContentToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
+    var iterator = self.get();
+    while (iterator.next()) |pair| {
+        try serializeItem(writer, KeyHeaderType, key_header_size, pair.key_ptr.*);
+        try serializeItem(writer, ValueHeaderType, value_header_size, pair.value_ptr.*);
+    }
+}
+
+fn serializeItem(
+    writer: *std.Io.Writer,
+    comptime HeaderType: type,
+    comptime header_size: u64,
+    item: anytype,
+) error{WriteFailed}!void {
+    // each item is wrote as [length header][serialized]
+    // [serialized] is [field_type][content]
+
+    // reserve header, writer is derived from std.Io.Writer.Allocating
+    const start_header = writer.end;
+    // advancing
+    try writer.writeInt(HeaderType, 0, .little);
+
+    const start_serialized = writer.end;
+    switch (@TypeOf(item)) {
+        ScalarItem => try item.serializeToWriter(writer),
+        KeyString => try Types.serializeToWriter(.string, writer, item.get()),
+        else => unreachable,
+    }
+    const serialized_size: List.ItemHeaderType = @truncate(writer.end - start_serialized);
+
+    std.mem.writeInt(
+        List.ItemHeaderType,
+        writer.buffer[start_header .. start_header + header_size][0..header_size],
+        serialized_size,
+        .little,
+    );
+}
+
+fn putSerializedMap(
+    items: *HashMap,
+    allocator: std.mem.Allocator,
+    serialized: []const u8,
+) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
+    var iterator = try serializedEntriesIterator(serialized);
+    const self: Map = .{ .value = items };
+
+    while (try iterator.next()) |entry|
+        try self.put(allocator, entry.serialized_key, entry.serialized_value);
+}
+
+/// Iterator of serialized entries in a serialized Map.
+const Iterator = struct {
+    reader: std.Io.Reader,
+
+    const Entry = struct {
+        serialized_key: []const u8,
+        serialized_value: []const u8,
+    };
+
+    fn init(serialized: []const u8) error{ MismatchType, UnknownType, InvalidFormat }!Iterator {
+        const field_type, const content = try splitSerialized(serialized);
+        if (field_type != .map) return error.MismatchType;
+        return .{ .reader = .fixed(content) };
+    }
+
+    /// Iterates the next serialized entry in the Map.
+    fn next(self: *Iterator) error{InvalidFormat}!?Entry {
+        const serialized_key = try self.takeSerialized(KeyHeaderType);
+        if (serialized_key == null) return null;
+        const serialized_value = try self.takeSerialized(ValueHeaderType);
+        if (serialized_value == null) return error.InvalidFormat;
+
+        return .{
+            .serialized_key = serialized_key.?,
+            .serialized_value = serialized_value.?,
+        };
+    }
+
+    fn takeSerialized(self: *Iterator, comptime HeaderType: type) error{InvalidFormat}!?[]const u8 {
+        const length = self.reader.takeInt(HeaderType, .little) catch return null;
+        return self.reader.take(length) catch error.InvalidFormat;
+    }
+};
+
+fn serializedEntriesIterator(
+    serialized: []const u8,
+) error{ MismatchType, UnknownType, InvalidFormat }!Iterator {
+    return .init(serialized);
+}
 
 const MapEntry = struct {
     key: []const u8,

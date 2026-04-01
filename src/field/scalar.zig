@@ -7,14 +7,14 @@
 
 const std = @import("std");
 
-const Types = @import("types.zig").Types;
+const Types = @import("../field.zig").Types;
 
-pub const Void = @import("scalar/void.zig").Void;
-pub const Integer = @import("scalar/integer.zig").Integer;
-pub const Decimal = @import("scalar/decimal.zig").Decimal;
-pub const Flag = @import("scalar/flag.zig").Flag;
-pub const String = @import("scalar/string.zig").String;
-pub const Point = @import("scalar/point.zig").Point;
+pub const Void = @import("scalar/Void.zig");
+pub const Integer = @import("scalar/Integer.zig");
+pub const Decimal = @import("scalar/Decimal.zig");
+pub const Flag = @import("scalar/Flag.zig");
+pub const String = @import("scalar/String.zig");
+pub const Point = @import("scalar/Point.zig");
 
 /// Scalar field types used by List or Map as item.
 pub const ScalarItem = union(enum) {

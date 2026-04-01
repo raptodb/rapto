@@ -8,27 +8,27 @@
 const std = @import("std");
 
 /// Void field type represented as "void" string. Indicates a empty value.
-pub const Void = struct {
-    pub fn init() Void {
-        return .{};
-    }
+const Void = @This();
 
-    pub fn set(_: *Void) void {
-        // nothing
-    }
+pub fn init() Void {
+    return .{};
+}
 
-    pub fn get(_: Void) void {
-        // nothing
-    }
+pub fn set(_: *Void) void {
+    // nothing
+}
 
-    pub fn len(_: Void) u64 {
-        return 0;
-    }
+pub fn get(_: Void) void {
+    // nothing
+}
 
-    pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) void {
-        // nothing
-    }
-};
+pub fn len(_: Void) u64 {
+    return 0;
+}
+
+pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) void {
+    // nothing
+}
 
 test "Void" {
     var s: Void = .init();

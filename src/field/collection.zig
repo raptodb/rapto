@@ -5,5 +5,5 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of collection fields.
 
-pub const List = @import("collection/list.zig").List;
-pub const Map = @import("collection/map.zig").Map;
+pub const List = @import("collection/List.zig");
+pub const Map = @import("collection/Map.zig");

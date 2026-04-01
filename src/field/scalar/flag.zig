@@ -9,47 +9,47 @@ const std = @import("std");
 
 /// Flag field type represented indicator that signals errors, conditions
 /// or common states as boolean (true or false).
-pub const Flag = struct {
-    value: Status,
+const Flag = @This();
 
-    pub const Status = enum(u64) {
-        false = 0,
-        true = 1,
+pub const Status = enum(u64) {
+    false = 0,
+    true = 1,
 
-        null,
-        @"error",
-        pending,
+    null,
+    @"error",
+    pending,
 
-        unknown,
+    unknown,
 
-        pub fn fromContent(content: [8]u8) Status {
-            const integer: u64 = std.mem.readInt(u64, &content, .little);
-            return std.enums.fromInt(Status, integer) orelse .unknown;
-        }
-    };
-
-    pub fn init(content: []const u8) error{MismatchType}!Flag {
-        if (content.len != 8) return error.MismatchType;
-        return .{ .value = .fromContent(content[0..8].*) };
-    }
-
-    pub fn set(self: *Flag, content: []const u8) error{MismatchType}!void {
-        if (content.len != 8) return error.MismatchType;
-        self.value = .fromContent(content[0..8].*);
-    }
-
-    pub fn get(self: Flag) Status {
-        return self.value;
-    }
-
-    pub fn len(_: Flag) u64 {
-        return @sizeOf(u64);
-    }
-
-    pub fn serializeContentToWriter(self: Flag, writer: *std.Io.Writer) error{WriteFailed}!void {
-        try writer.writeInt(u64, @intFromEnum(self.value), .little);
+    pub fn fromContent(content: [8]u8) Status {
+        const integer: u64 = std.mem.readInt(u64, &content, .little);
+        return std.enums.fromInt(Status, integer) orelse .unknown;
     }
 };
+
+value: Status,
+
+pub fn init(content: []const u8) error{MismatchType}!Flag {
+    if (content.len != 8) return error.MismatchType;
+    return .{ .value = .fromContent(content[0..8].*) };
+}
+
+pub fn set(self: *Flag, content: []const u8) error{MismatchType}!void {
+    if (content.len != 8) return error.MismatchType;
+    self.value = .fromContent(content[0..8].*);
+}
+
+pub fn get(self: Flag) Status {
+    return self.value;
+}
+
+pub fn len(_: Flag) u64 {
+    return @sizeOf(u64);
+}
+
+pub fn serializeContentToWriter(self: Flag, writer: *std.Io.Writer) error{WriteFailed}!void {
+    try writer.writeInt(u64, @intFromEnum(self.value), .little);
+}
 
 test "Flag" {
     const allocator = std.testing.allocator;
