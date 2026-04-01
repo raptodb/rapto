@@ -23,7 +23,7 @@ pub fn deinit(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
         ref.key_ptr.deinit(self.allocator);
-        ref.value_ptr.deinit(self.allocator);
+        ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
     }
     self.map.deinit(self.allocator);
 }
@@ -33,7 +33,7 @@ pub fn put(
     key: []const u8,
     field_type: Types,
     content: []const u8,
-) error{ OutOfMemory, InvalidKey, InvalidFormat, MismatchType }!object.Ref {
+) error{ OutOfMemory, InvalidKey, InvalidFormat, MismatchType, UnknownType }!object.Ref {
     const entry = try self.map.getOrPutAdapted(
         self.allocator,
         key,
