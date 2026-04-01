@@ -50,9 +50,7 @@ pub const Iterator = struct {
     }
 
     /// Returns the next query in the pipeline.
-    pub fn next(
-        self: *Iterator,
-    ) ?error{ UnknownCommand, MismatchType, UnknownFlag, InvalidFormat }!Query {
+    pub fn next(self: *Iterator) ?Query.ParseError!Query {
         const len = self.reader.takeInt(u32, .little) catch return null;
         const query = self.reader.take(len) catch return null;
         return .parse(query);

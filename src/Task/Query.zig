@@ -7,8 +7,10 @@
 
 const std = @import("std");
 
-pub const Flags = @import("Query/Flags.zig");
 const Query = @This();
+
+pub const Flags = @import("Query/Flags.zig");
+pub const ParseError = error{ UnknownCommand, MismatchType, UnknownFlag, InvalidFormat };
 
 // Each field can be accessed directly when
 // the query is successfully parsed.
@@ -35,7 +37,8 @@ args: Args,
 ///     [flag][flag]...
 ///
 /// ARGS
-///   [arg]
+///   Each arg is encoded as:
+///     [len:u32][arg]...
 ///
 ///   Multiple arguments are concatenated sequentially:
 ///     [arg][arg]...
@@ -44,9 +47,7 @@ args: Args,
 ///   [COMMAND][len:u32][FLAGS][ARGS]
 ///
 /// All length fields are encoded using the predefined header type.
-pub fn parse(
-    serialized: []const u8,
-) error{ UnknownCommand, MismatchType, UnknownFlag, InvalidFormat }!Query {
+pub fn parse(serialized: []const u8) ParseError!Query {
     // serialized is always non-empty
     std.debug.assert(serialized.len != 0);
     var reader: std.Io.Reader = .fixed(serialized);
