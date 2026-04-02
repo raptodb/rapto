@@ -14,8 +14,6 @@ comptime {
     _ = @import("field/collection/List.zig");
     _ = @import("field/collection/Map.zig");
     _ = @import("field/scalar.zig");
-    _ = @import("Response.zig");
-    _ = @import("Response/Module.zig");
     _ = @import("field/scalar/Decimal.zig");
     _ = @import("field/scalar/Flag.zig");
     _ = @import("field/scalar/Integer.zig");
