@@ -20,7 +20,9 @@ comptime {
     _ = @import("field/scalar/Point.zig");
     _ = @import("field/scalar/String.zig");
     _ = @import("field/scalar/Void.zig");
+    _ = @import("Reply/dispatcher.zig");
     _ = @import("Reply/Module.zig");
+    _ = @import("Reply/status.zig");
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
     _ = @import("Task/Query/Flags.zig");
