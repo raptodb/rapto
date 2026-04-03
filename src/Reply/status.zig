@@ -11,11 +11,11 @@ const DispatchError = @import("../Reply/dispatcher.zig").DispatchError;
 const ParseError = @import("../Task.zig").Query.ParseError;
 
 pub const Code = enum(u8) {
-    // success
+    // success (0-99)
     OK = 0,
 
-    // dispatch errors (1–9)
-    KeyNotFound = 1,
+    // dispatch errors (100-199)
+    KeyNotFound = 100,
     InvalidKey,
     InvalidFormat,
     MissingTokens,
@@ -25,8 +25,8 @@ pub const Code = enum(u8) {
     MathOverflow,
     RangeOverflow,
 
-    // parse errors (10+)
-    ParseUnknownCommand = 10,
+    // parse errors (200+)
+    ParseUnknownCommand = 200,
     ParseMismatchType,
     ParseUnknownFlag,
     ParseInvalidFormat,
