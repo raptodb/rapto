@@ -145,7 +145,7 @@ pub fn @"type"(self: Module, query: *Query) !void {
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
     if (query.flags.noreply) return;
 
-    return ref.type().serialize_type_to_writer(self.writer);
+    return ref.type().serializeTypeToWriter(self.writer);
 }
 
 pub fn list(self: Module, query: *Query) !void {

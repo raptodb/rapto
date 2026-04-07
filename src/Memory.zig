@@ -5,11 +5,11 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of memory.
 
+const Memory = @This();
+
 const std = @import("std");
 const object = @import("Memory/object.zig");
-
-const Types = @import("field.zig").Types;
-const Memory = @This();
+const field = @import("field.zig");
 
 allocator: std.mem.Allocator,
 /// Hashmap of items. Internal API should not be used directly.
@@ -22,8 +22,7 @@ pub fn init(allocator: std.mem.Allocator) Memory {
 pub fn deinit(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        ref.key_ptr.deinit(self.allocator);
-        ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
+        deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
     self.map.deinit(self.allocator);
 }
@@ -31,7 +30,7 @@ pub fn deinit(self: *Memory) void {
 pub fn put(
     self: *Memory,
     key: []const u8,
-    field_type: Types,
+    field_type: field.Types,
     content: []const u8,
 ) error{ OutOfMemory, InvalidKey, InvalidFormat, MismatchType, UnknownType }!object.Ref {
     const entry = try self.map.getOrPutAdapted(
@@ -47,9 +46,12 @@ pub fn put(
     } else {
         errdefer self.map.removeByPtr(entry.key_ptr);
 
-        entry.key_ptr.* = try .init(self.allocator, key, field_type);
-        errdefer entry.key_ptr.deinit(self.allocator);
-        entry.value_ptr.* = try .init(self.allocator, field_type, content);
+        entry.key_ptr.*, entry.value_ptr.* = try initRef(
+            self.allocator,
+            key,
+            field_type,
+            content,
+        );
     }
 
     return ref;
@@ -66,8 +68,7 @@ pub fn search(self: *Memory, key: []const u8) ?object.Ref {
 pub fn remove(self: *Memory, key: []const u8) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
     self.map.removeByPtr(ref.key_ptr);
-    ref.key_ptr.deinit(self.allocator);
-    ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
+    deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
 }
 
 pub fn count(self: *const Memory) u64 {
@@ -77,8 +78,7 @@ pub fn count(self: *const Memory) u64 {
 pub fn clear(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        ref.key_ptr.deinit(self.allocator);
-        ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
+        deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
 
     self.map.clearRetainingCapacity();
@@ -87,8 +87,7 @@ pub fn clear(self: *Memory) void {
 pub fn free(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        ref.key_ptr.deinit(self.allocator);
-        ref.value_ptr.deinit(self.allocator, ref.key_ptr.getFieldType());
+        deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
 
     self.map.clearAndFree(self.allocator);
@@ -145,3 +144,27 @@ const Map = std.HashMapUnmanaged(
     PutContext,
     65,
 );
+
+fn initRef(
+    allocator: std.mem.Allocator,
+    key: []const u8,
+    field_type: field.Types,
+    content: []const u8,
+) error{
+    OutOfMemory,
+    InvalidKey,
+    InvalidFormat,
+    MismatchType,
+    UnknownType,
+}!struct { object.Key, object.Field } {
+    const ref_key: object.Key = try .init(allocator, key, field_type);
+    errdefer ref_key.deinit(allocator);
+    const ref_value: object.Field = try .init(allocator, field_type, content);
+
+    return .{ ref_key, ref_value };
+}
+
+fn deinitRef(allocator: std.mem.Allocator, key: object.Key, value: object.Field) void {
+    key.deinit(allocator);
+    value.deinit(allocator, key.getFieldType());
+}

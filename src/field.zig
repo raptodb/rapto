@@ -6,6 +6,7 @@
 //! It contains the implementation of fields API and types.
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub const ScalarItem = @import("field/scalar.zig").ScalarItem;
 
@@ -33,9 +34,12 @@ pub const Map = @import("field/collection.zig").Map;
 pub fn splitSerialized(
     serialized: []const u8,
 ) error{ InvalidFormat, UnknownType }!struct { Types, []const u8 } {
-    if (serialized.len == 0) return error.InvalidFormat;
+    assert(serialized.len != 0);
+
+    if (serialized.len < @sizeOf(u8)) return error.InvalidFormat;
     const field_type: Types = try .fromInt(serialized[0]);
     const content = if (serialized.len > 1) serialized[1..] else &.{};
+
     return .{ field_type, content };
 }
 

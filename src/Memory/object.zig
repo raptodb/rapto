@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const field = @import("../field.zig");
+const assert = std.debug.assert;
 
 const TaggedPointer = @import("tagged_pointer.zig").TaggedPointer;
 
@@ -24,18 +25,18 @@ comptime {
     // a size of 2 pointers on ReleaseFast mode
     const mode = @import("builtin").mode;
     if (mode == .ReleaseFast or mode == .ReleaseSafe) {
-        std.debug.assert(@sizeOf(Key) == @sizeOf(usize));
-        std.debug.assert(@sizeOf(Field) == @sizeOf(usize));
+        assert(@sizeOf(Key) == @sizeOf(usize));
+        assert(@sizeOf(Field) == @sizeOf(usize));
     }
 
     // for this implementation
-    std.debug.assert(@sizeOf(u64) == @sizeOf(usize));
+    assert(@sizeOf(u64) == @sizeOf(usize));
 }
 
 /// Checks the key validity.
 /// Key must not contain sentinel byte 0.
-inline fn checkKey(key: []const u8) error{InvalidKey}!void {
-    std.debug.assert(key.len > 0);
+fn checkKey(key: []const u8) error{InvalidKey}!void {
+    assert(key.len > 0);
     // key must not contain sentinel byte
     if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
 }
@@ -45,12 +46,19 @@ pub const Key = struct {
     /// Tag encodes field type.
     ptr: TaggedPointer([*:0]align(pointer_alignment.toByteUnits()) u8) = undefined,
 
-    /// Initializes key by duplicating it.
+    /// Initializes key by duplicating it. Assumes key is sentinel-terminated with 0.
+    /// The validity of key is checked.
     pub fn init(
         allocator: std.mem.Allocator,
         key: []const u8,
         field_type: field.Types,
     ) error{ OutOfMemory, InvalidKey }!Key {
+        assert(key.len > 0);
+
+        // The key must not contatins the sentinel byte.
+        // Sentinel byte is appended in this function.
+        if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
+
         const buf = try allocator.alignedAlloc(u8, pointer_alignment, key.len + 1);
         errdefer allocator.free(buf);
         @memcpy(buf[0..key.len], key);
@@ -59,14 +67,14 @@ pub const Key = struct {
         return fromSlice(buf[0..key.len :0], field_type);
     }
 
-    /// Initializes key with externally-managed memory.
-    /// This function assumes key is sentinel-terminated with 0.
-    /// The validity of key is checked.
-    pub fn fromSlice(
+    /// Initializes key with externally-managed memory. This function
+    /// is used mostly under tests. Assumes key is sentinel-terminated with 0.
+    fn fromSlice(
         key: [:0]align(pointer_alignment.toByteUnits()) const u8,
         field_type: field.Types,
     ) error{InvalidKey}!Key {
-        try checkKey(key);
+        assert(key.len > 0);
+
         return .{ .ptr = .init(key.ptr, @intFromEnum(field_type)) };
     }
 
@@ -77,16 +85,16 @@ pub const Key = struct {
         allocator: std.mem.Allocator,
         key: []const u8,
     ) error{ OutOfMemory, InvalidKey }!void {
+        assert(key.len > 0);
+        // The key must not contatins the sentinel byte.
+        // Sentinel byte is appended in this function.
+        if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
+
         var ptr = self.ptr.getPointer();
         const length = self.len();
 
         if (key.len != length) {
-            // if the lengths are equal, one has already been checked
-            // and they are always valid, otherwise, the length check
-            // is performed when the lengths are different
-            try checkKey(key);
-
-            // reallocate with sentinel
+            // Reallocate key with sentinel
             const buf = try allocator.realloc(ptr[0 .. length + 1], key.len + 1);
             buf[key.len] = 0;
 
@@ -283,7 +291,6 @@ pub const Field = struct {
         };
     }
 
-    /// Deallocates content of field.
     pub fn deinit(self: Field, allocator: std.mem.Allocator, field_type: field.Types) void {
         switch (field_type) {
             .void, .integer, .decimal, .flag => {},
@@ -314,7 +321,8 @@ pub const Ref = struct {
         self: Ref,
         comptime field_type: field.Types,
     ) Field.Value.ReturnType(field_type) {
-        std.debug.assert(self.type() == field_type);
+        assert(self.type() == field_type);
+
         return self.value_ptr.get(field_type);
     }
 

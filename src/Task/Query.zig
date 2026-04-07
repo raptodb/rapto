@@ -5,15 +5,14 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of query.
 
-const std = @import("std");
-
 const Query = @This();
+
+const std = @import("std");
+const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
 pub const ParseError = error{ UnknownCommand, MismatchType, UnknownFlag, InvalidFormat };
 
-// Each field can be accessed directly when
-// the query is successfully parsed.
 command: Command,
 flags: Flags,
 args: Args,
@@ -48,8 +47,6 @@ args: Args,
 ///
 /// All length fields are encoded using the predefined header type.
 pub fn parse(serialized: []const u8) ParseError!Query {
-    // serialized is always non-empty
-    std.debug.assert(serialized.len != 0);
     var reader: std.Io.Reader = .fixed(serialized);
 
     const raw_command = reader.takeByte() catch return error.InvalidFormat;
@@ -58,6 +55,8 @@ pub fn parse(serialized: []const u8) ParseError!Query {
     const flags_length = reader.takeInt(u32, .little) catch return error.InvalidFormat;
     const raw_flags = reader.take(flags_length) catch return error.InvalidFormat;
     const flags: Flags = if (flags_length == 0) .{} else try .parse(raw_flags);
+
+    assert(reader.seek <= serialized.len);
 
     return .{
         .command = command,
