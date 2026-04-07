@@ -145,7 +145,7 @@ pub fn @"type"(self: Module, query: *Query) !void {
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
     if (query.flags.noreply) return;
 
-    try ref.type().serializeTypeToWriter(self.writer);
+    return ref.type().serialize_type_to_writer(self.writer);
 }
 
 pub fn list(self: Module, query: *Query) !void {
@@ -184,7 +184,7 @@ pub fn copy(self: Module, query: *Query) !void {
 
 pub fn del(self: Module, query: *Query) !void {
     const key = query.args.next() orelse return error.MissingTokens;
-    try self.memory.remove(key);
+    return self.memory.remove(key);
 }
 
 pub fn erase(self: Module, query: *Query) void {

@@ -12,7 +12,7 @@ const Task = @This();
 
 /// Pipeline containing the raw queries to be executed. The format
 /// of the pipeline is a sequence of length-prefixed queries.
-/// Format [len:u32][query][len:u32][query]...
+/// The format is [len:u32][query][len:u32][query]...
 pipeline: []const u8,
 /// Timestamp used to track when the task was executed.
 timestamp: u64,
