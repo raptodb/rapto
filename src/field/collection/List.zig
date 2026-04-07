@@ -135,18 +135,7 @@ pub fn indexOfItemInRange(
 
     for (from_index..to_index + 1) |index| {
         const item = self.value.items[index];
-        if (std.meta.activeTag(this_item) != std.meta.activeTag(item)) continue;
-
-        const is_equal = switch (this_item) {
-            .void => true,
-            .integer => |value| value.get() == item.integer.get(),
-            .decimal => |value| value.isApproxEqualTo(item.decimal.get()),
-            .flag => |value| value.get() == item.flag.get(),
-            .string => |value| std.mem.eql(u8, value.get(), item.string.get()),
-            .point => |value| std.meta.eql(value.get(), item.point.get()),
-        };
-
-        if (is_equal) return index;
+        if (this_item.compare(item)) return index;
     }
 
     return error.ItemNotFound;

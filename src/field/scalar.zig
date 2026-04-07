@@ -46,6 +46,19 @@ pub const ScalarItem = union(enum) {
         };
     }
 
+    pub fn compare(self: ScalarItem, item: ScalarItem) bool {
+        if (std.meta.activeTag(self) != std.meta.activeTag(item)) return false;
+
+        return switch (self) {
+            .void => true,
+            .integer => |value| value.get() == item.integer.get(),
+            .decimal => |value| value.isApproxEqualTo(item.decimal.get()),
+            .flag => |value| value.get() == item.flag.get(),
+            .string => |value| std.mem.eql(u8, value.get(), item.string.get()),
+            .point => |value| std.meta.eql(value.get(), item.point.get()),
+        };
+    }
+
     pub fn serializeToWriter(
         self: ScalarItem,
         writer: *std.Io.Writer,
