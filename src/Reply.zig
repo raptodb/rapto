@@ -50,17 +50,29 @@ pub fn processTask(self: *Reply, task: *const Task) error{ OutOfMemory, Shutdown
 
     var iterator = task.iterator();
     while (iterator.next()) |maybe_query| {
-        const header_offset = self.reserveHeader(u32) catch return error.OutOfMemory;
+        const header_offset = try self.reserveHeader(u32);
 
-        var mut_query = maybe_query catch |err| {
+        const maybe_error = if (maybe_query) |query| blk: {
+            var mut_query = query;
+            break :blk dispatcher.dispatch(module, &mut_query);
+        } else |err| blk: {
             // parsing errors should be handled by
             // the client, thus this branch is cold
             @branchHint(.cold);
-            status.write(module.writer, status.fromParseError(err)) catch return error.OutOfMemory;
+            break :blk status.write(module.writer, status.fromParseError(err));
         };
 
-        // if catches an error, it is considered a fatal error
-        try processQuery(module, &mut_query);
+        // if catches an error, it is considered a
+        // fatal error to be returned directly
+        maybe_error catch |err| return switch (err) {
+            inline error.OutOfMemory,
+            error.Shutdown,
+            => |e| e,
+            // assuming always writer of module is derived
+            // by std.Io.Writer.Allocating, an error about
+            // write is always OOM
+            error.WriteFailed => error.OutOfMemory,
+        };
 
         const length = module.writer.end - header_offset - @sizeOf(u32);
         self.writeOffset(u32, @intCast(length), header_offset);
@@ -69,25 +81,9 @@ pub fn processTask(self: *Reply, task: *const Task) error{ OutOfMemory, Shutdown
     return self.allocating.written();
 }
 
-/// Wrapper for `.dispatch()` to handle and cast errors.
-fn processQuery(module: Module, query: *Task.Query) error{ OutOfMemory, Shutdown }!void {
-    const maybe_error = dispatcher.dispatch(module, query);
-
-    // if catches an error, it is considered a fatal error
-    maybe_error catch |err| return switch (err) {
-        inline error.OutOfMemory,
-        error.Shutdown,
-        => |e| e,
-        // assuming always writer of module is derived
-        // by std.Io.Writer.Allocating, an error about
-        // write is always OOM
-        error.WriteFailed => error.OutOfMemory,
-    };
-}
-
-fn reserveHeader(self: *Reply, comptime T: type) error{WriteFailed}!u64 {
+fn reserveHeader(self: *Reply, comptime T: type) error{OutOfMemory}!u64 {
     const header_offset = self.allocating.writer.end;
-    try self.allocating.writer.writeInt(T, 0, .little);
+    self.allocating.writer.writeInt(T, 0, .little) catch return error.OutOfMemory;
     return header_offset;
 }
 
