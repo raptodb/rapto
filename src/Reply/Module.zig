@@ -21,7 +21,7 @@ pub fn init(memory: *Memory, writer: *std.Io.Writer) Module {
 }
 
 pub fn ping(self: Module, query: *Query) !void {
-    if (!query.flags.noreply) {
+    if (!query.flags.noreply.get()) {
         var buf: [8]u8 = undefined;
         std.mem.writeInt(i64, &buf, 1, .little);
         const pong: field.Integer = try .init(&buf);
@@ -33,24 +33,24 @@ pub fn ping(self: Module, query: *Query) !void {
 pub fn get(self: Module, query: *Query) !void {
     const key = query.args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
-    if (query.flags.noreply) return;
+    if (query.flags.noreply.get()) return;
 
     const field_type = ref.type();
 
-    switch (query.flags.by) {
+    switch (query.flags.by.get()) {
         .any => {
             try field_type.serializeTypeToWriter(self.writer);
             try ref.serializeContentToWriter(self.writer);
         },
         .index => |index| switch (field_type) {
             .list => {
-                const item = try ref.valuePtr(.list).getByIndex(index);
+                const item = try ref.valuePtr(.list).getByIndex(index.get());
                 try item.serializeToWriter(self.writer);
             },
             .point => {
                 const item: field.Point.Axis = ref.valuePtr(.point).get();
                 try Types.serializeTypeToWriter(.decimal, self.writer);
-                switch (index) {
+                switch (index.get()) {
                     0 => try item.x.serializeContentToWriter(self.writer),
                     1 => try item.y.serializeContentToWriter(self.writer),
                     2 => try item.z.serializeContentToWriter(self.writer),
@@ -64,21 +64,22 @@ pub fn get(self: Module, query: *Query) !void {
                 try Types.serializeTypeToWriter(.list, self.writer);
                 try ref.valuePtr(.list).serializeContentInRangeToWriter(
                     self.writer,
-                    range.from,
-                    range.to,
+                    range.from().get(),
+                    range.to().get(),
                 );
             },
             else => return error.MismatchFlag,
         },
         .key => |flag_key| switch (field_type) {
             .map => {
-                const item = try ref.valuePtr(.map).getByKey(flag_key);
+                const item = try ref.valuePtr(.map).getByKey(flag_key.get());
                 try item.serializeToWriter(self.writer);
             },
             .point => {
                 try Types.serializeTypeToWriter(.decimal, self.writer);
                 const item: field.Point.Axis = ref.valuePtr(.point).value.*;
-                switch (flag_key[0]) {
+                if (flag_key.get().len != 1) return error.MismatchFlag;
+                switch (flag_key.get()[0]) {
                     'x' => try item.x.serializeContentToWriter(self.writer),
                     'y' => try item.y.serializeContentToWriter(self.writer),
                     'z' => try item.z.serializeContentToWriter(self.writer),
@@ -136,20 +137,20 @@ pub fn rename(self: Module, query: *Query) !void {
 }
 
 pub fn count(self: Module, query: *Query) !void {
-    if (!query.flags.noreply)
+    if (!query.flags.noreply.get())
         try self.writer.writeInt(u64, self.memory.count(), .little);
 }
 
 pub fn @"type"(self: Module, query: *Query) !void {
     const key = query.args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
-    if (query.flags.noreply) return;
+    if (query.flags.noreply.get()) return;
 
     return ref.type().serializeTypeToWriter(self.writer);
 }
 
 pub fn list(self: Module, query: *Query) !void {
-    if (query.flags.noreply) return;
+    if (query.flags.noreply.get()) return;
 
     var iterator = self.memory.iterator();
     var first = true;
@@ -165,7 +166,7 @@ pub fn list(self: Module, query: *Query) !void {
 
 pub fn exist(self: Module, query: *Query) !void {
     const key = query.args.next() orelse return error.MissingTokens;
-    if (query.flags.noreply) return;
+    if (query.flags.noreply.get()) return;
 
     const key_exist = self.memory.search(key) != null;
     try self.writer.writeByte(if (key_exist) 1 else 0);
@@ -188,7 +189,7 @@ pub fn del(self: Module, query: *Query) !void {
 }
 
 pub fn erase(self: Module, query: *Query) void {
-    switch (query.flags.free) {
+    switch (query.flags.free.get()) {
         true => self.memory.free(),
         false => self.memory.clear(),
     }
