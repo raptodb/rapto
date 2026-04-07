@@ -53,6 +53,7 @@ pub const Iterator = struct {
     pub fn next(self: *Iterator) ?Query.ParseError!Query {
         const len = self.reader.takeInt(u32, .little) catch return null;
         const query = self.reader.take(len) catch return null;
+
         return .parse(query);
     }
 };
@@ -74,7 +75,7 @@ test "Task" {
         args: []const []const u8,
     }{
         .{ .command = .PING, .flags = .{}, .args = &.{} },
-        .{ .command = .SET, .flags = .{ .noreply = true }, .args = &.{ "k", "v" } },
+        .{ .command = .SET, .flags = .{ .noreply = .init(true) }, .args = &.{ "k", "v" } },
     };
 
     for (queries) |q| {

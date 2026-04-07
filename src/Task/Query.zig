@@ -113,35 +113,6 @@ pub const Args = struct {
     }
 };
 
-pub fn serializeToWriter(
-    writer: *std.Io.Writer,
-    command: Query.Command,
-    flags: Query.Flags,
-    args: []const []const u8,
-) error{WriteFailed}!void {
-    try command.serializeToWriter(writer);
-
-    // reserve header, writer is derived from std.Io.Writer.Allocating
-    const start_header = writer.end;
-    // advancing to reserve length-prefix header for flags
-    try writer.writeInt(u32, 0, .little);
-    const start_flags = writer.end;
-    try flags.serializeToWriter(writer);
-    const flags_length = writer.end - start_flags;
-    // write the actual length of flags in the reserved header
-    std.mem.writeInt(
-        u32,
-        writer.buffer[start_header .. start_header + @sizeOf(u32)][0..@sizeOf(u32)],
-        @truncate(flags_length),
-        .little,
-    );
-
-    for (args) |arg| {
-        try writer.writeInt(u32, @truncate(arg.len), .little);
-        try writer.writeAll(arg);
-    }
-}
-
 test "Query" {
     const Case = struct {
         command: Query.Command,
@@ -151,19 +122,43 @@ test "Query" {
 
     const cases = [_]Case{
         .{ .command = .PING, .flags = .{}, .args = &.{} },
-        .{ .command = .GET, .flags = .{ .by = .{ .index = 42 } }, .args = &.{"key"} },
         .{
             .command = .GET,
-            .flags = .{ .by = .{ .range = .{ .from = 10, .to = 20 } } },
+            .flags = .{ .by = .init(.index, Flags.Unsigned.init(42)) },
+            .args = &.{"key"},
+        },
+        .{
+            .command = .GET,
+            .flags = .{ .by = .init(.range, Flags.Range.init(.init(10), .init(20))) },
             .args = &.{ "a", "b" },
         },
-        .{ .command = .GET, .flags = .{ .by = .{ .key = "mykey" } }, .args = &.{"arg"} },
-        .{ .command = .GET, .flags = .{ .by = .any }, .args = &.{} },
-        .{ .command = .ERASE, .flags = .{ .free = true }, .args = &.{"target"} },
-        .{ .command = .SET, .flags = .{ .noreply = true }, .args = &.{ "key", "value" } },
+        .{
+            .command = .GET,
+            .flags = .{ .by = .init(.key, Flags.String.init("mykey")) },
+            .args = &.{"arg"},
+        },
+        .{
+            .command = .GET,
+            .flags = .{ .by = .init(.any, undefined) },
+            .args = &.{},
+        },
+        .{
+            .command = .ERASE,
+            .flags = .{ .free = .init(true) },
+            .args = &.{"target"},
+        },
+        .{
+            .command = .SET,
+            .flags = .{ .noreply = .init(true) },
+            .args = &.{ "key", "value" },
+        },
         .{
             .command = .LIST,
-            .flags = .{ .noreply = true, .free = true, .by = .{ .range = .{ .from = 0, .to = 99 } } },
+            .flags = .{
+                .noreply = .init(true),
+                .free = .init(true),
+                .by = .init(.range, Flags.Range.init(.init(0), .init(99))),
+            },
             .args = &.{ "a", "b", "c" },
         },
         .{ .command = .DOWN, .flags = .{}, .args = &.{} },
@@ -182,18 +177,18 @@ test "Query" {
         try std.testing.expectEqual(case.flags.free, q.flags.free);
 
         try std.testing.expectEqual(
-            std.meta.activeTag(case.flags.by),
-            std.meta.activeTag(q.flags.by),
+            std.meta.activeTag(case.flags.by.value),
+            std.meta.activeTag(q.flags.by.value),
         );
 
-        switch (case.flags.by) {
+        switch (case.flags.by.value) {
             .any => {},
-            .index => |v| try std.testing.expectEqual(v, q.flags.by.index),
+            .index => |v| try std.testing.expectEqual(v, q.flags.by.value.index),
             .range => |v| {
-                try std.testing.expectEqual(v.from, q.flags.by.range.from);
-                try std.testing.expectEqual(v.to, q.flags.by.range.to);
+                try std.testing.expectEqual(v.from(), q.flags.by.value.range.from());
+                try std.testing.expectEqual(v.to(), q.flags.by.value.range.to());
             },
-            .key => |v| try std.testing.expectEqualSlices(u8, v, q.flags.by.key),
+            .key => |v| try std.testing.expectEqualSlices(u8, v.get(), q.flags.by.value.key.get()),
         }
 
         var args = q.args;
@@ -260,5 +255,35 @@ test "Query" {
         const v = args.next().?;
         try std.testing.expectEqual(@as(usize, 4), v.len);
         try std.testing.expectEqual(@as(u8, 255), v[3]);
+    }
+}
+
+// This function is used for tests.
+pub fn serializeToWriter(
+    writer: *std.Io.Writer,
+    command: Query.Command,
+    flags: Query.Flags,
+    args: []const []const u8,
+) error{WriteFailed}!void {
+    try command.serializeToWriter(writer);
+
+    // reserve header, writer is derived from std.Io.Writer.Allocating
+    const start_header = writer.end;
+    // advancing to reserve length-prefix header for flags
+    try writer.writeInt(u32, 0, .little);
+    const start_flags = writer.end;
+    try flags.serializeToWriter(writer);
+    const flags_length = writer.end - start_flags;
+    // write the actual length of flags in the reserved header
+    std.mem.writeInt(
+        u32,
+        writer.buffer[start_header .. start_header + @sizeOf(u32)][0..@sizeOf(u32)],
+        @truncate(flags_length),
+        .little,
+    );
+
+    for (args) |arg| {
+        try writer.writeInt(u32, @truncate(arg.len), .little);
+        try writer.writeAll(arg);
     }
 }

@@ -5,27 +5,51 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of Flags field of Query.
 
-const std = @import("std");
-
 const Flags = @This();
+
+const std = @import("std");
+const assert = std.debug.assert;
 
 /// If true, the command will not
 /// send a reply to the client.
-noreply: bool = false,
+noreply: Bool = .init(false),
 /// If true, ERASE operations
 /// frees all objects.
-free: bool = false,
+free: Bool = .init(false),
 /// Specifies which elements has
 /// been selected for the operation.
-by: union(enum) {
-    any,
+by: By = .default,
 
-    index: u32,
-    range: Range,
-    key: []const u8,
+pub const By = struct {
+    value: Union,
+
+    const Union = union(enum) {
+        any,
+
+        index: Unsigned,
+        range: Range,
+        key: String,
+    };
+
+    const default: By = .{ .value = .any };
+
+    pub fn init(comptime by_tag: enum { any, index, range, key }, flag: anytype) By {
+        return .{
+            .value = switch (by_tag) {
+                .any => .any,
+                .index => .{ .index = flag },
+                .range => .{ .range = flag },
+                .key => .{ .key = flag },
+            },
+        };
+    }
+
+    pub fn get(self: By) Union {
+        return self.value;
+    }
 
     fn tag(self: @This()) Tag {
-        return switch (self) {
+        return switch (self.value) {
             .any => .byany,
             .index => .byindex,
             .range => .byrange,
@@ -33,17 +57,111 @@ by: union(enum) {
         };
     }
 
-    fn serializePayloadToWriter(self: @This(), writer: *std.Io.Writer) error{WriteFailed}!void {
-        switch (self) {
+    fn serializeContentToWriter(self: @This(), writer: *std.Io.Writer) error{WriteFailed}!void {
+        switch (self.value) {
             .any => {},
-            .index => |value| try serializeUnsignedToWriter(writer, value),
-            .range => |value| try serializeRangeToWriter(writer, value.from, value.to),
-            .key => |value| try serializeStringToWriter(writer, value),
+            .index => |value| try value.serializeToWriter(writer),
+            .range => |value| try value.serializeToWriter(writer),
+            .key => |value| try value.serializeToWriter(writer),
         }
     }
-} = .any,
+};
 
-const Range = struct { from: u32, to: u32 };
+pub const Bool = struct {
+    value: bool,
+
+    pub fn init(value: bool) Bool {
+        return .{ .value = value };
+    }
+
+    pub fn get(self: Bool) bool {
+        return self.value;
+    }
+
+    fn parse(reader: *std.Io.Reader) error{InvalidFormat}!Bool {
+        const cond = (try take(reader, u8)) > 0;
+        return .init(cond);
+    }
+
+    fn serializeToWriter(self: Bool, writer: *std.Io.Writer) error{WriteFailed}!void {
+        return writer.writeInt(u8, @intFromBool(self.value), .little);
+    }
+};
+
+pub const Range = struct {
+    value: struct { from: Unsigned, to: Unsigned },
+
+    pub fn init(from_param: Unsigned, to_param: Unsigned) Range {
+        return .{
+            .value = .{
+                .from = from_param,
+                .to = to_param,
+            },
+        };
+    }
+
+    pub fn from(self: Range) Unsigned {
+        return self.value.from;
+    }
+
+    pub fn to(self: Range) Unsigned {
+        return self.value.to;
+    }
+
+    fn parse(reader: *std.Io.Reader) error{InvalidFormat}!Range {
+        const from_param: Unsigned = try .parse(reader);
+        const to_param: Unsigned = try .parse(reader);
+        return .init(from_param, to_param);
+    }
+
+    fn serializeToWriter(self: Range, writer: *std.Io.Writer) error{WriteFailed}!void {
+        try self.value.from.serializeToWriter(writer);
+        try self.value.to.serializeToWriter(writer);
+    }
+};
+
+pub const Unsigned = struct {
+    value: u32,
+
+    pub fn init(value: u32) Unsigned {
+        return .{ .value = value };
+    }
+
+    pub fn get(self: Unsigned) u32 {
+        return self.value;
+    }
+
+    fn parse(reader: *std.Io.Reader) error{InvalidFormat}!Unsigned {
+        return .init(try take(reader, u32));
+    }
+
+    fn serializeToWriter(self: Unsigned, writer: *std.Io.Writer) error{WriteFailed}!void {
+        return writer.writeInt(u32, self.value, .little);
+    }
+};
+
+pub const String = struct {
+    value: []const u8,
+
+    pub fn init(value: []const u8) String {
+        return .{ .value = value };
+    }
+
+    pub fn get(self: String) []const u8 {
+        return self.value;
+    }
+
+    fn parse(reader: *std.Io.Reader) error{InvalidFormat}!String {
+        const len = try take(reader, u32);
+        const str = reader.take(len) catch return error.InvalidFormat;
+        return .init(str);
+    }
+
+    fn serializeToWriter(self: String, writer: *std.Io.Writer) error{WriteFailed}!void {
+        try writer.writeInt(u32, @truncate(self.value.len), .little);
+        return writer.writeAll(self.value);
+    }
+};
 
 /// Tag of all flags of this struct.
 const Tag = enum(u8) {
@@ -67,19 +185,20 @@ const Tag = enum(u8) {
 pub fn parse(flags: []const u8) error{ UnknownFlag, InvalidFormat }!Flags {
     var self: Flags = .{};
     var reader: std.Io.Reader = .fixed(flags);
+    const reader_ptr = &reader;
 
     while (reader.seek < flags.len) {
         const flag_byte = reader.takeByte() catch break;
 
         const flag_tag: Tag = try .fromInt(flag_byte);
         switch (flag_tag) {
-            .noreply => self.noreply = try parseBool(&reader),
-            .free => self.free = try parseBool(&reader),
+            .noreply => self.noreply = try .parse(&reader),
+            .free => self.free = try .parse(&reader),
 
-            .byindex => self.by = .{ .index = try parseUnsigned(&reader) },
-            .byrange => self.by = .{ .range = try parseRange(&reader) },
-            .bykey => self.by = .{ .key = try parseString(&reader) },
-            .byany => self.by = .any,
+            .byindex => self.by = .init(.index, try Unsigned.parse(reader_ptr)),
+            .byrange => self.by = .init(.range, try Range.parse(reader_ptr)),
+            .bykey => self.by = .init(.key, try String.parse(reader_ptr)),
+            .byany => self.by = .init(.any, undefined),
         }
     }
 
@@ -88,17 +207,22 @@ pub fn parse(flags: []const u8) error{ UnknownFlag, InvalidFormat }!Flags {
 
 pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) error{WriteFailed}!void {
     inline for (std.meta.fields(Flags)) |field| {
-        const value = @field(self, field.name);
+        const flag = @field(self, field.name);
 
-        switch (@typeInfo(field.type)) {
-            .bool => if (value) {
-                const tag = comptime std.meta.stringToEnum(Tag, field.name).?;
+        switch (field.type) {
+            Bool => if (flag.value) {
+                const tag = std.meta.stringToEnum(Tag, field.name).?;
                 try tag.serializeToWriter(writer);
-                try serializeBoolToWriter(writer, value);
+                try flag.serializeToWriter(writer);
             },
-            .@"union" => if (value != .any) {
-                try value.tag().serializeToWriter(writer);
-                try value.serializePayloadToWriter(writer);
+            Range, Unsigned, String => {
+                const tag = std.meta.stringToEnum(Tag, field.name).?;
+                try tag.serializeToWriter(writer);
+                flag.serializeToWriter(writer);
+            },
+            By => if (flag.value != .any) {
+                try flag.tag().serializeToWriter(writer);
+                try flag.serializeContentToWriter(writer);
             },
             else => unreachable,
         }
@@ -109,85 +233,71 @@ fn take(reader: *std.Io.Reader, comptime T: type) error{InvalidFormat}!T {
     return reader.takeInt(T, .little) catch error.InvalidFormat;
 }
 
-fn parseBool(reader: *std.Io.Reader) error{InvalidFormat}!bool {
-    return (try take(reader, u8)) > 0;
-}
-
-fn parseUnsigned(reader: *std.Io.Reader) error{InvalidFormat}!u32 {
-    return take(reader, u32);
-}
-
-fn parseRange(reader: *std.Io.Reader) error{InvalidFormat}!Range {
-    return .{ .from = try take(reader, u32), .to = try take(reader, u32) };
-}
-
-fn parseString(reader: *std.Io.Reader) error{InvalidFormat}![]const u8 {
-    const len = try take(reader, u32);
-    return reader.take(len) catch error.InvalidFormat;
-}
-
-fn serializeBoolToWriter(writer: *std.Io.Writer, value: bool) error{WriteFailed}!void {
-    return writer.writeInt(u8, @intFromBool(value), .little);
-}
-
-fn serializeUnsignedToWriter(writer: *std.Io.Writer, value: u32) error{WriteFailed}!void {
-    return writer.writeInt(u32, value, .little);
-}
-
-fn serializeRangeToWriter(writer: *std.Io.Writer, from: u32, to: u32) error{WriteFailed}!void {
-    try serializeUnsignedToWriter(writer, from);
-    try serializeUnsignedToWriter(writer, to);
-}
-
-fn serializeStringToWriter(writer: *std.Io.Writer, value: []const u8) error{WriteFailed}!void {
-    try writer.writeInt(u32, @truncate(value.len), .little);
-    return writer.writeAll(value);
-}
-
 test "Flags" {
-    var buffer: [512]u8 = undefined;
-
     const cases = [_]Flags{
-        .{ .noreply = false, .free = false, .by = .any },
-        .{ .noreply = true, .free = false, .by = .{ .index = 42 } },
-        .{ .noreply = false, .free = true, .by = .{ .range = .{ .from = 5, .to = 15 } } },
-        .{ .noreply = true, .free = true, .by = .{ .key = "abc" } },
+        .{},
+        .{ .noreply = .init(true) },
+        .{ .free = .init(true) },
+
+        .{ .by = .init(.index, Unsigned.init(0)) },
+        .{ .by = .init(.index, Unsigned.init(42)) },
+        .{ .by = .init(.index, Unsigned.init(std.math.maxInt(u32))) },
+
+        .{ .by = .init(.range, Range.init(.init(0), .init(0))) },
+        .{ .by = .init(.range, Range.init(.init(5), .init(15))) },
+        .{ .by = .init(.range, Range.init(.init(0), .init(std.math.maxInt(u32)))) },
+
+        .{ .by = .init(.key, String.init("")) },
+        .{ .by = .init(.key, String.init("a")) },
+        .{ .by = .init(.key, String.init("abc")) },
+        .{ .by = .init(.key, String.init("longer_key_test")) },
+
+        .{
+            .noreply = .init(true),
+            .by = .init(.index, Unsigned.init(1)),
+        },
+        .{
+            .free = .init(true),
+            .by = .init(.range, Range.init(.init(10), .init(20))),
+        },
+        .{
+            .noreply = .init(true),
+            .free = .init(true),
+            .by = .init(.index, Unsigned.init(999)),
+        },
+        .{
+            .noreply = .init(true),
+            .free = .init(true),
+            .by = .init(.range, Range.init(.init(1), .init(1))),
+        },
+
+        .{
+            .noreply = .init(true),
+            .by = .init(.key, String.init("user:123")),
+        },
+        .{
+            .free = .init(true),
+            .by = .init(.key, String.init("session_token")),
+        },
+        .{
+            .noreply = .init(true),
+            .free = .init(true),
+            .by = .init(.key, String.init("abc")),
+        },
     };
 
-    for (cases) |original| {
+    for (cases) |c| {
+        var buffer: [256]u8 = undefined;
         var writer: std.Io.Writer = .fixed(&buffer);
 
-        try original.serializeToWriter(&writer);
+        try c.serializeToWriter(&writer);
+        const parsed = try Flags.parse(writer.buffered());
 
-        const parsed: Flags = try .parse(writer.buffered());
-
-        try std.testing.expectEqual(original.noreply, parsed.noreply);
-        try std.testing.expectEqual(original.free, parsed.free);
-
-        switch (original.by) {
-            .any => switch (parsed.by) {
-                .any => {},
-                else => return error.TestFailure,
-            },
-            .index => |v| switch (parsed.by) {
-                .index => |pv| try std.testing.expectEqual(v, pv),
-                else => return error.TestFailure,
-            },
-            .range => |r| switch (parsed.by) {
-                .range => |pr| {
-                    try std.testing.expectEqual(r.from, pr.from);
-                    try std.testing.expectEqual(r.to, pr.to);
-                },
-                else => return error.TestFailure,
-            },
-            .key => |k| switch (parsed.by) {
-                .key => |pk| try std.testing.expectEqualStrings(k, pk),
-                else => return error.TestFailure,
-            },
-        }
+        try expectFlagsEqual(c, parsed);
     }
 
     {
+        var buffer: [128]u8 = undefined;
         var stream = std.io.fixedBufferStream(&buffer);
         const w = &stream.writer();
 
@@ -202,32 +312,32 @@ test "Flags" {
 
         const parsed = try Flags.parse(stream.getWritten());
 
-        try std.testing.expect(parsed.noreply);
-        try std.testing.expect(parsed.free);
+        try std.testing.expect(parsed.noreply.get());
+        try std.testing.expect(parsed.free.get());
 
-        switch (parsed.by) {
-            .index => |v| try std.testing.expectEqual(@as(u32, 99), v),
+        switch (parsed.by.value) {
+            .index => |v| try std.testing.expectEqual(@as(u32, 99), v.get()),
             else => return error.TestFailure,
         }
     }
 
     {
-        const parsed: Flags = try .parse(&[_]u8{});
-        try std.testing.expect(!parsed.noreply);
-        try std.testing.expect(!parsed.free);
+        const parsed = try Flags.parse(&[_]u8{});
 
-        switch (parsed.by) {
-            .any => {},
-            else => return error.TestFailure,
-        }
+        try std.testing.expect(!parsed.noreply.get());
+        try std.testing.expect(!parsed.free.get());
+        try std.testing.expect(parsed.by.value == .any);
     }
 
     {
-        const data = [_]u8{0xFF};
-        try std.testing.expectError(error.UnknownFlag, Flags.parse(&data));
+        try std.testing.expectError(
+            error.UnknownFlag,
+            Flags.parse(&[_]u8{0xFF}),
+        );
     }
 
     {
+        var buffer: [16]u8 = undefined;
         var stream = std.io.fixedBufferStream(&buffer);
         const w = &stream.writer();
 
@@ -240,6 +350,7 @@ test "Flags" {
     }
 
     {
+        var buffer: [32]u8 = undefined;
         var stream = std.io.fixedBufferStream(&buffer);
         const w = &stream.writer();
 
@@ -251,5 +362,32 @@ test "Flags" {
             error.InvalidFormat,
             Flags.parse(stream.getWritten()),
         );
+    }
+}
+
+fn expectFlagsEqual(a: Flags, b: Flags) !void {
+    try std.testing.expectEqual(a.noreply.get(), b.noreply.get());
+    try std.testing.expectEqual(a.free.get(), b.free.get());
+
+    switch (a.by.value) {
+        .any => try std.testing.expect(b.by.value == .any),
+
+        .index => |v| switch (b.by.value) {
+            .index => |pv| try std.testing.expectEqual(v.get(), pv.get()),
+            else => return error.TestFailure,
+        },
+
+        .range => |r| switch (b.by.value) {
+            .range => |pr| {
+                try std.testing.expectEqual(r.from().get(), pr.from().get());
+                try std.testing.expectEqual(r.to().get(), pr.to().get());
+            },
+            else => return error.TestFailure,
+        },
+
+        .key => |k| switch (b.by.value) {
+            .key => |pk| try std.testing.expectEqualStrings(k.get(), pk.get()),
+            else => return error.TestFailure,
+        },
     }
 }
