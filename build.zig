@@ -7,8 +7,6 @@
 
 const std = @import("std");
 
-const defaultSystemLibs = [_][]const u8{"lz4"};
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -21,7 +19,7 @@ pub fn build(b: *std.Build) void {
             .optimize = .ReleaseFast,
         }),
     });
-    linkDefaultLibs(exe);
+    exe.linkLibC();
 
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -31,7 +29,7 @@ pub fn build(b: *std.Build) void {
             .single_threaded = false,
         }),
     });
-    linkDefaultLibs(lib_unit_tests);
+    lib_unit_tests.linkLibC();
 
     // add step for testing
     const run_tests = b.addRunArtifact(lib_unit_tests);
@@ -39,11 +37,4 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
 
     b.installArtifact(exe);
-}
-
-inline fn linkDefaultLibs(compile: *std.Build.Step.Compile) void {
-    compile.linkLibC();
-    inline for (defaultSystemLibs) |lib| {
-        compile.linkSystemLibrary(lib);
-    }
 }
