@@ -8,7 +8,6 @@
 const Flags = @This();
 
 const std = @import("std");
-const assert = std.debug.assert;
 
 /// If true, the command will not
 /// send a reply to the client.
