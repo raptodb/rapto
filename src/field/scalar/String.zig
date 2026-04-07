@@ -14,13 +14,12 @@ const String = @This();
 /// header represents the length of string.
 ptr: [*]u8,
 
-pub const HeaderType: type = u32;
-pub const header_size: u64 = @sizeOf(HeaderType);
+pub const Header: type = u32;
 
 pub fn init(allocator: std.mem.Allocator, serialized: []const u8) error{OutOfMemory}!String {
-    const str = try allocator.alloc(u8, header_size + serialized.len);
-    std.mem.writeInt(HeaderType, str[0..header_size], @truncate(serialized.len), .little);
-    @memcpy(str[header_size..], serialized);
+    const str = try allocator.alloc(u8, @sizeOf(Header) + serialized.len);
+    std.mem.writeInt(Header, str[0..@sizeOf(Header)], @truncate(serialized.len), .little);
+    @memcpy(str[@sizeOf(Header)..], serialized);
 
     return .{ .ptr = str.ptr };
 }
@@ -40,34 +39,37 @@ pub fn set(
 
     if (length != serialized_length) {
         const slice: []u8 = try allocator.realloc(
-            self.ptr[0 .. header_size + length],
-            header_size + serialized_length,
+            self.ptr[0 .. @sizeOf(Header) + length],
+            @sizeOf(Header) + serialized_length,
         );
 
         self.ptr = slice.ptr;
 
         std.mem.writeInt(
-            HeaderType,
-            self.ptr[0..header_size],
+            Header,
+            self.ptr[0..@sizeOf(Header)],
             @truncate(serialized_length),
             .little,
         );
     }
 
-    @memcpy(self.ptr[header_size .. header_size + serialized_length], serialized);
+    @memcpy(
+        self.ptr[@sizeOf(Header) .. @sizeOf(Header) + serialized_length],
+        serialized,
+    );
 }
 
 pub fn get(self: String) []const u8 {
-    return self.ptr[header_size .. header_size + self.len()];
+    return self.ptr[@sizeOf(Header) .. @sizeOf(Header) + self.len()];
 }
 
 /// Returns logical length of string content, excluding header.
 pub fn len(self: String) u32 {
-    return std.mem.readInt(HeaderType, self.ptr[0..header_size], .little);
+    return std.mem.readInt(Header, self.ptr[0..@sizeOf(Header)], .little);
 }
 
 pub fn deinit(self: String, allocator: std.mem.Allocator) void {
-    allocator.free(self.ptr[0 .. header_size + self.len()]);
+    allocator.free(self.ptr[0 .. @sizeOf(Header) + self.len()]);
 }
 
 pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) error{WriteFailed}!void {

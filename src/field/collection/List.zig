@@ -5,21 +5,20 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of list field.
 
-const std = @import("std");
-
 /// List field type represented as list of scalar items. Each item has a
 /// length header of 4 bytes. (below, H refers to every byte of header)
 /// Example: [HHHH[serialized]HHHH[serialized]HHHH[serialized]HHHH[serialized]]
 const List = @This();
-const ScalarItem = @import("../scalar.zig").ScalarItem;
-const Types = @import("../../field.zig").Types;
 
-const splitSerialized = @import("../../field.zig").splitSerialized;
+const std = @import("std");
+const field = @import("../../field.zig");
+const assert = std.debug.assert;
+
+const ScalarItem = @import("../scalar.zig").ScalarItem;
+/// Header length type between items of List.
+pub const Header = u32;
 
 value: *std.ArrayList(ScalarItem),
-
-pub const ItemHeaderType: type = u32;
-pub const item_header_size: u64 = @sizeOf(ItemHeaderType);
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -40,25 +39,26 @@ pub fn insert(
     index: u64,
     serialized: []const u8,
 ) error{ OutOfMemory, MismatchType, InvalidFormat, UnknownType }!void {
-    const field_type, const content = try splitSerialized(serialized);
+    const field_type, const content = try field.splitSerialized(serialized);
+
     switch (field_type) {
-        .map => return error.MismatchType,
+        else => {
+            const item: ScalarItem = try .fromContent(allocator, field_type, content);
+            return self.insertItem(allocator, index, item);
+        },
         .list => {
             var offset: u64 = 0;
             var iterator = try serializedItemsIterator(serialized);
             while (try iterator.next()) |serialized_field| : (offset += 1) {
                 const field_type_item, const content_item =
-                    try splitSerialized(serialized_field);
+                    try field.splitSerialized(serialized_field);
 
                 const item: ScalarItem = try .fromContent(allocator, field_type_item, content_item);
                 try self.insertItem(allocator, index + offset, item);
             }
         },
 
-        else => {
-            const item: ScalarItem = try .fromContent(allocator, field_type, content);
-            return self.insertItem(allocator, index, item);
-        },
+        .map => return error.MismatchType,
     }
 }
 
@@ -92,7 +92,7 @@ pub fn setByIndex(
 ) error{ OutOfMemory, InvalidFormat, MismatchType, RangeOverflow, UnknownType }!void {
     if (index >= self.count()) return error.RangeOverflow;
 
-    const field_type, const content = try splitSerialized(serialized);
+    const field_type, const content = try field.splitSerialized(serialized);
 
     self.value.items[index].deinit(allocator);
     self.value.items[index] = try .fromContent(allocator, field_type, content);
@@ -128,7 +128,7 @@ pub fn indexOfItemInRange(
 ) error{ OutOfMemory, MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType }!u64 {
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
 
-    const field_type, const content = try splitSerialized(serialized);
+    const field_type, const content = try field.splitSerialized(serialized);
 
     const this_item: ScalarItem = try .fromContent(allocator, field_type, content);
     defer this_item.deinit(allocator);
@@ -158,13 +158,13 @@ pub fn indexOfItem(
     serialized: []const u8,
 ) error{ OutOfMemory, MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType }!u64 {
     if (self.count() == 0) return error.ItemNotFound;
-    return self.indexOfItemInRange(allocator, serialized, 0, self.count() - 1) catch |err| switch (err) {
-        error.OutOfMemory,
-        error.MismatchType,
-        error.InvalidFormat,
-        error.UnknownType,
-        error.ItemNotFound,
-        => |e| e,
+    return self.indexOfItemInRange(
+        allocator,
+        serialized,
+        0,
+        self.count() - 1,
+    ) catch |err| switch (err) {
+        else => |e| e,
         error.RangeOverflow => unreachable,
     };
 }
@@ -207,15 +207,15 @@ pub fn serializeContentInRangeToWriter(
         // reserve header, writer is derived from std.Io.Writer.Allocating
         const start_header = writer.end;
         // advancing
-        try writer.writeInt(ItemHeaderType, 0, .little);
+        try writer.writeInt(Header, 0, .little);
 
         const start_serialized = writer.end;
         try item.serializeToWriter(writer);
-        const serialized_size: ItemHeaderType = @truncate(writer.end - start_serialized);
+        const serialized_size: Header = @truncate(writer.end - start_serialized);
 
         std.mem.writeInt(
-            ItemHeaderType,
-            writer.buffer[start_header .. start_header + item_header_size][0..item_header_size],
+            Header,
+            writer.buffer[start_header .. start_header + @sizeOf(Header)][0..@sizeOf(Header)],
             serialized_size,
             .little,
         );
@@ -245,7 +245,7 @@ fn appendSerializedList(
     var iterator = try serializedItemsIterator(serialized_list);
 
     while (try iterator.next()) |serialized_field| {
-        const field_type, const content = try splitSerialized(serialized_field);
+        const field_type, const content = try field.splitSerialized(serialized_field);
 
         const item: ScalarItem = try .fromContent(allocator, field_type, content);
         errdefer item.deinit(allocator);
@@ -258,7 +258,7 @@ const Iterator = struct {
     reader: std.Io.Reader,
 
     fn init(serialized: []const u8) error{ MismatchType, InvalidFormat, UnknownType }!Iterator {
-        const field_type, const content = try splitSerialized(serialized);
+        const field_type, const content = try field.splitSerialized(serialized);
         if (field_type != .list) return error.MismatchType;
         return .{ .reader = .fixed(content) };
     }
@@ -269,7 +269,7 @@ const Iterator = struct {
     /// [length header][serialized]
     /// where serialized is returned as [field_type][content].
     fn next(self: *Iterator) error{InvalidFormat}!?[]const u8 {
-        const length = self.reader.takeInt(ItemHeaderType, .little) catch return null;
+        const length = self.reader.takeInt(Header, .little) catch return null;
         return self.reader.take(length) catch error.InvalidFormat;
     }
 };
@@ -278,32 +278,6 @@ fn serializedItemsIterator(
     serialized: []const u8,
 ) error{ MismatchType, InvalidFormat, UnknownType }!Iterator {
     return .init(serialized);
-}
-
-fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8 {
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    errdefer allocating.deinit();
-    var writer = &allocating.writer;
-
-    try Types.serializeTypeToWriter(.list, writer);
-    for (items) |item| {
-        const start_header = writer.end;
-        // advancing
-        try writer.writeInt(List.ItemHeaderType, 0, .little);
-
-        const start_serialized = writer.end;
-        try item.serializeToWriter(writer);
-        const serialized_size: List.ItemHeaderType = @truncate(writer.end - start_serialized);
-
-        std.mem.writeInt(
-            List.ItemHeaderType,
-            writer.buffer[start_header .. start_header + List.item_header_size][0..List.item_header_size],
-            serialized_size,
-            .little,
-        );
-    }
-
-    return allocating.toOwnedSlice();
 }
 
 test "List" {
@@ -427,4 +401,30 @@ test "List" {
 
     try std.testing.expectError(error.MismatchType, ScalarItem.fromContent(allocator, .map, &.{}));
     try std.testing.expectError(error.MismatchType, ScalarItem.fromContent(allocator, .list, &.{}));
+}
+
+fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8 {
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    errdefer allocating.deinit();
+    var writer = &allocating.writer;
+
+    try field.Types.serializeTypeToWriter(.list, writer);
+    for (items) |item| {
+        const start_header = writer.end;
+        // advancing
+        try writer.writeInt(List.Header, 0, .little);
+
+        const start_serialized = writer.end;
+        try item.serializeToWriter(writer);
+        const serialized_size: List.Header = @truncate(writer.end - start_serialized);
+
+        std.mem.writeInt(
+            List.Header,
+            writer.buffer[start_header .. start_header + @sizeOf(List.Header)][0..@sizeOf(List.Header)],
+            serialized_size,
+            .little,
+        );
+    }
+
+    return allocating.toOwnedSlice();
 }
