@@ -45,34 +45,42 @@ pub fn deinit(self: *Reply) void {
 /// Processes a task and builds the reply.
 /// The returned slice is valid until the next call to this function.
 pub fn processTask(self: *Reply, task: *const Task) error{ OutOfMemory, Shutdown }![]const u8 {
+    // if catches an error, it is considered a
+    // fatal error to be returned directly
+    return self.processTaskUnmapped(task) catch |err| switch (err) {
+        inline error.OutOfMemory,
+        error.Shutdown,
+        => |e| e,
+        // assuming always writer of module is derived
+        // by std.Io.Writer.Allocating, an error about
+        // write is always OOM
+        error.WriteFailed => error.OutOfMemory,
+    };
+}
+
+fn processTaskUnmapped(
+    self: *Reply,
+    task: *const Task,
+) error{ WriteFailed, OutOfMemory, Shutdown }![]const u8 {
     self.clearAndShrink();
-    const module: Module = .init(self.memory, &self.allocating.writer);
 
     var iterator = task.iterator();
     while (iterator.next()) |maybe_query| {
         const header_offset = try self.reserveHeader(u32);
 
-        const maybe_error = if (maybe_query) |query| blk: {
+        // TODO: set null writer when flags.noreply is enabled,
+        // consequently, remove noreply branches from Module.zig
+        const module: Module = .init(self.memory, &self.allocating.writer);
+
+        if (maybe_query) |query| {
             var mut_query = query;
-            break :blk dispatcher.dispatch(module, &mut_query);
-        } else |err| blk: {
+            try dispatcher.dispatch(module, &mut_query);
+        } else |err| {
             // parsing errors should be handled by
             // the client, thus this branch is cold
             @branchHint(.cold);
-            break :blk status.write(module.writer, status.fromParseError(err));
-        };
-
-        // if catches an error, it is considered a
-        // fatal error to be returned directly
-        maybe_error catch |err| return switch (err) {
-            inline error.OutOfMemory,
-            error.Shutdown,
-            => |e| e,
-            // assuming always writer of module is derived
-            // by std.Io.Writer.Allocating, an error about
-            // write is always OOM
-            error.WriteFailed => error.OutOfMemory,
-        };
+            try status.write(module.writer, status.fromParseError(err));
+        }
 
         const length = module.writer.end - header_offset - @sizeOf(u32);
         self.writeOffset(u32, @intCast(length), header_offset);
@@ -81,9 +89,9 @@ pub fn processTask(self: *Reply, task: *const Task) error{ OutOfMemory, Shutdown
     return self.allocating.written();
 }
 
-fn reserveHeader(self: *Reply, comptime T: type) error{OutOfMemory}!u64 {
+fn reserveHeader(self: *Reply, comptime T: type) error{WriteFailed}!u64 {
     const header_offset = self.allocating.writer.end;
-    self.allocating.writer.writeInt(T, 0, .little) catch return error.OutOfMemory;
+    try self.allocating.writer.writeInt(T, 0, .little);
     return header_offset;
 }
 

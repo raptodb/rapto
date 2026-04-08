@@ -5,10 +5,13 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of task.
 
+/// Indipendent operation for dispatch. It contains
+/// pipeline of queries and its metadata.
+const Task = @This();
+
 const std = @import("std");
 
 pub const Query = @import("Task/Query.zig");
-const Task = @This();
 
 /// Pipeline containing the raw queries to be executed. The format
 /// of the pipeline is a sequence of length-prefixed queries.
