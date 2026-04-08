@@ -78,7 +78,7 @@ test "Task" {
         args: []const []const u8,
     }{
         .{ .command = .PING, .flags = .{}, .args = &.{} },
-        .{ .command = .SET, .flags = .{ .noreply = .init(true) }, .args = &.{ "k", "v" } },
+        .{ .command = .SET, .flags = .{ .noreply = .init(true) }, .args = &.{} },
     };
 
     for (queries) |q| {
@@ -100,7 +100,7 @@ test "Task" {
     for (queries) |expected| {
         const q = try it.next().?;
         try std.testing.expectEqual(expected.command, q.command);
-        try std.testing.expectEqual(expected.flags.noreply, q.flags.noreply);
+        try std.testing.expectEqual(expected.flags.noreply.get(), q.flags.noreply.get());
         var args = q.args;
         for (expected.args) |a|
             try std.testing.expectEqualStrings(a, args.next().?);

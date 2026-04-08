@@ -78,8 +78,8 @@ pub const Bool = struct {
     }
 
     fn parse(reader: *std.Io.Reader) error{InvalidFormat}!Bool {
-        const cond = (try take(reader, u8)) > 0;
-        return .init(cond);
+        const n = try take(reader, u8);
+        return .init(n != 0);
     }
 
     fn serializeToWriter(self: Bool, writer: *std.Io.Writer) error{WriteFailed}!void {
@@ -181,11 +181,11 @@ const Tag = enum(u8) {
     }
 };
 
-pub fn parseFromReader(reader: *std.Io.Reader) error{ UnknownFlag, InvalidFormat }!Flags {
+pub fn parseFromReader(reader: *std.Io.Reader, length: u32) error{ UnknownFlag, InvalidFormat }!Flags {
     var self: Flags = .{};
 
-    const length = reader.takeInt(u32, .little) catch return error.InvalidFormat;
-    while (reader.seek < length) {
+    const start = reader.seek;
+    while (reader.seek - start < length) {
         const flag_byte = reader.takeByte() catch break;
 
         const flag_tag: Tag = try .fromInt(flag_byte);
@@ -208,7 +208,7 @@ pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) error{WriteFailed}
         const flag = @field(self, field.name);
 
         switch (field.type) {
-            Bool => if (flag.value) {
+            Bool => if (flag.get()) {
                 const tag = std.meta.stringToEnum(Tag, field.name).?;
                 try tag.serializeToWriter(writer);
                 try flag.serializeToWriter(writer);
@@ -218,7 +218,7 @@ pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) error{WriteFailed}
                 try tag.serializeToWriter(writer);
                 flag.serializeToWriter(writer);
             },
-            By => if (flag.value != .any) {
+            By => if (flag.get() != .any) {
                 try flag.tag().serializeToWriter(writer);
                 try flag.serializeContentToWriter(writer);
             },
@@ -236,20 +236,16 @@ test "Flags" {
         .{},
         .{ .noreply = .init(true) },
         .{ .free = .init(true) },
-
         .{ .by = .init(.index, Unsigned.init(0)) },
         .{ .by = .init(.index, Unsigned.init(42)) },
         .{ .by = .init(.index, Unsigned.init(std.math.maxInt(u32))) },
-
         .{ .by = .init(.range, Range.init(.init(0), .init(0))) },
         .{ .by = .init(.range, Range.init(.init(5), .init(15))) },
         .{ .by = .init(.range, Range.init(.init(0), .init(std.math.maxInt(u32)))) },
-
         .{ .by = .init(.key, String.init("")) },
         .{ .by = .init(.key, String.init("a")) },
         .{ .by = .init(.key, String.init("abc")) },
         .{ .by = .init(.key, String.init("longer_key_test")) },
-
         .{
             .noreply = .init(true),
             .by = .init(.index, Unsigned.init(1)),
@@ -268,7 +264,6 @@ test "Flags" {
             .free = .init(true),
             .by = .init(.range, Range.init(.init(1), .init(1))),
         },
-
         .{
             .noreply = .init(true),
             .by = .init(.key, String.init("user:123")),
@@ -290,26 +285,26 @@ test "Flags" {
 
         try c.serializeToWriter(&writer);
         var reader: std.Io.Reader = .fixed(writer.buffered());
-        const parsed = try Flags.parseFromReader(&reader);
+        const parsed = try Flags.parseFromReader(&reader, @truncate(writer.end));
 
         try expectFlagsEqual(c, parsed);
     }
 
     {
         var buffer: [128]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buffer);
+        var writer: std.Io.Writer = .fixed(&buffer);
 
-        try w.writeByte(@intFromEnum(Flags.Tag.byindex));
-        try w.writeInt(u32, 99, .little);
+        try writer.writeByte(@intFromEnum(Flags.Tag.byindex));
+        try writer.writeInt(u32, 99, .little);
 
-        try w.writeByte(@intFromEnum(Flags.Tag.noreply));
-        try w.writeByte(1);
+        try writer.writeByte(@intFromEnum(Flags.Tag.noreply));
+        try writer.writeByte(1);
 
-        try w.writeByte(@intFromEnum(Flags.Tag.free));
-        try w.writeByte(1);
+        try writer.writeByte(@intFromEnum(Flags.Tag.free));
+        try writer.writeByte(1);
 
-        var reader: std.Io.Reader = .fixed(w.buffered());
-        const parsed = try Flags.parseFromReader(&reader, w.end);
+        var reader: std.Io.Reader = .fixed(writer.buffered());
+        const parsed = try Flags.parseFromReader(&reader, @truncate(writer.end));
 
         try std.testing.expect(parsed.noreply.get());
         try std.testing.expect(parsed.free.get());
@@ -334,42 +329,42 @@ test "Flags" {
 
         try std.testing.expectError(
             error.UnknownFlag,
-            Flags.parse(&reader),
+            Flags.parseFromReader(&reader, 1),
         );
     }
 
     {
         var buffer: [16]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buffer);
+        var writer: std.Io.Writer = .fixed(&buffer);
 
-        try w.writeByte(@intFromEnum(Flags.Tag.byindex));
+        try writer.writeByte(@intFromEnum(Flags.Tag.byindex));
 
-        var reader: std.Io.Reader = .fixed(w.buffered());
+        var reader: std.Io.Reader = .fixed(writer.buffered());
 
         try std.testing.expectError(
             error.InvalidFormat,
-            Flags.parse(&reader),
+            Flags.parseFromReader(&reader, @truncate(writer.end)),
         );
     }
 
     {
         var buffer: [32]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buffer);
+        var writer: std.Io.Writer = .fixed(&buffer);
 
-        try w.writeByte(@intFromEnum(Flags.Tag.bykey));
-        try w.writeInt(u32, 10, .little);
-        try w.writeByte(1);
+        try writer.writeByte(@intFromEnum(Flags.Tag.bykey));
+        try writer.writeInt(u32, 10, .little);
+        try writer.writeByte(1);
 
-        var reader: std.Io.Reader = .fixed(w.buffered());
+        var reader: std.Io.Reader = .fixed(writer.buffered());
 
         try std.testing.expectError(
             error.InvalidFormat,
-            Flags.parse(&reader),
+            Flags.parseFromReader(&reader, @truncate(writer.end)),
         );
     }
 }
 
-fn expectFlagsEqual(a: Flags, b: Flags) !void {
+pub fn expectFlagsEqual(a: Flags, b: Flags) !void {
     try std.testing.expectEqual(a.noreply.get(), b.noreply.get());
     try std.testing.expectEqual(a.free.get(), b.free.get());
 
