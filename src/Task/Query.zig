@@ -50,9 +50,8 @@ pub fn parse(serialized: []const u8) ParseError!Query {
     var reader: std.Io.Reader = .fixed(serialized);
     const reader_ptr = &reader;
 
-    const command: Command = try .fromReader(reader_ptr);
-    const flags_length = reader.takeInt(u32, .little) catch return error.InvalidFormat;
-    const flags: Flags = if (flags_length == 0) .{} else try .parse(reader_ptr, flags_length);
+    const command: Command = try .parseFromReader(reader_ptr);
+    const flags: Flags = try .parseFromReader(reader_ptr);
 
     assert(reader.seek <= serialized.len);
 
@@ -84,7 +83,7 @@ pub const Command = enum(u8) {
     ERASE,
     DOWN = std.math.maxInt(u8),
 
-    fn fromReader(reader: *std.Io.Reader) error{ InvalidFormat, UnknownCommand }!Command {
+    fn parseFromReader(reader: *std.Io.Reader) error{ InvalidFormat, UnknownCommand }!Command {
         const int = reader.takeByte() catch return error.InvalidFormat;
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
     }

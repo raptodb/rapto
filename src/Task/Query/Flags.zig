@@ -181,16 +181,17 @@ const Tag = enum(u8) {
     }
 };
 
-pub fn parse(reader: *std.Io.Reader, length: u64) error{ UnknownFlag, InvalidFormat }!Flags {
+pub fn parseFromReader(reader: *std.Io.Reader) error{ UnknownFlag, InvalidFormat }!Flags {
     var self: Flags = .{};
 
+    const length = reader.takeInt(u32, .little) catch return error.InvalidFormat;
     while (reader.seek < length) {
         const flag_byte = reader.takeByte() catch break;
 
         const flag_tag: Tag = try .fromInt(flag_byte);
         switch (flag_tag) {
-            .noreply => self.noreply = try .parse(&reader),
-            .free => self.free = try .parse(&reader),
+            .noreply => self.noreply = try .parse(reader),
+            .free => self.free = try .parse(reader),
 
             .byindex => self.by = .init(.index, try Unsigned.parse(reader)),
             .byrange => self.by = .init(.range, try Range.parse(reader)),
@@ -288,15 +289,15 @@ test "Flags" {
         var writer: std.Io.Writer = .fixed(&buffer);
 
         try c.serializeToWriter(&writer);
-        const parsed = try Flags.parse(writer.buffered());
+        var reader: std.Io.Reader = .fixed(writer.buffered());
+        const parsed = try Flags.parseFromReader(&reader);
 
         try expectFlagsEqual(c, parsed);
     }
 
     {
         var buffer: [128]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        const w = &stream.writer();
+        var w: std.Io.Writer = .fixed(&buffer);
 
         try w.writeByte(@intFromEnum(Flags.Tag.byindex));
         try w.writeInt(u32, 99, .little);
@@ -307,7 +308,8 @@ test "Flags" {
         try w.writeByte(@intFromEnum(Flags.Tag.free));
         try w.writeByte(1);
 
-        const parsed = try Flags.parse(stream.getWritten());
+        var reader: std.Io.Reader = .fixed(w.buffered());
+        const parsed = try Flags.parseFromReader(&reader, w.end);
 
         try std.testing.expect(parsed.noreply.get());
         try std.testing.expect(parsed.free.get());
@@ -319,7 +321,8 @@ test "Flags" {
     }
 
     {
-        const parsed = try Flags.parse(&[_]u8{});
+        var reader: std.Io.Reader = .fixed(&[_]u8{});
+        const parsed = try Flags.parseFromReader(&reader, 0);
 
         try std.testing.expect(!parsed.noreply.get());
         try std.testing.expect(!parsed.free.get());
@@ -327,37 +330,41 @@ test "Flags" {
     }
 
     {
+        var reader: std.Io.Reader = .fixed(&[_]u8{0xFF});
+
         try std.testing.expectError(
             error.UnknownFlag,
-            Flags.parse(&[_]u8{0xFF}),
+            Flags.parse(&reader),
         );
     }
 
     {
         var buffer: [16]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        const w = &stream.writer();
+        var w: std.Io.Writer = .fixed(&buffer);
 
         try w.writeByte(@intFromEnum(Flags.Tag.byindex));
 
+        var reader: std.Io.Reader = .fixed(w.buffered());
+
         try std.testing.expectError(
             error.InvalidFormat,
-            Flags.parse(stream.getWritten()),
+            Flags.parse(&reader),
         );
     }
 
     {
         var buffer: [32]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        const w = &stream.writer();
+        var w: std.Io.Writer = .fixed(&buffer);
 
         try w.writeByte(@intFromEnum(Flags.Tag.bykey));
         try w.writeInt(u32, 10, .little);
         try w.writeByte(1);
 
+        var reader: std.Io.Reader = .fixed(w.buffered());
+
         try std.testing.expectError(
             error.InvalidFormat,
-            Flags.parse(stream.getWritten()),
+            Flags.parse(&reader),
         );
     }
 }

@@ -15,15 +15,15 @@ pub const Code = enum(u8) {
     OK = 0,
 
     // dispatch errors (100-199)
-    KeyNotFound = 100,
-    InvalidKey,
-    InvalidFormat,
-    MissingTokens,
-    MismatchType,
-    UnknownType,
-    MismatchFlag,
-    MathOverflow,
-    RangeOverflow,
+    DispatchKeyNotFound = 100,
+    DispatchInvalidKey,
+    DispatchInvalidFormat,
+    DispatchMissingTokens,
+    DispatchMismatchType,
+    DispatchUnknownType,
+    DispatchMismatchFlag,
+    DispatchMathOverflow,
+    DispatchRangeOverflow,
 
     // parse errors (200+)
     ParseUnknownCommand = 200,
@@ -38,15 +38,15 @@ pub fn write(writer: *std.Io.Writer, code: Code) error{WriteFailed}!void {
 
 pub fn fromDispatchError(err: DispatchError) Code {
     return switch (err) {
-        error.KeyNotFound => .KeyNotFound,
-        error.InvalidKey => .InvalidKey,
-        error.InvalidFormat => .InvalidFormat,
-        error.MissingTokens => .MissingTokens,
-        error.MismatchType => .MismatchType,
-        error.UnknownType => .UnknownType,
-        error.MismatchFlag => .MismatchFlag,
-        error.MathOverflow => .MathOverflow,
-        error.RangeOverflow => .RangeOverflow,
+        error.KeyNotFound => .DispatchKeyNotFound,
+        error.InvalidKey => .DispatchInvalidKey,
+        error.InvalidFormat => .DispatchInvalidFormat,
+        error.MissingTokens => .DispatchMissingTokens,
+        error.MismatchType => .DispatchMismatchType,
+        error.UnknownType => .DispatchUnknownType,
+        error.MismatchFlag => .DispatchMismatchFlag,
+        error.MathOverflow => .DispatchMathOverflow,
+        error.RangeOverflow => .DispatchRangeOverflow,
     };
 }
 
