@@ -39,9 +39,9 @@ pub fn dispatch(module: Module, query: *Query) error{ WriteFailed, OutOfMemory, 
         return fatal;
     };
 
-    // response is written in the buffer,
-    // in this case OK is implicit
-    if (writer.end != start_offset) return;
+    // When response is written in buffer, it is implicit OK.
+    // While, when noreply is enabled, response is not written.
+    if (writer.end != start_offset or query.flags.noreply.get()) return;
 
     return switch (response) {
         .ok => status.write(writer, .OK),

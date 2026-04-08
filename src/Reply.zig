@@ -63,14 +63,11 @@ fn processTaskUnmapped(
     task: *const Task,
 ) error{ WriteFailed, OutOfMemory, Shutdown }![]const u8 {
     self.clearAndShrink();
+    const module: Module = .init(self.memory, &self.allocating.writer);
 
     var iterator = task.iterator();
     while (iterator.next()) |maybe_query| {
         const header_offset = try self.reserveHeader(u32);
-
-        // TODO: set null writer when flags.noreply is enabled,
-        // consequently, remove noreply branches from Module.zig
-        const module: Module = .init(self.memory, &self.allocating.writer);
 
         if (maybe_query) |query| {
             var mut_query = query;
