@@ -77,6 +77,8 @@ fn processTaskUnmapped(
             // the client, thus this branch is cold
             @branchHint(.cold);
             try status.writeCode(module.writer, status.fromParseError(err));
+
+            assert(module.writer.end - header_offset - @sizeOf(u32) == 1);
         }
 
         const length = module.writer.end - header_offset - @sizeOf(u32);
