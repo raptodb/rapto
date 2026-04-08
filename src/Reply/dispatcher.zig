@@ -44,8 +44,8 @@ pub fn dispatch(module: Module, query: *Query) error{ WriteFailed, OutOfMemory, 
     if (writer.end != start_offset or query.flags.noreply.get()) return;
 
     return switch (response) {
-        .ok => status.write(writer, .OK),
-        .err => |err| status.write(writer, status.fromDispatchError(err)),
+        .ok => status.writeCode(writer, .OK),
+        .err => |err| status.writeCode(writer, status.fromDispatchError(err)),
     };
 }
 

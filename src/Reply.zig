@@ -76,7 +76,7 @@ fn processTaskUnmapped(
             // parsing errors should be handled by
             // the client, thus this branch is cold
             @branchHint(.cold);
-            try status.write(module.writer, status.fromParseError(err));
+            try status.writeCode(module.writer, status.fromParseError(err));
         }
 
         const length = module.writer.end - header_offset - @sizeOf(u32);

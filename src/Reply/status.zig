@@ -32,7 +32,7 @@ pub const Code = enum(u8) {
     ParseInvalidFormat,
 };
 
-pub fn write(writer: *std.Io.Writer, code: Code) error{WriteFailed}!void {
+pub fn writeCode(writer: *std.Io.Writer, code: Code) error{WriteFailed}!void {
     return writer.writeByte(@intFromEnum(code));
 }
 
