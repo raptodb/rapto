@@ -181,12 +181,10 @@ const Tag = enum(u8) {
     }
 };
 
-pub fn parse(flags: []const u8) error{ UnknownFlag, InvalidFormat }!Flags {
+pub fn parse(reader: *std.Io.Reader, length: u64) error{ UnknownFlag, InvalidFormat }!Flags {
     var self: Flags = .{};
-    var reader: std.Io.Reader = .fixed(flags);
-    const reader_ptr = &reader;
 
-    while (reader.seek < flags.len) {
+    while (reader.seek < length) {
         const flag_byte = reader.takeByte() catch break;
 
         const flag_tag: Tag = try .fromInt(flag_byte);
@@ -194,9 +192,9 @@ pub fn parse(flags: []const u8) error{ UnknownFlag, InvalidFormat }!Flags {
             .noreply => self.noreply = try .parse(&reader),
             .free => self.free = try .parse(&reader),
 
-            .byindex => self.by = .init(.index, try Unsigned.parse(reader_ptr)),
-            .byrange => self.by = .init(.range, try Range.parse(reader_ptr)),
-            .bykey => self.by = .init(.key, try String.parse(reader_ptr)),
+            .byindex => self.by = .init(.index, try Unsigned.parse(reader)),
+            .byrange => self.by = .init(.range, try Range.parse(reader)),
+            .bykey => self.by = .init(.key, try String.parse(reader)),
             .byany => self.by = .init(.any, undefined),
         }
     }

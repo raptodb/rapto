@@ -48,13 +48,11 @@ args: Args,
 /// All length fields are encoded using the predefined header type.
 pub fn parse(serialized: []const u8) ParseError!Query {
     var reader: std.Io.Reader = .fixed(serialized);
+    const reader_ptr = &reader;
 
-    const raw_command = reader.takeByte() catch return error.InvalidFormat;
-    const command: Command = try .fromInt(raw_command);
-
+    const command: Command = try .fromReader(reader_ptr);
     const flags_length = reader.takeInt(u32, .little) catch return error.InvalidFormat;
-    const raw_flags = reader.take(flags_length) catch return error.InvalidFormat;
-    const flags: Flags = if (flags_length == 0) .{} else try .parse(raw_flags);
+    const flags: Flags = if (flags_length == 0) .{} else try .parse(reader_ptr, flags_length);
 
     assert(reader.seek <= serialized.len);
 
@@ -86,7 +84,8 @@ pub const Command = enum(u8) {
     ERASE,
     DOWN = std.math.maxInt(u8),
 
-    fn fromInt(int: u8) error{UnknownCommand}!Command {
+    fn fromReader(reader: *std.Io.Reader) error{ InvalidFormat, UnknownCommand }!Command {
+        const int = reader.takeByte() catch return error.InvalidFormat;
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
     }
 
