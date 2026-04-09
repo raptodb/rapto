@@ -18,24 +18,21 @@ pub const Query = @import("Task/Query.zig");
 /// The format is [len:u32][query][len:u32][query]...
 pipeline: []const u8,
 /// Timestamp used to track when the task was executed.
+/// This indicator is useful also for unique id.
 timestamp: u64,
 /// Callback function to send reply to source of the Task.
-replyFn: ?replyFnType,
+callbackFn: ?CallbackFnType,
 
-const replyFnType = *const fn (
-    ctx: *anyopaque,
-    header: []const u8,
-    data: [][]const u8,
-) anyerror!void;
+const CallbackFnType = *const fn (ctx: *anyopaque, data: []const u8) anyerror!void;
 
 /// Initializes a task with the given reply callback function and pipeline.
 /// The timestamp is set to the current time in nanoseconds,
 /// useful for tracking execution time and to identify tasks.
 /// This function assumes ownership of the pipeline.
-pub fn init(pipeline: []const u8, replyFn: ?replyFnType) Task {
+pub fn init(pipeline: []const u8, replyFn: ?CallbackFnType) Task {
     return .{
         .pipeline = pipeline,
-        .timestamp = @intCast(std.time.nanoTimestamp()),
+        .timestamp = std.math.lossyCast(u64, std.time.nanoTimestamp()),
         .replyFn = replyFn,
     };
 }
@@ -79,6 +76,8 @@ test "Task" {
     }{
         .{ .command = .PING, .flags = .{}, .args = &.{} },
         .{ .command = .SET, .flags = .{ .noreply = .init(true) }, .args = &.{} },
+        .{ .command = .GET, .flags = .{}, .args = &.{"k"} },
+        .{ .command = .COPY, .flags = .{}, .args = &.{"k1", "k2"} },
     };
 
     for (queries) |q| {
