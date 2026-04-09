@@ -29,11 +29,11 @@ const CallbackFnType = *const fn (ctx: *anyopaque, data: []const u8) anyerror!vo
 /// The timestamp is set to the current time in nanoseconds,
 /// useful for tracking execution time and to identify tasks.
 /// This function assumes ownership of the pipeline.
-pub fn init(pipeline: []const u8, replyFn: ?CallbackFnType) Task {
+pub fn init(pipeline: []const u8, callbackFn: ?CallbackFnType) Task {
     return .{
         .pipeline = pipeline,
         .timestamp = std.math.lossyCast(u64, std.time.nanoTimestamp()),
-        .replyFn = replyFn,
+        .callbackFn = callbackFn,
     };
 }
 
@@ -77,7 +77,7 @@ test "Task" {
         .{ .command = .PING, .flags = .{}, .args = &.{} },
         .{ .command = .SET, .flags = .{ .noreply = .init(true) }, .args = &.{} },
         .{ .command = .GET, .flags = .{}, .args = &.{"k"} },
-        .{ .command = .COPY, .flags = .{}, .args = &.{"k1", "k2"} },
+        .{ .command = .COPY, .flags = .{}, .args = &.{ "k1", "k2" } },
     };
 
     for (queries) |q| {
