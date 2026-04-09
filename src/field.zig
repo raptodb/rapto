@@ -43,6 +43,16 @@ pub fn splitSerialized(
     return .{ field_type, content };
 }
 
+/// Serializes field type and content to writer as [serialized].
+pub fn serializeToWriter(
+    writer: *std.Io.Writer,
+    field_type: Types,
+    content: []const u8,
+) error{WriteFailed}!void {
+    try field_type.serializeToWriter(writer);
+    try writer.writeAll(content);
+}
+
 /// Enumeration of all field types. The quantity of field types
 /// must be equal or under 8: the field type is saved on 3 LSB
 /// bits of tagged pointer.
@@ -63,17 +73,7 @@ pub const Types = enum(u3) {
         return std.enums.fromInt(Types, int) orelse error.UnknownType;
     }
 
-    /// Serializes field type and content to writer as [field_type][content].
-    pub fn serializeToWriter(
-        self: Types,
-        writer: *std.Io.Writer,
-        content: []const u8,
-    ) error{WriteFailed}!void {
-        try self.serializeTypeToWriter(writer);
-        try writer.writeAll(content);
-    }
-
-    pub fn serializeTypeToWriter(self: Types, writer: *std.Io.Writer) error{WriteFailed}!void {
+    pub fn serializeToWriter(self: Types, writer: *std.Io.Writer) error{WriteFailed}!void {
         try writer.writeByte(@intFromEnum(self));
     }
 };
@@ -93,35 +93,35 @@ test "Types" {
     var allocating: std.Io.Writer.Allocating = .init(allocator);
     defer allocating.deinit();
 
-    try Types.serializeTypeToWriter(.void, &allocating.writer);
+    try Types.serializeToWriter(.void, &allocating.writer);
     try std.testing.expect(0 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.integer, &allocating.writer);
+    try Types.serializeToWriter(.integer, &allocating.writer);
     try std.testing.expect(1 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.decimal, &allocating.writer);
+    try Types.serializeToWriter(.decimal, &allocating.writer);
     try std.testing.expect(2 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.flag, &allocating.writer);
+    try Types.serializeToWriter(.flag, &allocating.writer);
     try std.testing.expect(3 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.string, &allocating.writer);
+    try Types.serializeToWriter(.string, &allocating.writer);
     try std.testing.expect(4 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.point, &allocating.writer);
+    try Types.serializeToWriter(.point, &allocating.writer);
     try std.testing.expect(5 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.list, &allocating.writer);
+    try Types.serializeToWriter(.list, &allocating.writer);
     try std.testing.expect(6 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 
-    try Types.serializeTypeToWriter(.map, &allocating.writer);
+    try Types.serializeToWriter(.map, &allocating.writer);
     try std.testing.expect(7 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 }

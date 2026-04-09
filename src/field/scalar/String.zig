@@ -16,10 +16,13 @@ ptr: [*]u8,
 
 pub const Header: type = u32;
 
-pub fn init(allocator: std.mem.Allocator, serialized: []const u8) error{OutOfMemory}!String {
-    const str = try allocator.alloc(u8, @sizeOf(Header) + serialized.len);
-    std.mem.writeInt(Header, str[0..@sizeOf(Header)], @truncate(serialized.len), .little);
-    @memcpy(str[@sizeOf(Header)..], serialized);
+pub fn initFromContent(
+    allocator: std.mem.Allocator,
+    content: []const u8,
+) error{OutOfMemory}!String {
+    const str = try allocator.alloc(u8, @sizeOf(Header) + content.len);
+    std.mem.writeInt(Header, str[0..@sizeOf(Header)], @truncate(content.len), .little);
+    @memcpy(str[@sizeOf(Header)..], content);
 
     return .{ .ptr = str.ptr };
 }
@@ -27,20 +30,20 @@ pub fn init(allocator: std.mem.Allocator, serialized: []const u8) error{OutOfMem
 pub fn set(
     self: *String,
     allocator: std.mem.Allocator,
-    serialized: []const u8,
+    content: []const u8,
 ) error{OutOfMemory}!void {
     const length = self.len();
 
-    // serialized.len is never over std.math.maxInt(u32).
+    // content.len is never over std.math.maxInt(u32).
     // each Task, has one or multiple query with a max length
     // of std.math.maxInt(u32), so is impossible a loss.
-    std.debug.assert(serialized.len <= std.math.maxInt(u32));
-    const serialized_length: u32 = @truncate(serialized.len);
+    std.debug.assert(content.len <= std.math.maxInt(u32));
+    const content_length: u32 = @truncate(content.len);
 
-    if (length != serialized_length) {
+    if (length != content_length) {
         const slice: []u8 = try allocator.realloc(
             self.ptr[0 .. @sizeOf(Header) + length],
-            @sizeOf(Header) + serialized_length,
+            @sizeOf(Header) + content_length,
         );
 
         self.ptr = slice.ptr;
@@ -48,15 +51,12 @@ pub fn set(
         std.mem.writeInt(
             Header,
             self.ptr[0..@sizeOf(Header)],
-            @truncate(serialized_length),
+            @truncate(content_length),
             .little,
         );
     }
 
-    @memcpy(
-        self.ptr[@sizeOf(Header) .. @sizeOf(Header) + serialized_length],
-        serialized,
-    );
+    @memcpy(self.ptr[@sizeOf(Header) .. @sizeOf(Header) + content_length], content);
 }
 
 pub fn get(self: String) []const u8 {
@@ -79,7 +79,7 @@ pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) error{Writ
 test "String" {
     const allocator = std.testing.allocator;
 
-    var s: String = try .init(allocator, "example string");
+    var s: String = try .initFromContent(allocator, "example string");
     defer s.deinit(allocator);
 
     try std.testing.expectEqualStrings("example string", s.get());

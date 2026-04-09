@@ -13,14 +13,22 @@ const Decimal = @This();
 
 raw: [8]u8 = undefined,
 
-pub fn init(content: []const u8) error{MismatchType}!Decimal {
+pub fn initFromContent(content: []const u8) error{MismatchType}!Decimal {
     if (content.len != 8) return error.MismatchType;
     return .{ .raw = content[0..8].* };
+}
+
+pub fn initFromValue(value: f64) Decimal {
+    return .{ .raw = @bitCast(value) };
 }
 
 pub fn set(self: *Decimal, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
     self.raw = content[0..8].*;
+}
+
+pub fn getContent(self: Decimal) []const u8 {
+    return self.raw[0..];
 }
 
 pub fn get(self: Decimal) f64 {
@@ -54,7 +62,7 @@ test "Decimal" {
     var test_writer: std.Io.Writer = .fixed(&buf);
 
     try test_writer.writeAll(@as([8]u8, @bitCast(@as(f64, 3.14)))[0..]);
-    var s: Decimal = try .init(test_writer.buffered());
+    var s: Decimal = try .initFromContent(test_writer.buffered());
 
     try std.testing.expect(s.len() == 8);
     try std.testing.expect(s.get() == 3.14);

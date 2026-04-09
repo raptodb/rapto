@@ -17,20 +17,20 @@ pub const Axis = struct {
     y: Decimal,
     z: Decimal,
 
-    pub fn parse(serialized: []const u8) error{ InvalidFormat, MismatchType }!Axis {
-        if (serialized.len != (Decimal{}).len() * 3) return error.InvalidFormat;
+    pub fn parse(content: []const u8) error{ InvalidFormat, MismatchType }!Axis {
+        if (content.len != (Decimal{}).len() * 3) return error.InvalidFormat;
 
         return .{
-            .x = try .init(serialized[0..8]),
-            .y = try .init(serialized[8..16]),
-            .z = try .init(serialized[16..24]),
+            .x = try .initFromContent(content[0..8]),
+            .y = try .initFromContent(content[8..16]),
+            .z = try .initFromContent(content[16..24]),
         };
     }
 };
 
 value: *Axis,
 
-pub fn init(
+pub fn initFromContent(
     allocator: std.mem.Allocator,
     content: []const u8,
 ) error{ OutOfMemory, InvalidFormat, MismatchType }!Point {
@@ -83,7 +83,7 @@ test "Point" {
     try writer.writeInt(u64, @bitCast(@as(f64, 2.333)), .little);
     try writer.writeInt(u64, @bitCast(@as(f64, 3000000.2)), .little);
 
-    var p: Point = try .init(allocator, writer.buffered());
+    var p: Point = try .initFromContent(allocator, writer.buffered());
     defer p.deinit(allocator);
 
     try std.testing.expect(p.len() == 24);
@@ -118,7 +118,7 @@ test "Point" {
     try delta_writer.writeInt(u64, @bitCast(@as(f64, 6)), .little);
     try delta_writer.writeInt(u64, @bitCast(@as(f64, 7)), .little);
 
-    var delta: Point = try .init(allocator, delta_writer.buffered());
+    var delta: Point = try .initFromContent(allocator, delta_writer.buffered());
     defer delta.deinit(allocator);
 
     try p.translate(delta.get());

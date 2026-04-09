@@ -14,14 +14,22 @@ const Integer = @This();
 
 raw: [8]u8 = undefined,
 
-pub fn init(content: []const u8) error{MismatchType}!Integer {
+pub fn initFromContent(content: []const u8) error{MismatchType}!Integer {
     if (content.len != 8) return error.MismatchType;
     return .{ .raw = content[0..8].* };
+}
+
+pub fn initFromValue(value: i64) Integer {
+    return .{ .raw = @bitCast(value) };
 }
 
 pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
     self.raw = content[0..8].*;
+}
+
+pub fn getContent(self: Integer) []const u8 {
+    return self.raw[0..];
 }
 
 pub fn get(self: Integer) i64 {
@@ -48,7 +56,7 @@ test "Integer" {
     var test_writer: std.Io.Writer = .fixed(&buf);
 
     try test_writer.writeInt(i64, 100, .little);
-    var s: Integer = try .init(&buf);
+    var s: Integer = try .initFromContent(&buf);
 
     try std.testing.expect(s.get() == 100);
     try std.testing.expect(s.len() == 8);

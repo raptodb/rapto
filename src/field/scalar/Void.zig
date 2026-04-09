@@ -10,7 +10,7 @@ const std = @import("std");
 /// Void field type represented as "void" string. Indicates a empty value.
 const Void = @This();
 
-pub fn init() Void {
+pub fn initFromContent() Void {
     return .{};
 }
 
@@ -31,7 +31,7 @@ pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) void {
 }
 
 test "Void" {
-    var s: Void = .init();
+    var s: Void = .initFromContent();
 
     try std.testing.expectEqual(void{}, s.get());
     try std.testing.expect(s.len() == 0);

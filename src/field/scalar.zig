@@ -31,12 +31,12 @@ pub const ScalarItem = union(enum) {
         content: []const u8,
     ) error{ OutOfMemory, MismatchType, InvalidFormat }!ScalarItem {
         return switch (field_type) {
-            .void => .{ .void = .init() },
-            .integer => .{ .integer = try .init(content) },
-            .decimal => .{ .decimal = try .init(content) },
-            .flag => .{ .flag = try .init(content) },
-            .string => .{ .string = try .init(allocator, content) },
-            .point => .{ .point = try .init(allocator, content) },
+            .void => .{ .void = .initFromContent() },
+            .integer => .{ .integer = try .initFromContent(content) },
+            .decimal => .{ .decimal = try .initFromContent(content) },
+            .flag => .{ .flag = try .initFromContent(content) },
+            .string => .{ .string = try .initFromContent(allocator, content) },
+            .point => .{ .point = try .initFromContent(allocator, content) },
 
             // when field type is not a scalar
             else => {
@@ -63,7 +63,7 @@ pub const ScalarItem = union(enum) {
         self: ScalarItem,
         writer: *std.Io.Writer,
     ) error{WriteFailed}!void {
-        try self.type().serializeTypeToWriter(writer);
+        try self.type().serializeToWriter(writer);
         try self.serializeContentToWriter(writer);
     }
 

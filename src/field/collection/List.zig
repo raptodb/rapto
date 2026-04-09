@@ -15,20 +15,21 @@ const field = @import("../../field.zig");
 const assert = std.debug.assert;
 
 const ScalarItem = @import("../scalar.zig").ScalarItem;
+
 /// Header length type between items of List.
 pub const Header = u32;
 
 value: *std.ArrayList(ScalarItem),
 
-pub fn init(
+pub fn initFromContent(
     allocator: std.mem.Allocator,
-    serialized: []const u8,
+    content: []const u8,
 ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!List {
     const list_ptr = try allocator.create(std.ArrayList(ScalarItem));
     errdefer allocator.destroy(list_ptr);
 
     list_ptr.* = .empty;
-    try appendSerializedList(list_ptr, allocator, serialized);
+    try appendSerializedList(list_ptr, allocator, content);
     return .{ .value = list_ptr };
 }
 
@@ -281,7 +282,7 @@ test "List" {
     const serialized = try serializeItems(allocator, &.{ si1, sf1 });
     defer allocator.free(serialized);
 
-    var s: List = try .init(allocator, serialized);
+    var s: List = try .initFromContent(allocator, serialized);
     defer s.deinit(allocator);
 
     try std.testing.expect(s.count() == 2);
@@ -397,7 +398,7 @@ fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8
     errdefer allocating.deinit();
     var writer = &allocating.writer;
 
-    try field.Types.serializeTypeToWriter(.list, writer);
+    try field.Types.serializeToWriter(.list, writer);
     for (items) |item| {
         const start_header = writer.end;
         // advancing

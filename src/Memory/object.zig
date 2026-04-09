@@ -203,14 +203,14 @@ pub const Field = struct {
     ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!Field {
         return .{
             .value = switch (field_type) {
-                .void => .{ .void = .init() },
-                .integer => .{ .integer = try .init(content) },
-                .decimal => .{ .decimal = try .init(content) },
-                .flag => .{ .flag = try .init(content) },
-                .string => .{ .string = try .init(allocator, content) },
-                .point => .{ .point = try .init(allocator, content) },
-                .list => .{ .list = try .init(allocator, content) },
-                .map => .{ .map = try .init(allocator, content) },
+                .void => .{ .void = .initFromContent() },
+                .integer => .{ .integer = try .initFromContent(content) },
+                .decimal => .{ .decimal = try .initFromContent(content) },
+                .flag => .{ .flag = try .initFromContent(content) },
+                .string => .{ .string = try .initFromContent(allocator, content) },
+                .point => .{ .point = try .initFromContent(allocator, content) },
+                .list => .{ .list = try .initFromContent(allocator, content) },
+                .map => .{ .map = try .initFromContent(allocator, content) },
             },
         };
     }
@@ -370,6 +370,15 @@ pub const Ref = struct {
         }
 
         return self.value_ptr.setAsSameType(allocator, field_type, content);
+    }
+
+    pub fn serializeToWriter(
+        self: Ref,
+        writer: *std.Io.Writer,
+    ) error{WriteFailed}!void {
+        const field_type = self.type();
+        try field_type.serializeToWriter(writer);
+        try self.value_ptr.serializeContentToWriter(writer, field_type);
     }
 
     /// Serialized content of field to writer.

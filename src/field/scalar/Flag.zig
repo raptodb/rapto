@@ -29,7 +29,7 @@ pub const Status = enum(u64) {
 
 value: Status,
 
-pub fn init(content: []const u8) error{MismatchType}!Flag {
+pub fn initFromContent(content: []const u8) error{MismatchType}!Flag {
     if (content.len != 8) return error.MismatchType;
     return .{ .value = .fromContent(content[0..8].*) };
 }
@@ -37,6 +37,11 @@ pub fn init(content: []const u8) error{MismatchType}!Flag {
 pub fn set(self: *Flag, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
     self.value = .fromContent(content[0..8].*);
+}
+
+pub fn getContent(self: Flag) []const u8 {
+    const arr: [8]u8 = @bitCast(@intFromEnum(self.value));
+    return arr[0..];
 }
 
 pub fn get(self: Flag) Status {
@@ -61,7 +66,7 @@ test "Flag" {
     defer allocating.deinit();
 
     try test_writer.writeInt(u64, 0, .little);
-    var s: Flag = try .init(test_writer.buffered());
+    var s: Flag = try .initFromContent(test_writer.buffered());
     try s.serializeContentToWriter(&allocating.writer);
     try std.testing.expectEqualStrings(test_writer.buffered(), allocating.written());
     try std.testing.expect(s.get() == .false);

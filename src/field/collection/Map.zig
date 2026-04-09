@@ -18,8 +18,6 @@ const ScalarItem = @import("../scalar.zig").ScalarItem;
 const String = @import("../scalar.zig").String;
 const List = @import("../collection.zig").List;
 
-value: *HashMap,
-
 const KeyHeader: type = String.Header;
 const ValueHeader: type = u32;
 
@@ -51,27 +49,33 @@ pub const KeyString = struct {
     pub fn get(self: KeyString) []const u8 {
         return self.str;
     }
+
+    pub fn serializeToWriter(self: KeyString, writer: *std.Io.Writer) error{WriteFailed}!void {
+        return field.serializeToWriter(writer, .string, self.get());
+    }
 };
 
-pub fn init(
+value: *HashMap,
+
+pub fn initFromContent(
     allocator: std.mem.Allocator,
-    serialized: []const u8,
+    content: []const u8,
 ) error{ InvalidFormat, UnknownType, MismatchType, OutOfMemory }!Map {
     const map_ptr = try allocator.create(HashMap);
     errdefer allocator.destroy(map_ptr);
 
     map_ptr.* = .empty;
-    try putSerializedMap(map_ptr, allocator, serialized);
+    try putSerializedMap(map_ptr, allocator, content);
     return .{ .value = map_ptr };
 }
 
 pub fn set(
     self: *Map,
     allocator: std.mem.Allocator,
-    serialized: []const u8,
+    content: []const u8,
 ) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
     self.removeAll(allocator);
-    try putSerializedMap(self.value, allocator, serialized);
+    try putSerializedMap(self.value, allocator, content);
 }
 
 /// Keys are internally duplicated and owned by the Map.
@@ -161,14 +165,14 @@ pub fn deinit(self: Map, allocator: std.mem.Allocator) void {
 }
 
 pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
-    try field.Types.serializeTypeToWriter(.list, writer);
+    try field.Types.serializeToWriter(.list, writer);
     var iterator = self.value.keyIterator();
     while (iterator.next()) |key|
         try serializeItemWithLength(writer, key.*);
 }
 
 pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
-    try field.Types.serializeTypeToWriter(.list, writer);
+    try field.Types.serializeToWriter(.list, writer);
     var iterator = self.value.valueIterator();
     while (iterator.next()) |item|
         try serializeItemWithLength(writer, item.*);
@@ -195,11 +199,7 @@ fn serializeItemWithLength(
     try writer.writeInt(List.Header, 0, .little);
 
     const start_serialized = writer.end;
-    switch (@TypeOf(item)) {
-        ScalarItem => try item.serializeToWriter(writer),
-        KeyString => try field.Types.serializeToWriter(.string, writer, item.get()),
-        else => unreachable,
-    }
+    try item.serializeToWriter(writer);
     const serialized_size: List.Header = @truncate(writer.end - start_serialized);
 
     std.mem.writeInt(
@@ -272,7 +272,7 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
     errdefer allocating.deinit();
     var writer = &allocating.writer;
 
-    try field.Types.serializeTypeToWriter(.map, writer);
+    try field.Types.serializeToWriter(.map, writer);
 
     for (entries) |entry| {
         {
@@ -280,7 +280,7 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
             try writer.writeInt(Map.KeyHeader, 0, .little);
             const body_start = writer.end;
 
-            try field.Types.serializeToWriter(.string, writer, entry.key);
+            try field.serializeToWriter(writer, .string, entry.key);
 
             const body_len: Map.KeyHeader = @truncate(writer.end - body_start);
             std.mem.writeInt(
@@ -307,20 +307,6 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
         }
     }
 
-    return allocating.toOwnedSlice();
-}
-
-fn serializeScalarItem(allocator: std.mem.Allocator, item: ScalarItem) ![]u8 {
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    errdefer allocating.deinit();
-    try item.serializeToWriter(&allocating.writer);
-    return allocating.toOwnedSlice();
-}
-
-fn serializeKey(allocator: std.mem.Allocator, key_with_quotes: []const u8) ![]u8 {
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    errdefer allocating.deinit();
-    try field.Types.serializeToWriter(.string, &allocating.writer, key_with_quotes);
     return allocating.toOwnedSlice();
 }
 
@@ -397,7 +383,7 @@ test "Map" {
 
     try std.testing.expect(serialized_all[0] == @intFromEnum(field.Types.map));
 
-    var m: Map = try .init(allocator, serialized_all);
+    var m: Map = try .initFromContent(allocator, serialized_all);
     defer m.deinit(allocator);
 
     try std.testing.expect(m.count() == 6);
@@ -490,12 +476,12 @@ test "Map" {
     {
         var al: std.Io.Writer.Allocating = .init(allocator);
         defer al.deinit();
-        try field.Types.serializeTypeToWriter(.map, &al.writer);
+        try field.Types.serializeToWriter(.map, &al.writer);
         try m.serializeContentToWriter(&al.writer);
         const roundtrip_buf = try al.toOwnedSlice();
         defer allocator.free(roundtrip_buf);
 
-        var m2: Map = try .init(allocator, roundtrip_buf);
+        var m2: Map = try .initFromContent(allocator, roundtrip_buf);
         defer m2.deinit(allocator);
 
         try std.testing.expect(m2.count() == m.count());
@@ -507,4 +493,18 @@ test "Map" {
             try std.testing.expect(ax.z.get() == 3.0);
         }
     }
+}
+
+fn serializeScalarItem(allocator: std.mem.Allocator, item: ScalarItem) ![]u8 {
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    errdefer allocating.deinit();
+    try item.serializeToWriter(&allocating.writer);
+    return allocating.toOwnedSlice();
+}
+
+fn serializeKey(allocator: std.mem.Allocator, key: []const u8) ![]u8 {
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    errdefer allocating.deinit();
+    try field.serializeToWriter(&allocating.writer, .string, key);
+    return allocating.toOwnedSlice();
 }
