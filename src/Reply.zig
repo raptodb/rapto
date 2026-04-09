@@ -23,6 +23,9 @@ pub const Config = struct {
     /// Static size is allocated on initialization time
     /// and never deallocated until `.deinit()` method.
     static_size: u32 = 16 * 1024,
+    /// If noreply is enabled, forces noreply
+    /// flag to true for all queries.
+    noreply: bool = false,
 };
 
 allocating: std.Io.Writer.Allocating,
@@ -71,6 +74,8 @@ fn processTaskUnmapped(
 
         if (maybe_query) |query| {
             var mut_query = query;
+            if (self.config.noreply) mut_query.flags = .{ .noreply = .init(true) };
+
             try dispatcher.dispatch(module, &mut_query);
         } else |err| {
             // parsing errors should be handled by
