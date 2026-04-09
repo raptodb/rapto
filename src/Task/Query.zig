@@ -11,7 +11,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
-pub const ParseError = error{ UnknownCommand, MismatchType, UnknownFlag, InvalidFormat };
+pub const ParseError = error{ UnknownCommand, UnknownFlag, InvalidFormat };
 
 command: Command,
 flags: Flags,
@@ -26,11 +26,10 @@ args: Args,
 ///
 /// FLAGS
 ///   Each flag is encoded as:
-///     [key][len:u32][value]
+///     [tag][value]
 ///   where:
 ///     - key   : fixed-size flag identifier (u8)
-///     - len   : length of the associated value (u32)
-///     - value : raw bytes
+///     - value : own format per flag
 ///
 ///   Multiple flags are concatenated sequentially:
 ///     [flag][flag]...
@@ -54,6 +53,9 @@ pub fn parse(serialized: []const u8) ParseError!Query {
 
     const length = reader.takeInt(u32, .little) catch
         return error.InvalidFormat;
+    if (length > serialized.len - reader.seek)
+        return error.InvalidFormat;
+
     const flags: Flags = try .parseFromReader(reader_ptr, length);
 
     assert(reader.seek <= serialized.len);

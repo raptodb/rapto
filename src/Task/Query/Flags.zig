@@ -186,7 +186,7 @@ pub fn parseFromReader(reader: *std.Io.Reader, length: u32) error{ UnknownFlag, 
 
     const start = reader.seek;
     while (reader.seek - start < length) {
-        const flag_byte = reader.takeByte() catch break;
+        const flag_byte = reader.takeByte() catch return error.InvalidFormat;
 
         const flag_tag: Tag = try .fromInt(flag_byte);
         switch (flag_tag) {
