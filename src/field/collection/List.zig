@@ -194,19 +194,17 @@ pub fn serializeContentInRangeToWriter(
         // each item is wrote as [length header][serialized]
         // [serialized] is [field_type][content]
 
-        // reserve header, writer is derived from std.Io.Writer.Allocating
-        const start_header = writer.end;
-        // advancing
+        // reserve header, writer is assumed to be derived from std.Io.Writer.Allocating
+        const header_offset = writer.end;
         try writer.writeInt(Header, 0, .little);
 
-        const start_serialized = writer.end;
         try item.serializeToWriter(writer);
-        const serialized_size: Header = @truncate(writer.end - start_serialized);
 
+        const length: Header = @truncate(writer.end - header_offset - @sizeOf(Header));
         std.mem.writeInt(
             Header,
-            writer.buffer[start_header .. start_header + @sizeOf(Header)][0..@sizeOf(Header)],
-            serialized_size,
+            writer.buffer[header_offset .. header_offset + @sizeOf(Header)][0..@sizeOf(Header)],
+            length,
             .little,
         );
     }

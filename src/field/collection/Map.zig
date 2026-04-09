@@ -193,19 +193,17 @@ fn serializeItemWithLength(
     // each item is wrote as [length header][serialized]
     // [serialized] is [field_type][content]
 
-    // reserve header, writer is derived from std.Io.Writer.Allocating
-    const start_header = writer.end;
-    // advancing
+    // reserve header, writer is assumed to be derived from std.Io.Writer.Allocating
+    const header_offset = writer.end;
     try writer.writeInt(List.Header, 0, .little);
-
-    const start_serialized = writer.end;
+    
     try item.serializeToWriter(writer);
-    const serialized_size: List.Header = @truncate(writer.end - start_serialized);
 
+    const length: List.Header = @truncate(writer.end - header_offset - start_serialized);
     std.mem.writeInt(
         List.Header,
-        writer.buffer[start_header .. start_header + @sizeOf(List.Header)][0..@sizeOf(List.Header)],
-        serialized_size,
+        writer.buffer[header_offset .. header_offset + @sizeOf(List.Header)][0..@sizeOf(List.Header)],
+        length,
         .little,
     );
 }
