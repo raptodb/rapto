@@ -177,10 +177,17 @@ pub fn copy(self: Module, query: *Query) !void {
     const dst_key = query.args.next() orelse return error.MissingTokens;
 
     const ref = self.memory.search(src_key) orelse return error.KeyNotFound;
+    const field_type = ref.type();
 
-    _ = dst_key;
-    _ = ref;
-    @panic("unimplemented");
+    var content_allocating: std.Io.Writer.Allocating = .init(self.memory.allocator);
+    defer content_allocating.deinit();
+    try ref.serializeContentToWriter(&content_allocating.writer);
+
+    const content = content_allocating.written();
+
+    _ = switch (field_type) {
+        inline else => |t| try self.memory.put(dst_key, t, content),
+    };
 }
 
 pub fn del(self: Module, query: *Query) !void {
