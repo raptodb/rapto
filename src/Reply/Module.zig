@@ -72,15 +72,17 @@ pub fn get(self: Module, query: *Query) !void {
                 try item.serializeToWriter(self.writer);
             },
             .point => {
-                try Types.serializeTypeToWriter(.decimal, self.writer);
-                const item: field.Point.Axis = ref.valuePtr(.point).value.*;
+                const item: field.Point.Axis = ref.valuePtr(.point).get();
+
                 if (flag_key.get().len != 1) return error.MismatchFlag;
-                switch (flag_key.get()[0]) {
-                    'x' => try item.x.serializeContentToWriter(self.writer),
-                    'y' => try item.y.serializeContentToWriter(self.writer),
-                    'z' => try item.z.serializeContentToWriter(self.writer),
+                const content = switch (flag_key.get()[0]) {
+                    'x' => item.x.getContent(),
+                    'y' => item.y.getContent(),
+                    'z' => item.z.getContent(),
                     else => return error.RangeOverflow,
-                }
+                };
+
+                try field.serializeToWriter(self.writer, field_type, content);
             },
             else => return error.MismatchFlag,
         },
@@ -109,15 +111,15 @@ pub fn update(self: Module, query: *Query) !void {
 
     switch (field_type) {
         .integer => {
-            const value: field.Integer = try .init(content);
+            const value: field.Integer = try .initFromContent(content);
             try ref.valuePtr(.integer).add(value.get());
         },
         .decimal => {
-            const value: field.Decimal = try .init(content);
+            const value: field.Decimal = try .initFromContent(content);
             try ref.valuePtr(.decimal).add(value.get());
         },
         .point => {
-            const value: field.Point = try .init(self.memory.allocator, content);
+            const value: field.Point = try .initFromContent(self.memory.allocator, content);
             try ref.valuePtr(.point).translate(value.get());
         },
         .void, .string, .flag, .list, .map => return error.MismatchType,
@@ -135,7 +137,9 @@ pub fn rename(self: Module, query: *Query) !void {
 pub fn count(self: Module, query: *Query) !void {
     if (query.flags.noreply.get()) return;
 
-    const item: field.Integer = .initFromValue(self.memory.count());
+    // Keys will never be a number larger than the maximum range of i64.
+    const key_count = std.math.lossyCast(i64, self.memory.count());
+    const item: field.Integer = .initFromValue(key_count);
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
@@ -156,7 +160,7 @@ pub fn list(self: Module, query: *Query) !void {
         const key = ref.key();
         // Since key is not a scalar/collection field, is written
         // manually with length header of 4 bytes.
-        try self.writer.writeInt(u32, key.len, .little);
+        try self.writer.writeInt(u32, @truncate(key.len), .little);
         try self.writer.writeAll(key);
     }
 }

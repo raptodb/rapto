@@ -196,7 +196,7 @@ fn serializeItemWithLength(
     // reserve header, writer is assumed to be derived from std.Io.Writer.Allocating
     const header_offset = writer.end;
     try writer.writeInt(List.Header, 0, .little);
-    
+
     try item.serializeToWriter(writer);
 
     const length: List.Header = @truncate(writer.end - header_offset - @sizeOf(List.Header));
