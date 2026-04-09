@@ -199,7 +199,7 @@ fn serializeItemWithLength(
     
     try item.serializeToWriter(writer);
 
-    const length: List.Header = @truncate(writer.end - header_offset - start_serialized);
+    const length: List.Header = @truncate(writer.end - header_offset - @sizeOf(List.Header));
     std.mem.writeInt(
         List.Header,
         writer.buffer[header_offset .. header_offset + @sizeOf(List.Header)][0..@sizeOf(List.Header)],
