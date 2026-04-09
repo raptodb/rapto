@@ -34,6 +34,10 @@ pub fn initFromContent(content: []const u8) error{MismatchType}!Flag {
     return .{ .value = .fromContent(content[0..8].*) };
 }
 
+pub fn initFromValue(value: Status) Flag {
+    return .{ .value = value };
+}
+
 pub fn set(self: *Flag, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
     self.value = .fromContent(content[0..8].*);

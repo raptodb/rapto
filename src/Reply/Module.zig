@@ -21,27 +21,22 @@ pub fn init(memory: *Memory, writer: *std.Io.Writer) Module {
 }
 
 pub fn ping(self: Module, query: *Query) !void {
-    if (!query.flags.noreply.get()) {
-        var buf: [8]u8 = undefined;
-        std.mem.writeInt(i64, &buf, 1, .little);
-        const pong: field.Integer = try .init(&buf);
-        try Types.serializeTypeToWriter(.integer, self.writer);
-        try pong.serializeContentToWriter(self.writer);
-    }
+    if (query.flags.noreply.get()) return;
+
+    const item: field.Integer = .initFromValue(1);
+    try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
 pub fn get(self: Module, query: *Query) !void {
+    if (query.flags.noreply.get()) return;
+
     const key = query.args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
-    if (query.flags.noreply.get()) return;
 
     const field_type = ref.type();
 
     switch (query.flags.by.get()) {
-        .any => {
-            try field_type.serializeTypeToWriter(self.writer);
-            try ref.serializeContentToWriter(self.writer);
-        },
+        .any => try ref.serializeToWriter(self.writer),
         .index => |index| switch (field_type) {
             .list => {
                 const item = try ref.valuePtr(.list).getByIndex(index.get());
@@ -49,19 +44,20 @@ pub fn get(self: Module, query: *Query) !void {
             },
             .point => {
                 const item: field.Point.Axis = ref.valuePtr(.point).get();
-                try Types.serializeTypeToWriter(.decimal, self.writer);
-                switch (index.get()) {
-                    0 => try item.x.serializeContentToWriter(self.writer),
-                    1 => try item.y.serializeContentToWriter(self.writer),
-                    2 => try item.z.serializeContentToWriter(self.writer),
+                const content = switch (index.get()) {
+                    0 => item.x.getContent(),
+                    1 => item.y.getContent(),
+                    2 => item.z.getContent(),
                     else => return error.RangeOverflow,
-                }
+                };
+
+                try field.serializeToWriter(self.writer, field_type, content);
             },
             else => return error.MismatchFlag,
         },
         .range => |range| switch (field_type) {
             .list => {
-                try Types.serializeTypeToWriter(.list, self.writer);
+                try Types.serializeToWriter(.list, self.writer);
                 try ref.valuePtr(.list).serializeContentInRangeToWriter(
                     self.writer,
                     range.from().get(),
@@ -137,39 +133,43 @@ pub fn rename(self: Module, query: *Query) !void {
 }
 
 pub fn count(self: Module, query: *Query) !void {
-    if (!query.flags.noreply.get())
-        try self.writer.writeInt(u64, self.memory.count(), .little);
+    if (query.flags.noreply.get()) return;
+
+    const item: field.Integer = .initFromValue(self.memory.count());
+    try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
 pub fn @"type"(self: Module, query: *Query) !void {
-    const key = query.args.next() orelse return error.MissingTokens;
-    const ref = self.memory.search(key) orelse return error.KeyNotFound;
     if (query.flags.noreply.get()) return;
 
-    return ref.type().serializeTypeToWriter(self.writer);
+    const key = query.args.next() orelse return error.MissingTokens;
+    const ref = self.memory.search(key) orelse return error.KeyNotFound;
+
+    return ref.type().serializeToWriter(self.writer);
 }
 
 pub fn list(self: Module, query: *Query) !void {
     if (query.flags.noreply.get()) return;
 
     var iterator = self.memory.iterator();
-    var first = true;
-
     while (iterator.next()) |ref| {
-        if (!first)
-            try self.writer.writeByte(' ');
-        first = false;
-
-        try self.writer.writeAll(ref.key());
+        const key = ref.key();
+        // Since key is not a scalar/collection field, is written
+        // manually with length header of 4 bytes.
+        try self.writer.writeInt(u32, key.len, .little);
+        try self.writer.writeAll(key);
     }
 }
 
 pub fn exist(self: Module, query: *Query) !void {
-    const key = query.args.next() orelse return error.MissingTokens;
     if (query.flags.noreply.get()) return;
 
+    const key = query.args.next() orelse return error.MissingTokens;
+
     const key_exist = self.memory.search(key) != null;
-    try self.writer.writeByte(if (key_exist) 1 else 0);
+
+    const item: field.Flag = if (key_exist) .initFromValue(.true) else .initFromValue(.false);
+    try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
 pub fn copy(self: Module, query: *Query) !void {
