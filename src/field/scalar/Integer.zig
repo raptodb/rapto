@@ -5,12 +5,12 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of integer field.
 
-const std = @import("std");
-
 /// Integer field type represents signed integer of 64 bits.
 /// This implementation is more efficient for integer calculations.
 /// Useful for counters, timestamps and identifiers.
 const Integer = @This();
+
+const std = @import("std");
 
 raw: [8]u8 = undefined,
 

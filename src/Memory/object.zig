@@ -33,14 +33,6 @@ comptime {
     assert(@sizeOf(u64) == @sizeOf(usize));
 }
 
-/// Checks the key validity.
-/// Key must not contain sentinel byte 0.
-fn checkKey(key: []const u8) error{InvalidKey}!void {
-    assert(key.len > 0);
-    // key must not contain sentinel byte
-    if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
-}
-
 pub const Key = struct {
     /// Tagged pointer to key sentinel-terminated string.
     /// Tag encodes field type.

@@ -5,11 +5,11 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of decimal field.
 
-const std = @import("std");
-
 /// Decimal field type represents double-precision floating-point (FP64).
 /// This implementation is more efficient for decimal calculations.
 const Decimal = @This();
+
+const std = @import("std");
 
 raw: [8]u8 = undefined,
 

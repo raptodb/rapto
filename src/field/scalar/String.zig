@@ -5,10 +5,10 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of string field.
 
-const std = @import("std");
-
 /// String field type represented as raw bytes data.
 const String = @This();
+
+const std = @import("std");
 
 /// Pointer to byte array. The first 4 bytes
 /// header represents the length of string.

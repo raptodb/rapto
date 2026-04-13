@@ -5,6 +5,9 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of memory.
 
+/// Main data structure of Rapto that stores
+/// the key-value pairs of the database. It
+/// provides safe CRUD operations to access Ref.
 const Memory = @This();
 
 const std = @import("std");

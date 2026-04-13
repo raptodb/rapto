@@ -5,11 +5,11 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of flag field.
 
-const std = @import("std");
-
 /// Flag field type represented indicator that signals errors, conditions
 /// or common states as boolean (true or false).
 const Flag = @This();
+
+const std = @import("std");
 
 pub const Status = enum(u64) {
     false = 0,

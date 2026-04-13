@@ -5,13 +5,17 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of module.
 
+/// Collection of commands that operates
+/// on the Memory instance and writes the
+/// response to the std.Io.Writer instance.
+const Module = @This();
+
 const std = @import("std");
 const field = @import("../field.zig");
 
 const Types = field.Types;
 const Query = @import("../Task.zig").Query;
 const Memory = @import("../Memory.zig");
-const Module = @This();
 
 memory: *Memory,
 writer: *std.Io.Writer,

@@ -5,10 +5,10 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of void field.
 
-const std = @import("std");
-
 /// Void field type represented as "void" string. Indicates a empty value.
 const Void = @This();
+
+const std = @import("std");
 
 pub fn initFromContent() Void {
     return .{};

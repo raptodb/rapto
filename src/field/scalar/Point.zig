@@ -5,11 +5,12 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of point field.
 
-const std = @import("std");
-
 /// Point field type represented as spatial
 /// coordinates with x, y and z decimal axes.
 const Point = @This();
+
+const std = @import("std");
+
 const Decimal = @import("../scalar.zig").Decimal;
 
 pub const Axis = struct {
