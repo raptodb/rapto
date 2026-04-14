@@ -79,7 +79,7 @@ fn handle(module: Module, query: *Query) error{ WriteFailed, OutOfMemory, Shutdo
 
     maybe_error catch |err| return switch (err) {
         else => .{ .err = @errorCast(err) },
-        inline error.OutOfMemory,
+        error.OutOfMemory,
         error.WriteFailed,
         error.Shutdown,
         => |e| return e,

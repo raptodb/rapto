@@ -6,32 +6,31 @@
 //! that wraps any allocator written in Zig.
 //! Tracks allocations, detects memory leaks, and logs
 //! memory changes with optional thread-safe mode.
-//! Version 3.0.1
+//! Version 4.0.0
 //!
 //! Original repository: https://github.com/andrvv/zprof
 
 const std = @import("std");
 
-pub const VERSION = "3.0.1";
+pub const VERSION = "4.0.0";
 
 pub const Config = struct {
     thread_safe: bool = false,
     writerFn: ?*const fn (*std.Io.Writer, bool, usize) void = null,
 
     allocated: bool = true,
+    freed: bool = true,
     alloc_count: bool = true,
     free_count: bool = true,
-    live_peak: bool = true,
-    live_bytes: bool = true,
+    peak_requested: bool = true,
+    live_requested: bool = true,
 };
 
 pub fn Counter(comptime thread_safe: bool, comptime T: type, value: T) type {
     return if (thread_safe) struct {
         const Self = @This();
 
-        value: std.atomic.Value(T) = .init(value),
-        // avoids false sharing
-        _padding: [std.atomic.cache_line - @sizeOf(std.atomic.Value(T))]u8 = undefined,
+        value: std.atomic.Value(T) align(std.atomic.cache_line) = .init(value),
 
         pub fn add(self: *Self, operand: T) void {
             _ = self.value.fetchAdd(operand, .monotonic);
@@ -86,23 +85,12 @@ pub fn Profiler(comptime config: Config) type {
 
         const DefaultCounter = Counter(config.thread_safe, usize, 0);
 
-        /// Allocated bytes from initialization.
-        /// Keeps track of total bytes requested during the program's lifetime.
         allocated: if (config.allocated) DefaultCounter else struct {} = .{},
-
-        /// Count of allocations from alloc/realloc.
-        /// Every time memory is allocated, this counter increases.
+        freed: if (config.allocated) DefaultCounter else struct {} = .{},
         alloc_count: if (config.alloc_count) DefaultCounter else struct {} = .{},
-        /// Count of deallocations from free/realloc/deinit.
-        /// Every time memory is freed, this counter increases.
         free_count: if (config.free_count) DefaultCounter else struct {} = .{},
-
-        /// Peak of live bytes.
-        /// Tracks the maximum memory usage at any point during execution.
-        live_peak: if (config.live_peak) DefaultCounter else struct {} = .{},
-        /// Current live bytes.
-        /// Shows how much memory is currently in use.
-        live_bytes: if (config.live_bytes) DefaultCounter else struct {} = .{},
+        peak_requested: if (config.peak_requested) DefaultCounter else struct {} = .{},
+        live_requested: if (config.live_requested) DefaultCounter else struct {} = .{},
 
         writer: WriterType,
         const WriterType = if (config.writerFn != null) *std.Io.Writer else void;
@@ -115,14 +103,15 @@ pub fn Profiler(comptime config: Config) type {
         /// Called internally whenever memory is allocated.
         fn updateAlloc(self: *Self, size: usize) void {
             if (config.allocated) self.allocated.add(size);
-            if (config.live_bytes) self.live_bytes.add(size);
+            if (config.live_requested) self.live_requested.add(size);
             if (config.alloc_count) self.alloc_count.add(1);
-            if (config.live_peak) self.live_peak.max(self.live_bytes.get());
+            if (config.peak_requested) self.peak_requested.max(self.live_requested.get());
             if (config.writerFn) |writerFn| writerFn(self.writer, true, size);
         }
 
         fn updateFree(self: *Self, size: usize) void {
-            if (config.live_bytes) self.live_bytes.sub(size);
+            if (config.freed) self.freed.add(size);
+            if (config.live_requested) self.live_requested.sub(size);
             if (config.free_count) self.free_count.add(1);
             if (config.writerFn) |writerFn| writerFn(self.writer, false, size);
         }
@@ -130,7 +119,15 @@ pub fn Profiler(comptime config: Config) type {
         /// Check if has memory leaks.
         /// Returns true if any allocations weren't properly freed.
         pub fn hasLeaks(self: *const Self) bool {
-            return self.live_bytes.get() > 0;
+            return if (config.live_requested)
+                self.live_requested.get() != 0
+            else if (config.allocated and config.freed)
+                self.allocated != self.freed
+            else
+                @panic(
+                    \\ Zprof: to call hasLeaks, you must enable live_requested
+                    \\ or allocated and free on Config.
+                );
         }
 
         pub fn reset(self: *Self) void {
@@ -147,9 +144,11 @@ pub fn Zprof(comptime config: Config) type {
         const Self = @This();
 
         child_allocator: std.mem.Allocator,
-        mutex: if (config.thread_safe) std.Thread.Mutex else struct {} = .{},
+        mutex: @TypeOf(mutex_init) = mutex_init,
 
         profiler: Profiler(config),
+
+        const mutex_init = if (config.thread_safe) std.Io.Mutex.init else {};
 
         pub fn init(child_allocator: std.mem.Allocator, writer: *std.Io.Writer) Self {
             return .{
@@ -179,8 +178,8 @@ pub fn Zprof(comptime config: Config) type {
             const self: *Self = @ptrCast(@alignCast(ctx));
 
             const ptr = blk: {
-                if (config.thread_safe) self.mutex.lock();
-                defer if (config.thread_safe) self.mutex.unlock();
+                if (config.thread_safe) std.Io.Threaded.mutexLock(&self.mutex);
+                defer if (config.thread_safe) std.Io.Threaded.mutexUnlock(&self.mutex);
 
                 break :blk self.child_allocator.rawAlloc(n, alignment, ra);
             };
@@ -205,8 +204,8 @@ pub fn Zprof(comptime config: Config) type {
             const old_len = buf.len;
 
             const success = blk: {
-                if (config.thread_safe) self.mutex.lock();
-                defer if (config.thread_safe) self.mutex.unlock();
+                if (config.thread_safe) std.Io.Threaded.mutexLock(&self.mutex);
+                defer if (config.thread_safe) std.Io.Threaded.mutexUnlock(&self.mutex);
 
                 break :blk self.child_allocator.rawResize(
                     buf,
@@ -241,8 +240,8 @@ pub fn Zprof(comptime config: Config) type {
             const old_len = memory.len;
 
             const new_buf = blk: {
-                if (config.thread_safe) self.mutex.lock();
-                defer if (config.thread_safe) self.mutex.unlock();
+                if (config.thread_safe) std.Io.Threaded.mutexLock(&self.mutex);
+                defer if (config.thread_safe) std.Io.Threaded.mutexUnlock(&self.mutex);
 
                 break :blk self.child_allocator.rawRemap(
                     memory,
@@ -275,8 +274,8 @@ pub fn Zprof(comptime config: Config) type {
             const self: *Self = @ptrCast(@alignCast(ctx));
 
             {
-                if (config.thread_safe) self.mutex.lock();
-                defer if (config.thread_safe) self.mutex.unlock();
+                if (config.thread_safe) std.Io.Threaded.mutexLock(&self.mutex);
+                defer if (config.thread_safe) std.Io.Threaded.mutexUnlock(&self.mutex);
 
                 self.child_allocator.rawFree(buf, alignment, ret_addr);
             }
@@ -306,10 +305,11 @@ test "initial state" {
     var zp: Zprof(.{}) = .init(test_allocator, undefined);
 
     try std.testing.expectEqual(0, zp.profiler.allocated.get());
+    try std.testing.expectEqual(0, zp.profiler.freed.get());
     try std.testing.expectEqual(0, zp.profiler.alloc_count.get());
     try std.testing.expectEqual(0, zp.profiler.free_count.get());
-    try std.testing.expectEqual(0, zp.profiler.live_bytes.get());
-    try std.testing.expectEqual(0, zp.profiler.live_peak.get());
+    try std.testing.expectEqual(0, zp.profiler.live_requested.get());
+    try std.testing.expectEqual(0, zp.profiler.peak_requested.get());
     try std.testing.expect(!zp.profiler.hasLeaks());
 }
 
@@ -324,10 +324,11 @@ test "reset" {
     zp.profiler.reset();
 
     try std.testing.expectEqual(0, zp.profiler.allocated.get());
+    try std.testing.expectEqual(0, zp.profiler.freed.get());
     try std.testing.expectEqual(0, zp.profiler.alloc_count.get());
     try std.testing.expectEqual(0, zp.profiler.free_count.get());
-    try std.testing.expectEqual(0, zp.profiler.live_bytes.get());
-    try std.testing.expectEqual(0, zp.profiler.live_peak.get());
+    try std.testing.expectEqual(0, zp.profiler.live_requested.get());
+    try std.testing.expectEqual(0, zp.profiler.peak_requested.get());
 }
 
 test "live bytes" {
@@ -335,21 +336,21 @@ test "live bytes" {
     var zp: Zprof(.{}) = .init(test_allocator, undefined);
     const allocator = zp.allocator();
 
-    try std.testing.expectEqual(0, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(0, zp.profiler.live_requested.get());
 
     const data_a = try allocator.alloc(u8, 1024);
     errdefer allocator.free(data_a);
-    try std.testing.expectEqual(1024, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(1024, zp.profiler.live_requested.get());
 
     const data_b = try allocator.create(struct { name: [8]u8 });
     errdefer allocator.destroy(data_b);
-    try std.testing.expectEqual(1032, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(1032, zp.profiler.live_requested.get());
 
     allocator.free(data_a);
-    try std.testing.expectEqual(8, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(8, zp.profiler.live_requested.get());
 
     allocator.destroy(data_b);
-    try std.testing.expectEqual(0, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(0, zp.profiler.live_requested.get());
 
     try std.testing.expect(!zp.profiler.hasLeaks());
 }
@@ -363,10 +364,12 @@ test "partial free" {
     const b = try allocator.alloc(u8, 200);
     defer allocator.free(b);
 
-    try std.testing.expectEqual(300, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(300, zp.profiler.live_requested.get());
+    try std.testing.expectEqual(0, zp.profiler.freed.get());
 
     allocator.free(a);
-    try std.testing.expectEqual(200, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(200, zp.profiler.live_requested.get());
+    try std.testing.expectEqual(100, zp.profiler.freed.get());
 }
 
 test "alloc count" {
@@ -401,8 +404,10 @@ test "allocated is monotonic" {
     try std.testing.expectEqual(192, zp.profiler.allocated.get());
 
     allocator.free(a);
+    try std.testing.expectEqual(128, zp.profiler.freed.get());
     allocator.free(b);
     try std.testing.expectEqual(192, zp.profiler.allocated.get());
+    try std.testing.expectEqual(128 + 64, zp.profiler.freed.get());
 }
 
 test "live peak" {
@@ -411,15 +416,15 @@ test "live peak" {
     const allocator = zp.allocator();
 
     const a = try allocator.alloc(u8, 256);
-    try std.testing.expectEqual(256, zp.profiler.live_peak.get());
+    try std.testing.expectEqual(256, zp.profiler.peak_requested.get());
 
     const b = try allocator.alloc(u8, 256);
-    try std.testing.expectEqual(512, zp.profiler.live_peak.get());
+    try std.testing.expectEqual(512, zp.profiler.peak_requested.get());
 
     allocator.free(a);
     allocator.free(b);
-    try std.testing.expectEqual(512, zp.profiler.live_peak.get());
-    try std.testing.expectEqual(0, zp.profiler.live_bytes.get());
+    try std.testing.expectEqual(512, zp.profiler.peak_requested.get());
+    try std.testing.expectEqual(0, zp.profiler.live_requested.get());
 }
 
 test "live peak on resize" {
@@ -428,11 +433,11 @@ test "live peak on resize" {
     const allocator = zp.allocator();
 
     var data = try allocator.alloc(u8, 64);
-    try std.testing.expectEqual(64, zp.profiler.live_peak.get());
+    try std.testing.expectEqual(64, zp.profiler.peak_requested.get());
 
     if (allocator.resize(data, 128)) {
         data = data.ptr[0..128];
-        try std.testing.expect(zp.profiler.live_peak.get() >= 128);
+        try std.testing.expect(zp.profiler.peak_requested.get() >= 128);
     }
 
     allocator.free(data);
@@ -464,27 +469,35 @@ test "partial leak" {
 }
 
 test "thread safe" {
+    const io = std.testing.io;
     const test_allocator = std.testing.allocator;
+
     var zp: Zprof(.{ .thread_safe = true }) = .init(test_allocator, undefined);
     const allocator = zp.allocator();
 
     const Context = struct {
         ctx_allocator: std.mem.Allocator,
-        fn run(ctx: @This()) void {
-            const buf = ctx.ctx_allocator.alloc(u8, 64) catch return;
-            std.Thread.sleep(1000 * std.time.ns_per_us);
+        ctx_io: std.Io,
+
+        fn run(ctx: @This()) std.Io.Cancelable!void {
+            const buf = ctx.ctx_allocator.alloc(u8, 64) catch return error.Canceled;
             ctx.ctx_allocator.free(buf);
         }
     };
 
-    var threads: [8]std.Thread = undefined;
-    for (&threads) |*t|
-        t.* = try std.Thread.spawn(
-            .{},
-            Context.run,
-            .{Context{ .ctx_allocator = allocator }},
-        );
-    for (&threads) |*t| t.join();
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
+
+    const ctx: Context = .{
+        .ctx_allocator = allocator,
+        .ctx_io = io,
+    };
+
+    for (0..8) |_| {
+        group.async(io, Context.run, .{ctx});
+    }
+
+    try group.await(io);
 
     try std.testing.expect(!zp.profiler.hasLeaks());
     try std.testing.expectEqual(

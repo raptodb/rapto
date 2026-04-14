@@ -29,10 +29,10 @@ const CallbackFnType = *const fn (ctx: *anyopaque, data: []const u8) anyerror!vo
 /// The timestamp is set to the current time in nanoseconds,
 /// useful for tracking execution time and to identify tasks.
 /// This function assumes ownership of the pipeline.
-pub fn init(pipeline: []const u8, callbackFn: ?CallbackFnType) Task {
+pub fn init(pipeline: []const u8, timestamp: std.Io.Timestamp, callbackFn: ?CallbackFnType) Task {
     return .{
         .pipeline = pipeline,
-        .timestamp = std.math.lossyCast(u64, std.time.nanoTimestamp()),
+        .timestamp = @intCast(timestamp.toMicroseconds()),
         .callbackFn = callbackFn,
     };
 }
@@ -64,6 +64,7 @@ pub fn iterator(self: *const Task) Iterator {
 
 test "Task" {
     const allocator = std.testing.allocator;
+    const io = std.testing.io;
 
     var allocating: std.Io.Writer.Allocating = .init(allocator);
     defer allocating.deinit();
@@ -90,7 +91,7 @@ test "Task" {
     }
 
     const pipeline = try allocator.dupe(u8, writer.buffered());
-    const task: Task = .init(pipeline, null);
+    const task: Task = .init(pipeline, std.Io.Timestamp.now(io, .awake), null);
     defer task.deinit(allocator);
 
     try std.testing.expect(task.timestamp != 0);

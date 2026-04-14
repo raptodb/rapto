@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
             .optimize = .ReleaseFast,
         }),
     });
-    exe.linkLibC();
+    exe.root_module.link_libc = true;
 
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
             .single_threaded = false,
         }),
     });
-    lib_unit_tests.linkLibC();
+    lib_unit_tests.root_module.link_libc = true;
 
     // add step for testing
     const run_tests = b.addRunArtifact(lib_unit_tests);

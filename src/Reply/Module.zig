@@ -142,7 +142,7 @@ pub fn count(self: Module, query: *Query) !void {
     if (query.flags.noreply.get()) return;
 
     // Keys will never be a number larger than the maximum range of i64.
-    const key_count = std.math.lossyCast(i64, self.memory.count());
+    const key_count: i64 = @intCast(self.memory.count());
     const item: field.Integer = .initFromValue(key_count);
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }

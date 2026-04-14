@@ -51,9 +51,7 @@ pub fn processTask(self: *Reply, task: *const Task) error{ OutOfMemory, Shutdown
     // if catches an error, it is considered a
     // fatal error to be returned directly
     return self.processTaskUnmapped(task) catch |err| switch (err) {
-        inline error.OutOfMemory,
-        error.Shutdown,
-        => |e| e,
+        error.OutOfMemory, error.Shutdown => |e| e,
         // assuming always writer of module is derived
         // by std.Io.Writer.Allocating, an error about
         // write is always OOM

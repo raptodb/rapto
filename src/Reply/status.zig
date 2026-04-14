@@ -27,7 +27,6 @@ pub const Code = enum(u8) {
 
     // parse errors (200+)
     ParseUnknownCommand = 200,
-    ParseMismatchType,
     ParseUnknownFlag,
     ParseInvalidFormat,
 };
@@ -53,7 +52,6 @@ pub fn fromDispatchError(err: DispatchError) Code {
 pub fn fromParseError(err: ParseError) Code {
     return switch (err) {
         error.UnknownCommand => .ParseUnknownCommand,
-        error.MismatchType => .ParseMismatchType,
         error.UnknownFlag => .ParseUnknownFlag,
         error.InvalidFormat => .ParseInvalidFormat,
     };
