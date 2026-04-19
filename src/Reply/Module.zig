@@ -24,17 +24,19 @@ pub fn init(memory: *Memory, writer: *std.Io.Writer) Module {
     return .{ .memory = memory, .writer = writer };
 }
 
-pub fn ping(self: Module, query: *Query) !void {
+pub fn ping(self: Module, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     const item: field.Integer = .initFromValue(1);
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
-pub fn get(self: Module, query: *Query) !void {
+pub fn get(self: Module, query: *const Query) !void {
+    var args = query.args;
+
     if (query.flags.noreply.get()) return;
 
-    const key = query.args.next() orelse return error.MissingTokens;
+    const key = args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
 
     const field_type = ref.type();
@@ -93,9 +95,11 @@ pub fn get(self: Module, query: *Query) !void {
     }
 }
 
-pub fn set(self: Module, query: *Query) !void {
-    const key = query.args.next() orelse return error.MissingTokens;
-    const serialized_value = query.args.next() orelse return error.MissingTokens;
+pub fn set(self: Module, query: *const Query) !void {
+    var args = query.args;
+
+    const key = args.next() orelse return error.MissingTokens;
+    const serialized_value = args.next() orelse return error.MissingTokens;
 
     const field_type, const content = try field.splitSerialized(serialized_value);
 
@@ -104,9 +108,11 @@ pub fn set(self: Module, query: *Query) !void {
     };
 }
 
-pub fn update(self: Module, query: *Query) !void {
-    const key = query.args.next() orelse return error.MissingTokens;
-    const serialized = query.args.next() orelse return error.MissingTokens;
+pub fn update(self: Module, query: *const Query) !void {
+    var args = query.args;
+
+    const key = args.next() orelse return error.MissingTokens;
+    const serialized = args.next() orelse return error.MissingTokens;
 
     const field_type, const content = try field.splitSerialized(serialized);
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
@@ -130,15 +136,17 @@ pub fn update(self: Module, query: *Query) !void {
     }
 }
 
-pub fn rename(self: Module, query: *Query) !void {
-    const current_key = query.args.next() orelse return error.MissingTokens;
-    const new_key = query.args.next() orelse return error.MissingTokens;
+pub fn rename(self: Module, query: *const Query) !void {
+    var args = query.args;
+
+    const current_key = args.next() orelse return error.MissingTokens;
+    const new_key = args.next() orelse return error.MissingTokens;
 
     const ref = self.memory.search(current_key) orelse return error.KeyNotFound;
     try ref.setKey(self.memory.allocator, new_key);
 }
 
-pub fn count(self: Module, query: *Query) !void {
+pub fn count(self: Module, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     // Keys will never be a number larger than the maximum range of i64.
@@ -147,16 +155,18 @@ pub fn count(self: Module, query: *Query) !void {
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
-pub fn @"type"(self: Module, query: *Query) !void {
+pub fn @"type"(self: Module, query: *const Query) !void {
+    var args = query.args;
+
     if (query.flags.noreply.get()) return;
 
-    const key = query.args.next() orelse return error.MissingTokens;
+    const key = args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
 
     return ref.type().serializeToWriter(self.writer);
 }
 
-pub fn list(self: Module, query: *Query) !void {
+pub fn list(self: Module, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     var iterator = self.memory.iterator();
@@ -169,10 +179,12 @@ pub fn list(self: Module, query: *Query) !void {
     }
 }
 
-pub fn exist(self: Module, query: *Query) !void {
+pub fn exist(self: Module, query: *const Query) !void {
+    var args = query.args;
+
     if (query.flags.noreply.get()) return;
 
-    const key = query.args.next() orelse return error.MissingTokens;
+    const key = args.next() orelse return error.MissingTokens;
 
     const key_exist = self.memory.search(key) != null;
 
@@ -180,9 +192,11 @@ pub fn exist(self: Module, query: *Query) !void {
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
-pub fn copy(self: Module, query: *Query) !void {
-    const src_key = query.args.next() orelse return error.MissingTokens;
-    const dst_key = query.args.next() orelse return error.MissingTokens;
+pub fn copy(self: Module, query: *const Query) !void {
+    var args = query.args;
+
+    const src_key = args.next() orelse return error.MissingTokens;
+    const dst_key = args.next() orelse return error.MissingTokens;
 
     const ref = self.memory.search(src_key) orelse return error.KeyNotFound;
     const field_type = ref.type();
@@ -198,12 +212,14 @@ pub fn copy(self: Module, query: *Query) !void {
     };
 }
 
-pub fn del(self: Module, query: *Query) !void {
-    const key = query.args.next() orelse return error.MissingTokens;
+pub fn del(self: Module, query: *const Query) !void {
+    var args = query.args;
+
+    const key = args.next() orelse return error.MissingTokens;
     return self.memory.remove(key);
 }
 
-pub fn erase(self: Module, query: *Query) void {
+pub fn erase(self: Module, query: *const Query) void {
     switch (query.flags.free.get()) {
         true => self.memory.free(),
         false => self.memory.clear(),

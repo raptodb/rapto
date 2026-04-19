@@ -30,7 +30,7 @@ pub const DispatchError = error{
 /// subdivided in dispatch errors and fatal errors. Dispatch errors are
 /// written in writer buffer, while fatal errors are returned directly.
 /// NOTE: The writer is assumed to be derived from std.Io.Writer.Allocating.
-pub fn dispatch(module: Module, query: *Query) error{ WriteFailed, OutOfMemory, Shutdown }!void {
+pub fn dispatch(module: Module, query: *const Query) error{ WriteFailed, OutOfMemory, Shutdown }!void {
     const writer = module.writer;
     const start_offset = writer.end;
 
@@ -53,7 +53,7 @@ const Response = union(enum) { ok, err: DispatchError };
 
 /// Handles command, executing and writing response into ctx.writer.
 /// If error is occurred, returns it as DispatchError.
-fn handle(module: Module, query: *Query) error{ WriteFailed, OutOfMemory, Shutdown }!Response {
+fn handle(module: Module, query: *const Query) error{ WriteFailed, OutOfMemory, Shutdown }!Response {
     // handle command and writes result from writer of ctx
     // zig fmt: off
     const maybe_error = switch (query.command) {
