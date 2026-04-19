@@ -9,7 +9,7 @@
 
 const std = @import("std");
 
-const DispatchError = @import("../Reply/dispatcher.zig").DispatchError;
+const DispatchError = @import("../StateMachine.zig").DispatchError;
 const ParseError = @import("../Task.zig").Query.ParseError;
 
 pub const Code = enum(u8) {
