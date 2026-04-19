@@ -21,6 +21,7 @@ comptime {
     _ = @import("Memory.zig");
     _ = @import("Memory/object.zig");
     _ = @import("Memory/tagged_pointer.zig");
+    _ = @import("rapto/main.zig");
     _ = @import("rapto/zprof.zig");
     _ = @import("StateMachine.zig");
     _ = @import("StateMachine/Module.zig");
