@@ -6,9 +6,6 @@
 //! It contains the implementation of unit tests.
 
 comptime {
-    _ = @import("Memory.zig");
-    _ = @import("Memory/object.zig");
-    _ = @import("Memory/tagged_pointer.zig");
     _ = @import("field.zig");
     _ = @import("field/collection.zig");
     _ = @import("field/collection/List.zig");
@@ -20,13 +17,15 @@ comptime {
     _ = @import("field/scalar/Point.zig");
     _ = @import("field/scalar/String.zig");
     _ = @import("field/scalar/Void.zig");
-    _ = @import("Reply.zig");
-    _ = @import("Reply/dispatcher.zig");
-    _ = @import("Reply/Module.zig");
-    _ = @import("Reply/status.zig");
     _ = @import("frames.zig");
+    _ = @import("Memory.zig");
+    _ = @import("Memory/object.zig");
+    _ = @import("Memory/tagged_pointer.zig");
+    _ = @import("rapto/zprof.zig");
+    _ = @import("StateMachine.zig");
+    _ = @import("StateMachine/Module.zig");
+    _ = @import("StateMachine/status.zig");
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
     _ = @import("Task/Query/Flags.zig");
-    _ = @import("zprof.zig");
 }
