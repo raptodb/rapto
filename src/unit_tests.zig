@@ -6,6 +6,7 @@
 //! It contains the implementation of unit tests.
 
 comptime {
+    _ = @import("code.zig");
     _ = @import("field.zig");
     _ = @import("field/collection.zig");
     _ = @import("field/collection/List.zig");
@@ -24,8 +25,6 @@ comptime {
     _ = @import("rapto/main.zig");
     _ = @import("rapto/zprof.zig");
     _ = @import("StateMachine.zig");
-    _ = @import("StateMachine/Module.zig");
-    _ = @import("StateMachine/status.zig");
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
     _ = @import("Task/Query/Flags.zig");
