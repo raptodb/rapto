@@ -5,6 +5,8 @@
 //! This file is part of "Rapto".
 //! It contains the implementation of reply code serializer.
 
+// TODO: this implementation is hardcoded, parse errors should not be handled here.
+
 const std = @import("std");
 
 const DispatchError = @import("../Reply/dispatcher.zig").DispatchError;

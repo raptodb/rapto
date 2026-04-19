@@ -19,29 +19,30 @@ const Memory = @import("../Memory.zig");
 
 memory: *Memory,
 writer: *std.Io.Writer,
+query: *const Query,
 
-pub fn init(memory: *Memory, writer: *std.Io.Writer) Module {
-    return .{ .memory = memory, .writer = writer };
+pub fn init(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Module {
+    return .{ .memory = memory, .writer = writer, .query = query };
 }
 
-pub fn ping(self: Module, query: *const Query) !void {
-    if (query.flags.noreply.get()) return;
+pub fn ping(self: Module) !void {
+    if (self.query.flags.noreply.get()) return;
 
     const item: field.Integer = .initFromValue(1);
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
-pub fn get(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn get(self: Module) !void {
+    var args = self.query.args;
 
-    if (query.flags.noreply.get()) return;
+    if (self.query.flags.noreply.get()) return;
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
 
     const field_type = ref.type();
 
-    switch (query.flags.by.get()) {
+    switch (self.query.flags.by.get()) {
         .any => try ref.serializeToWriter(self.writer),
         .index => |index| switch (field_type) {
             .list => {
@@ -95,8 +96,8 @@ pub fn get(self: Module, query: *const Query) !void {
     }
 }
 
-pub fn set(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn set(self: Module) !void {
+    var args = self.query.args;
 
     const key = args.next() orelse return error.MissingTokens;
     const serialized_value = args.next() orelse return error.MissingTokens;
@@ -108,8 +109,8 @@ pub fn set(self: Module, query: *const Query) !void {
     };
 }
 
-pub fn update(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn update(self: Module) !void {
+    var args = self.query.args;
 
     const key = args.next() orelse return error.MissingTokens;
     const serialized = args.next() orelse return error.MissingTokens;
@@ -136,8 +137,8 @@ pub fn update(self: Module, query: *const Query) !void {
     }
 }
 
-pub fn rename(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn rename(self: Module) !void {
+    var args = self.query.args;
 
     const current_key = args.next() orelse return error.MissingTokens;
     const new_key = args.next() orelse return error.MissingTokens;
@@ -146,8 +147,8 @@ pub fn rename(self: Module, query: *const Query) !void {
     try ref.setKey(self.memory.allocator, new_key);
 }
 
-pub fn count(self: Module, query: *const Query) !void {
-    if (query.flags.noreply.get()) return;
+pub fn count(self: Module) !void {
+    if (self.query.flags.noreply.get()) return;
 
     // Keys will never be a number larger than the maximum range of i64.
     const key_count: i64 = @intCast(self.memory.count());
@@ -155,10 +156,10 @@ pub fn count(self: Module, query: *const Query) !void {
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
-pub fn @"type"(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn @"type"(self: Module) !void {
+    var args = self.query.args;
 
-    if (query.flags.noreply.get()) return;
+    if (self.query.flags.noreply.get()) return;
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
@@ -166,8 +167,8 @@ pub fn @"type"(self: Module, query: *const Query) !void {
     return ref.type().serializeToWriter(self.writer);
 }
 
-pub fn list(self: Module, query: *const Query) !void {
-    if (query.flags.noreply.get()) return;
+pub fn list(self: Module) !void {
+    if (self.query.flags.noreply.get()) return;
 
     var iterator = self.memory.iterator();
     while (iterator.next()) |ref| {
@@ -179,10 +180,10 @@ pub fn list(self: Module, query: *const Query) !void {
     }
 }
 
-pub fn exist(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn exist(self: Module) !void {
+    var args = self.query.args;
 
-    if (query.flags.noreply.get()) return;
+    if (self.query.flags.noreply.get()) return;
 
     const key = args.next() orelse return error.MissingTokens;
 
@@ -192,8 +193,8 @@ pub fn exist(self: Module, query: *const Query) !void {
     try field.serializeToWriter(self.writer, .integer, item.getContent());
 }
 
-pub fn copy(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn copy(self: Module) !void {
+    var args = self.query.args;
 
     const src_key = args.next() orelse return error.MissingTokens;
     const dst_key = args.next() orelse return error.MissingTokens;
@@ -212,15 +213,15 @@ pub fn copy(self: Module, query: *const Query) !void {
     };
 }
 
-pub fn del(self: Module, query: *const Query) !void {
-    var args = query.args;
+pub fn del(self: Module) !void {
+    var args = self.query.args;
 
     const key = args.next() orelse return error.MissingTokens;
     return self.memory.remove(key);
 }
 
-pub fn erase(self: Module, query: *const Query) void {
-    switch (query.flags.free.get()) {
+pub fn erase(self: Module) void {
+    switch (self.query.flags.free.get()) {
         true => self.memory.free(),
         false => self.memory.clear(),
     }
