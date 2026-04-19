@@ -60,23 +60,29 @@ pub const Builder = struct {
 };
 
 test "frames" {
-    const payloads: []const []const u8 = &.{ "first", "", "third", "4444", "example", "0" };
-    var backing: [128]u8 = undefined;
-    var writer: std.Io.Writer = .fixed(&backing);
+    const allocator = std.testing.allocator;
 
-    for (payloads) |p| {
-        var b: Builder = try .begin(&writer);
+    const contents: []const []const u8 = &.{
+        "first",        "",     "0",
+        "third string", "4444", "example",
+    };
+
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    defer allocating.deinit();
+    var writer = &allocating.writer;
+
+    for (contents) |p| {
+        var b: Builder = try .begin(writer);
         try writer.writeAll(p);
         b.end();
     }
 
-    var it: Iterator = .init(backing[0..writer.end]);
-    for (payloads) |expected| {
-        try std.testing.expectEqualSlices(
-            u8,
-            expected,
-            it.next() orelse return error.MissingFrame,
-        );
+    var it: Iterator = .init(allocating.written());
+    for (contents) |expected| {
+        const next = it.next();
+        try std.testing.expect(next != null);
+        try std.testing.expectEqualSlices(u8, expected, next.?);
     }
-    try std.testing.expectEqual(@as(?[]const u8, null), it.next());
+
+    try std.testing.expect(it.next() == null);
 }
