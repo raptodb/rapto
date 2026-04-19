@@ -12,7 +12,7 @@ const frames = @import("../frames.zig");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
-pub const ParseError = error{ UnknownCommand, UnknownFlag, InvalidFormat };
+pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFormat };
 
 command: Command,
 flags: Flags,
@@ -46,7 +46,7 @@ args: frames.Iterator,
 ///   [COMMAND][len:u32][FLAGS][ARGS]
 ///
 /// All length fields are encoded using the predefined header type.
-pub fn parse(serialized: []const u8) ParseError!Query {
+pub fn parse(serialized: []const u8) Error!Query {
     var reader: std.Io.Reader = .fixed(serialized);
     const reader_ptr = &reader;
 
