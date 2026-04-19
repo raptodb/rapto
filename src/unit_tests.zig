@@ -24,6 +24,7 @@ comptime {
     _ = @import("Reply/dispatcher.zig");
     _ = @import("Reply/Module.zig");
     _ = @import("Reply/status.zig");
+    _ = @import("frames.zig");
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
     _ = @import("Task/Query/Flags.zig");
