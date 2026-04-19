@@ -12,14 +12,12 @@
 const Map = @This();
 
 const std = @import("std");
+const frames = @import("../../frames.zig");
 const field = @import("../../field.zig");
 
 const ScalarItem = @import("../scalar.zig").ScalarItem;
 const String = @import("../scalar.zig").String;
 const List = @import("../collection.zig").List;
-
-const KeyHeader: type = String.Header;
-const ValueHeader: type = u32;
 
 pub const MapContext = struct {
     pub fn hash(_: @This(), s: KeyString) u64 {
@@ -167,45 +165,33 @@ pub fn deinit(self: Map, allocator: std.mem.Allocator) void {
 pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
     try field.Types.serializeToWriter(.list, writer);
     var iterator = self.value.keyIterator();
-    while (iterator.next()) |key|
-        try serializeItemWithLength(writer, key.*);
+    while (iterator.next()) |key| {
+        var builder: frames.Builder = try .begin(writer);
+        try key.serializeToWriter(writer);
+        builder.end();
+    }
 }
 
 pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
     try field.Types.serializeToWriter(.list, writer);
     var iterator = self.value.valueIterator();
-    while (iterator.next()) |item|
-        try serializeItemWithLength(writer, item.*);
+    while (iterator.next()) |item| {
+        var builder: frames.Builder = try .begin(writer);
+        try item.serializeToWriter(writer);
+        builder.end();
+    }
 }
 
 pub fn serializeContentToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
     var iterator = self.get();
     while (iterator.next()) |pair| {
-        try serializeItemWithLength(writer, pair.key_ptr.*);
-        try serializeItemWithLength(writer, pair.value_ptr.*);
+        var builder: frames.Builder = try .begin(writer);
+        try pair.key_ptr.serializeToWriter(writer);
+        builder.end();
+        builder = try .begin(writer);
+        try pair.value_ptr.serializeToWriter(writer);
+        builder.end();
     }
-}
-
-fn serializeItemWithLength(
-    writer: *std.Io.Writer,
-    item: anytype,
-) error{WriteFailed}!void {
-    // each item is wrote as [length header][serialized]
-    // [serialized] is [field_type][content]
-
-    // reserve header, writer is assumed to be derived from std.Io.Writer.Allocating
-    const header_offset = writer.end;
-    try writer.writeInt(List.Header, 0, .little);
-
-    try item.serializeToWriter(writer);
-
-    const length: List.Header = @truncate(writer.end - header_offset - @sizeOf(List.Header));
-    std.mem.writeInt(
-        List.Header,
-        writer.buffer[header_offset .. header_offset + @sizeOf(List.Header)][0..@sizeOf(List.Header)],
-        length,
-        .little,
-    );
 }
 
 fn putSerializedMap(
@@ -216,48 +202,34 @@ fn putSerializedMap(
     var iterator = try serializedEntriesIterator(serialized);
     const self: Map = .{ .value = items };
 
-    while (try iterator.next()) |entry|
+    while (iterator.next()) |entry|
         try self.put(allocator, entry.serialized_key, entry.serialized_value);
 }
 
 /// Iterator of serialized entries in a serialized Map.
 const Iterator = struct {
-    reader: std.Io.Reader,
+    wrapped_iterator: frames.Iterator,
 
     const Entry = struct {
         serialized_key: []const u8,
         serialized_value: []const u8,
     };
 
-    fn init(serialized: []const u8) error{ MismatchType, UnknownType, InvalidFormat }!Iterator {
-        const field_type, const content = try field.splitSerialized(serialized);
-        if (field_type != .map) return error.MismatchType;
-        return .{ .reader = .fixed(content) };
-    }
-
     /// Iterates the next serialized entry in the Map.
-    fn next(self: *Iterator) error{InvalidFormat}!?Entry {
-        const serialized_key = try self.takeSerialized(KeyHeader);
-        if (serialized_key == null) return null;
-        const serialized_value = try self.takeSerialized(ValueHeader);
-        if (serialized_value == null) return error.InvalidFormat;
-
+    fn next(self: *Iterator) ?Entry {
         return .{
-            .serialized_key = serialized_key.?,
-            .serialized_value = serialized_value.?,
+            .serialized_key = self.wrapped_iterator.next() orelse return null,
+            .serialized_value = self.wrapped_iterator.next() orelse return null,
         };
-    }
-
-    fn takeSerialized(self: *Iterator, comptime HeaderType: type) error{InvalidFormat}!?[]const u8 {
-        const length = self.reader.takeInt(HeaderType, .little) catch return null;
-        return self.reader.take(length) catch error.InvalidFormat;
     }
 };
 
 fn serializedEntriesIterator(
     serialized: []const u8,
 ) error{ MismatchType, UnknownType, InvalidFormat }!Iterator {
-    return .init(serialized);
+    const field_type, const content = try field.splitSerialized(serialized);
+    if (field_type != .map) return error.MismatchType;
+    return .{ .wrapped_iterator = .init(content) };
 }
 
 const MapEntry = struct {
@@ -273,36 +245,13 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
     try field.Types.serializeToWriter(.map, writer);
 
     for (entries) |entry| {
-        {
-            const hdr_start = writer.end;
-            try writer.writeInt(Map.KeyHeader, 0, .little);
-            const body_start = writer.end;
+        var builder: frames.Builder = try .begin(writer);
+        try field.serializeToWriter(writer, .string, entry.key);
+        builder.end();
 
-            try field.serializeToWriter(writer, .string, entry.key);
-
-            const body_len: Map.KeyHeader = @truncate(writer.end - body_start);
-            std.mem.writeInt(
-                Map.KeyHeader,
-                writer.buffer[hdr_start .. hdr_start + @sizeOf(Map.KeyHeader)][0..@sizeOf(Map.KeyHeader)],
-                body_len,
-                .little,
-            );
-        }
-        {
-            const hdr_start = writer.end;
-            try writer.writeInt(Map.ValueHeader, 0, .little);
-            const body_start = writer.end;
-
-            try writer.writeAll(entry.serialized_value);
-
-            const body_len: Map.ValueHeader = @truncate(writer.end - body_start);
-            std.mem.writeInt(
-                Map.ValueHeader,
-                writer.buffer[hdr_start .. hdr_start + @sizeOf(Map.ValueHeader)][0..@sizeOf(Map.ValueHeader)],
-                body_len,
-                .little,
-            );
-        }
+        builder = try .begin(writer);
+        try writer.writeAll(entry.serialized_value);
+        builder.end();
     }
 
     return allocating.toOwnedSlice();

@@ -10,12 +10,11 @@
 const Task = @This();
 
 const std = @import("std");
+const frames = @import("frames.zig");
 
 pub const Query = @import("Task/Query.zig");
 
-/// Pipeline containing the raw queries to be executed. The format
-/// of the pipeline is a sequence of length-prefixed queries.
-/// The format is [len:u32][query][len:u32][query]...
+/// Pipeline containing the raw queries to be executed.
 pipeline: []const u8,
 /// Timestamp used to track when the task was executed.
 /// This indicator is useful also for unique id.
@@ -43,23 +42,17 @@ pub fn deinit(self: *const Task, allocator: std.mem.Allocator) void {
 
 /// Iterator of queries.
 pub const Iterator = struct {
-    reader: std.Io.Reader,
-
-    fn init(pipeline: []const u8) Iterator {
-        return .{ .reader = .fixed(pipeline) };
-    }
+    wrapped_iterator: frames.Iterator,
 
     /// Returns the next query in the pipeline.
     pub fn next(self: *Iterator) ?Query.ParseError!Query {
-        const len = self.reader.takeInt(u32, .little) catch return null;
-        const query = self.reader.take(len) catch return null;
-
-        return .parse(query);
+        const frame = self.wrapped_iterator.next() orelse return null;
+        return .parse(frame);
     }
 };
 
 pub fn iterator(self: *const Task) Iterator {
-    return .init(self.pipeline);
+    return .{ .wrapped_iterator = .init(self.pipeline) };
 }
 
 test "Task" {

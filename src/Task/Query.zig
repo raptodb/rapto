@@ -8,6 +8,7 @@
 const Query = @This();
 
 const std = @import("std");
+const frames = @import("../frames.zig");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
@@ -15,7 +16,7 @@ pub const ParseError = error{ UnknownCommand, UnknownFlag, InvalidFormat };
 
 command: Command,
 flags: Flags,
-args: Args,
+args: frames.Iterator,
 
 /// Parses a Query from a serialized input.
 /// The input must follow this layout:
@@ -35,7 +36,7 @@ args: Args,
 ///     [flag][flag]...
 ///
 /// ARGS
-///   Each arg is encoded as:
+///   Each arg is encoded as frame:
 ///     [len:u32][arg]...
 ///
 ///   Multiple arguments are concatenated sequentially:
@@ -95,23 +96,6 @@ pub const Command = enum(u8) {
 
     fn serializeToWriter(self: Command, writer: *std.Io.Writer) error{WriteFailed}!void {
         return writer.writeByte(@intFromEnum(self));
-    }
-};
-
-pub const Args = struct {
-    reader: std.Io.Reader,
-
-    fn init(args: []const u8) Args {
-        return .{ .reader = .fixed(args) };
-    }
-
-    /// Iterates the next argument in the arguments.
-    /// This method, reads firstly the length header, next
-    /// reads the argument. The format of reading is:
-    /// [length header][argument]
-    pub fn next(self: *Args) ?[]const u8 {
-        const length = self.reader.takeInt(u32, .little) catch return null;
-        return self.reader.take(length) catch null;
     }
 };
 

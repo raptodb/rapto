@@ -9,12 +9,13 @@
 const String = @This();
 
 const std = @import("std");
+const frames = @import("../../frames.zig");
 
 /// Pointer to byte array. The first 4 bytes
 /// header represents the length of string.
 ptr: [*]u8,
 
-pub const Header: type = u32;
+pub const Header: type = frames.framePrefixType;
 
 pub fn initFromContent(
     allocator: std.mem.Allocator,
