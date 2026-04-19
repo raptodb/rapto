@@ -45,7 +45,7 @@ pub const Iterator = struct {
     wrapped_iterator: frames.Iterator,
 
     /// Returns the next query in the pipeline.
-    pub fn next(self: *Iterator) ?Query.ParseError!Query {
+    pub fn next(self: *Iterator) ?Query.Error!Query {
         const frame = self.wrapped_iterator.next() orelse return null;
         return .parse(frame);
     }
