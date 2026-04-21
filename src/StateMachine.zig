@@ -20,8 +20,10 @@ const Query = @import("Task.zig").Query;
 memory: *Memory,
 writer: *std.Io.Writer,
 
-/// Union of all errors can be returned
-/// from any functions of commands.
+/// Union of all errors can be returned from any
+/// functions of commands. Fatal errors as Shutdown
+/// or OutOfMemory (as WriteFailed assuming writer
+/// is from Allocating) are excluded.
 pub const Error = error{
     KeyNotFound,
     InvalidKey,
