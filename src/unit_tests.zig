@@ -3,7 +3,7 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of unit tests.
+//! It contains the implementation of unit tests and semantic analysis.
 
 comptime {
     _ = @import("code.zig");
@@ -21,10 +21,10 @@ comptime {
     _ = @import("frames.zig");
     _ = @import("Memory.zig");
     _ = @import("Memory/object.zig");
-    _ = @import("Memory/tagged_pointer.zig");
     _ = @import("rapto/main.zig");
     _ = @import("rapto/zprof.zig");
     _ = @import("StateMachine.zig");
+    _ = @import("tagged_pointer.zig");
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
     _ = @import("Task/Query/Flags.zig");

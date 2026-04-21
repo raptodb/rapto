@@ -9,7 +9,7 @@ const std = @import("std");
 const field = @import("../field.zig");
 const assert = std.debug.assert;
 
-const TaggedPointer = @import("tagged_pointer.zig").TaggedPointer;
+const TaggedPointer = @import("../tagged_pointer.zig").TaggedPointer;
 
 /// Pointer alignment of current architecture.
 /// Defined for clarity and conventional purposes.
