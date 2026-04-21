@@ -9,7 +9,6 @@
 /// This is a global format to read messages from client, as
 /// pipeline (with zero-copy `Iterator`) or write message to
 /// send (with `Builder`). It also used by fields.
-
 const std = @import("std");
 const assert = std.debug.assert;
 
@@ -73,9 +72,9 @@ test "frames" {
     var writer = &allocating.writer;
 
     for (contents) |p| {
-        var b: Builder = try .begin(writer);
+        var builder: Builder = try .begin(writer);
+        defer builder.end();
         try writer.writeAll(p);
-        b.end();
     }
 
     var it: Iterator = .init(allocating.written());

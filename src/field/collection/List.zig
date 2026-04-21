@@ -190,8 +190,8 @@ pub fn serializeContentInRangeToWriter(
 
     for (self.value.items[from_index .. to_index + 1]) |item| {
         var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
         try item.serializeToWriter(writer);
-        builder.end();
     }
 }
 
@@ -365,8 +365,8 @@ fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8
     try field.Types.serializeToWriter(.list, writer);
     for (items) |item| {
         var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
         try item.serializeToWriter(writer);
-        builder.end();
     }
 
     return allocating.toOwnedSlice();

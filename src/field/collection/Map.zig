@@ -167,8 +167,8 @@ pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFaile
     var iterator = self.value.keyIterator();
     while (iterator.next()) |key| {
         var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
         try key.serializeToWriter(writer);
-        builder.end();
     }
 }
 
@@ -177,20 +177,24 @@ pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFai
     var iterator = self.value.valueIterator();
     while (iterator.next()) |item| {
         var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
         try item.serializeToWriter(writer);
-        builder.end();
     }
 }
 
 pub fn serializeContentToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
     var iterator = self.get();
     while (iterator.next()) |pair| {
-        var builder: frames.Builder = try .begin(writer);
-        try pair.key_ptr.serializeToWriter(writer);
-        builder.end();
-        builder = try .begin(writer);
-        try pair.value_ptr.serializeToWriter(writer);
-        builder.end();
+        {
+            var builder: frames.Builder = try .begin(writer);
+            defer builder.end();
+            try pair.key_ptr.serializeToWriter(writer);
+        }
+        {
+            var builder: frames.Builder = try .begin(writer);
+            defer builder.end();
+            try pair.value_ptr.serializeToWriter(writer);
+        }
     }
 }
 
@@ -245,13 +249,16 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
     try field.Types.serializeToWriter(.map, writer);
 
     for (entries) |entry| {
-        var builder: frames.Builder = try .begin(writer);
-        try field.serializeToWriter(writer, .string, entry.key);
-        builder.end();
-
-        builder = try .begin(writer);
-        try writer.writeAll(entry.serialized_value);
-        builder.end();
+        {
+            var builder: frames.Builder = try .begin(writer);
+            defer builder.end();
+            try field.serializeToWriter(writer, .string, entry.key);
+        }
+        {
+            var builder: frames.Builder = try .begin(writer);
+            defer builder.end();
+            try writer.writeAll(entry.serialized_value);
+        }
     }
 
     return allocating.toOwnedSlice();
