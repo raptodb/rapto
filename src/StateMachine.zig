@@ -18,7 +18,6 @@ const Memory = @import("Memory.zig");
 const Query = @import("Task.zig").Query;
 
 memory: *Memory,
-writer: *std.Io.Writer,
 
 /// Union of all errors can be returned from any
 /// functions of commands. Fatal errors as Shutdown
@@ -38,9 +37,8 @@ pub const Error = error{
 
 pub fn init(
     memory: *Memory, // Storage of state
-    writer: *std.Io.Writer, // Output: maybe Allocating
 ) StateMachine {
-    return .{ .memory = memory, .writer = writer };
+    return .{ .memory = memory };
 }
 
 /// Executes query on this configuration. Fatal errors will be returned
@@ -48,26 +46,27 @@ pub fn init(
 /// If no error is occurred, writes OK code to output.
 pub fn execute(
     self: StateMachine,
+    writer: *std.Io.Writer, // Output: maybe Allocating
     query: *const Query, // Input
 ) error{ OutOfMemory, Shutdown, WriteFailed }!void {
-    const start_offset = self.writer.end;
+    const start_offset = writer.end;
 
     // zig fmt: off
     const maybe_error = switch (query.command) {
-        .PING   => self.ping(query),
+        .PING   => self.ping(writer, query),
 
         // CRUD operations
         .SET    => self.set(query),
-        .GET    => self.get(query),
+        .GET    => self.get(writer, query),
         .UPDATE => self.update(query),
         .DEL    => self.del(query),
 
         .COPY   => self.copy(query),
         .RENAME => self.rename(query),
-        .COUNT  => self.count(query),
-        .TYPE   => self.type(query),
-        .LIST   => self.list(query),
-        .EXIST  => self.exist(query),
+        .COUNT  => self.count(writer, query),
+        .TYPE   => self.type(writer, query),
+        .LIST   => self.list(writer, query),
+        .EXIST  => self.exist(writer, query),
         .ERASE  => self.erase(query),
 
         .DOWN   => error.Shutdown,
@@ -90,19 +89,19 @@ pub fn execute(
 
     // When response is written in buffer, it is an implicit OK.
     // While, when noreply is enabled, response is not written.
-    if (self.writer.end == start_offset and !query.flags.noreply.get()) {
-        return code.writeCode(self.writer, status_code);
+    if (writer.end == start_offset and !query.flags.noreply.get()) {
+        return code.writeCode(writer, status_code);
     }
 }
 
-fn ping(self: StateMachine, query: *const Query) !void {
+fn ping(_: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     const item: field.Integer = .initFromValue(1);
-    try field.serializeToWriter(self.writer, .integer, item.getContent());
+    try field.serializeToWriter(writer, .integer, item.getContent());
 }
 
-fn get(self: StateMachine, query: *const Query) !void {
+fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     var args = query.args;
 
     if (query.flags.noreply.get()) return;
@@ -113,11 +112,11 @@ fn get(self: StateMachine, query: *const Query) !void {
     const field_type = ref.type();
 
     switch (query.flags.by.get()) {
-        .any => try ref.serializeToWriter(self.writer),
+        .any => try ref.serializeToWriter(writer),
         .index => |index| switch (field_type) {
             .list => {
                 const item = try ref.valuePtr(.list).getByIndex(index.get());
-                try item.serializeToWriter(self.writer);
+                try item.serializeToWriter(writer);
             },
             .point => {
                 const item: field.Point.Axis = ref.valuePtr(.point).get();
@@ -128,15 +127,15 @@ fn get(self: StateMachine, query: *const Query) !void {
                     else => return error.RangeOverflow,
                 };
 
-                try field.serializeToWriter(self.writer, field_type, content);
+                try field.serializeToWriter(writer, field_type, content);
             },
             else => return error.MismatchFlag,
         },
         .range => |range| switch (field_type) {
             .list => {
-                try Types.serializeToWriter(.list, self.writer);
+                try Types.serializeToWriter(.list, writer);
                 try ref.valuePtr(.list).serializeContentInRangeToWriter(
-                    self.writer,
+                    writer,
                     range.from().get(),
                     range.to().get(),
                 );
@@ -146,7 +145,7 @@ fn get(self: StateMachine, query: *const Query) !void {
         .key => |flag_key| switch (field_type) {
             .map => {
                 const item = try ref.valuePtr(.map).getByKey(flag_key.get());
-                try item.serializeToWriter(self.writer);
+                try item.serializeToWriter(writer);
             },
             .point => {
                 const item: field.Point.Axis = ref.valuePtr(.point).get();
@@ -159,7 +158,7 @@ fn get(self: StateMachine, query: *const Query) !void {
                     else => return error.RangeOverflow,
                 };
 
-                try field.serializeToWriter(self.writer, field_type, content);
+                try field.serializeToWriter(writer, field_type, content);
             },
             else => return error.MismatchFlag,
         },
@@ -217,16 +216,16 @@ fn rename(self: StateMachine, query: *const Query) !void {
     try ref.setKey(self.memory.allocator, new_key);
 }
 
-fn count(self: StateMachine, query: *const Query) !void {
+fn count(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     // Keys will never be a number larger than the maximum range of i64.
     const key_count: i64 = @intCast(self.memory.count());
     const item: field.Integer = .initFromValue(key_count);
-    try field.serializeToWriter(self.writer, .integer, item.getContent());
+    try field.serializeToWriter(writer, .integer, item.getContent());
 }
 
-fn @"type"(self: StateMachine, query: *const Query) !void {
+fn @"type"(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     var args = query.args;
 
     if (query.flags.noreply.get()) return;
@@ -234,10 +233,10 @@ fn @"type"(self: StateMachine, query: *const Query) !void {
     const key = args.next() orelse return error.MissingTokens;
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
 
-    return ref.type().serializeToWriter(self.writer);
+    return ref.type().serializeToWriter(writer);
 }
 
-fn list(self: StateMachine, query: *const Query) !void {
+fn list(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     var iterator = self.memory.iterator();
@@ -245,12 +244,12 @@ fn list(self: StateMachine, query: *const Query) !void {
         const key = ref.key();
         // Since key is not a scalar/collection field, is written
         // manually with length header of 4 bytes.
-        try self.writer.writeInt(u32, @truncate(key.len), .little);
-        try self.writer.writeAll(key);
+        try writer.writeInt(u32, @truncate(key.len), .little);
+        try writer.writeAll(key);
     }
 }
 
-fn exist(self: StateMachine, query: *const Query) !void {
+fn exist(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     var args = query.args;
 
     if (query.flags.noreply.get()) return;
@@ -260,7 +259,7 @@ fn exist(self: StateMachine, query: *const Query) !void {
     const key_exist = self.memory.search(key) != null;
 
     const item: field.Flag = if (key_exist) .initFromValue(.true) else .initFromValue(.false);
-    try field.serializeToWriter(self.writer, .integer, item.getContent());
+    try field.serializeToWriter(writer, .integer, item.getContent());
 }
 
 fn copy(self: StateMachine, query: *const Query) !void {
