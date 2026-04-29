@@ -119,7 +119,7 @@ pub fn isEqualTo(self: *const Query, query: *const Query) bool {
     return true;
 }
 
-// This function is used for tests.
+/// This function is used for tests.
 pub fn serializeToWriter(
     writer: *std.Io.Writer,
     command: Query.Command,
@@ -128,23 +128,15 @@ pub fn serializeToWriter(
 ) error{WriteFailed}!void {
     try command.serializeToWriter(writer);
 
-    // reserve header, writer is derived from std.Io.Writer.Allocating
-    const start_header = writer.end;
-    // advancing to reserve length-prefix header for flags
-    try writer.writeInt(u32, 0, .little);
-    const start_flags = writer.end;
-    try flags.serializeToWriter(writer);
-    const flags_length = writer.end - start_flags;
-    // write the actual length of flags in the reserved header
-    std.mem.writeInt(
-        u32,
-        writer.buffer[start_header .. start_header + @sizeOf(u32)][0..@sizeOf(u32)],
-        @truncate(flags_length),
-        .little,
-    );
+    {
+        var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
+        try flags.serializeToWriter(writer);
+    }
 
     for (args) |arg| {
-        try writer.writeInt(u32, @truncate(arg.len), .little);
+        var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
         try writer.writeAll(arg);
     }
 }
