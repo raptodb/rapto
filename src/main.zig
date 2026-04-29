@@ -6,6 +6,7 @@
 //! It contains the implementation of main.
 
 const std = @import("std");
+const zprof = @import("zprof.zig");
 const log = std.log.scoped(.rapto);
 
 pub const version = "0.1.0";

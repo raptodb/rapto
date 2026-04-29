@@ -28,4 +28,5 @@ comptime {
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
     _ = @import("Task/Query/Flags.zig");
+    _ = @import("zprof.zig");
 }
