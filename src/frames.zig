@@ -4,11 +4,12 @@
 //!
 //! This file is part of "Rapto".
 //! It contains the implementation of frames reader and writer.
+//!
+//! Frames are represented as chain of [length-prefix][content].
+//! This is a global format to read messages from client, as
+//! pipeline (with zero-copy `Iterator`) or write message to
+//! send (with `Builder`). It also used by fields.
 
-/// Frames are represented as chain of [length-prefix][content].
-/// This is a global format to read messages from client, as
-/// pipeline (with zero-copy `Iterator`) or write message to
-/// send (with `Builder`). It also used by fields.
 const std = @import("std");
 const assert = std.debug.assert;
 
