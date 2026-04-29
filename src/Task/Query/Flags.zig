@@ -203,6 +203,31 @@ pub fn parseFromReader(reader: *std.Io.Reader, length: u32) error{ UnknownFlag, 
     return self;
 }
 
+pub fn isEqualTo(self: Flags, flags: Flags) bool {
+    if (self.noreply.get() != flags.noreply.get()) return false;
+    if (self.free.get() != flags.free.get()) return false;
+
+    return switch (self.by.value) {
+        .any => flags.by.value == .any,
+
+        .index => |v| switch (flags.by.value) {
+            .index => |pv| v.get() == pv.get(),
+            else => false,
+        },
+
+        .range => |r| switch (flags.by.value) {
+            .range => |pr| r.from().get() == pr.from().get() and
+                r.to().get() == pr.to().get(),
+            else => false,
+        },
+
+        .key => |k| switch (flags.by.value) {
+            .key => |pk| std.mem.eql(u8, k.get(), pk.get()),
+            else => false,
+        },
+    };
+}
+
 pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) error{WriteFailed}!void {
     inline for (std.meta.fields(Flags)) |field| {
         const flag = @field(self, field.name);
@@ -287,7 +312,7 @@ test "Flags" {
         var reader: std.Io.Reader = .fixed(writer.buffered());
         const parsed = try Flags.parseFromReader(&reader, @truncate(writer.end));
 
-        try expectFlagsEqual(c, parsed);
+        try std.testing.expect(c.isEqualTo(parsed));
     }
 
     {
@@ -361,32 +386,5 @@ test "Flags" {
             error.InvalidFormat,
             Flags.parseFromReader(&reader, @truncate(writer.end)),
         );
-    }
-}
-
-pub fn expectFlagsEqual(a: Flags, b: Flags) !void {
-    try std.testing.expectEqual(a.noreply.get(), b.noreply.get());
-    try std.testing.expectEqual(a.free.get(), b.free.get());
-
-    switch (a.by.value) {
-        .any => try std.testing.expect(b.by.value == .any),
-
-        .index => |v| switch (b.by.value) {
-            .index => |pv| try std.testing.expectEqual(v.get(), pv.get()),
-            else => return error.TestFailure,
-        },
-
-        .range => |r| switch (b.by.value) {
-            .range => |pr| {
-                try std.testing.expectEqual(r.from().get(), pr.from().get());
-                try std.testing.expectEqual(r.to().get(), pr.to().get());
-            },
-            else => return error.TestFailure,
-        },
-
-        .key => |k| switch (b.by.value) {
-            .key => |pk| try std.testing.expectEqualStrings(k.get(), pk.get()),
-            else => return error.TestFailure,
-        },
     }
 }
