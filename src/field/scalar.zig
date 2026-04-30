@@ -17,6 +17,8 @@ pub const String = @import("scalar/String.zig");
 pub const Point = @import("scalar/Point.zig");
 
 /// Scalar field types used by List or Map as item.
+/// Item contains information about field type,
+/// allowing the serializeToWriter method.
 pub const ScalarItem = union(enum) {
     void: Void,
     integer: Integer,
