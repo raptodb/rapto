@@ -21,9 +21,10 @@ timestamp: u64,
 /// Pipeline containing the raw queries to be executed.
 pipeline: []const u8,
 
-/// Initializes a task with pipeline and timestamp.
-/// The timestamp is expressed in microseconds,
-/// useful for tracking execution time and to identify tasks.
+/// Initializes a task with pipeline and timestamp without
+/// taking the ownership of the pipeline. The timestamp is
+/// expressed in microseconds, useful for tracking execution
+/// time and to identify tasks.
 pub fn init(pipeline: []const u8, timestamp: std.Io.Timestamp) Task {
     return .{
         .pipeline = pipeline,
@@ -61,22 +62,22 @@ pub fn serializeToWriter(self: *const Task, writer: *std.Io.Writer) std.Io.Write
     try hashed_writer.writer.writeInt(u32, hashed_writer.hasher.final(), .little);
 }
 
-pub fn deserialize(buf: []u8) error{ ReadFailed, InvalidFormat, ChecksumMismatch }!Task {
-    if (buf.len < 4) return error.InvalidFormat;
+/// Initializes Task by deserializing buffer. It does not takes ownership.
+pub fn deserialize(buf: []u8) error{ InvalidFormat, ChecksumMismatch }!Task {
+    if (buf.len < @sizeOf(u32)) return error.InvalidFormat;
 
-    const raw_task = buf[0 .. buf.len - 4];
+    const raw_task = buf[0 .. buf.len - @sizeOf(u32)];
 
+    const hash: u32 = @bitCast(buf[buf.len - @sizeOf(u32) ..][0..@sizeOf(u32)].*);
     const taken_hash = Hasher.hash(raw_task);
-    const hash: u32 = @bitCast(buf[buf.len - 4 ..][0..4].*);
     if (hash != taken_hash) return error.ChecksumMismatch;
 
     var reader: std.Io.Reader = .fixed(raw_task);
 
-    const timestamp = reader.takeInt(u64, .little) catch |err| return switch (err) {
-        error.EndOfStream => error.InvalidFormat,
-        error.ReadFailed => error.ReadFailed,
-    };
-    const pipeline = reader.buffer[reader.seek..];
+    const timestamp = reader.takeInt(u64, .little) catch
+        return error.InvalidFormat;
+    const pipeline = reader.take(reader.bufferedLen()) catch
+        return error.InvalidFormat;
 
     return .{ .timestamp = timestamp, .pipeline = pipeline };
 }
