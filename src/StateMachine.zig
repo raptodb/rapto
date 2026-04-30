@@ -14,7 +14,6 @@ const field = @import("field.zig");
 const frames = @import("frames.zig");
 const assert = std.debug.assert;
 
-const Type = field.Type;
 const Memory = @import("Memory.zig");
 const Query = @import("Task.zig").Query;
 
@@ -105,8 +104,8 @@ fn ping(_: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
     const integer: field.Integer = .fromValue(1);
-    const item: field.ScalarItem = .{ .integer = integer };
-    try item.serializeToWriter(writer);
+    try field.Type.serializeToWriter(.integer, writer);
+    try integer.serializeContentToWriter(writer);
 }
 
 fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
@@ -134,14 +133,15 @@ fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
                     2 => axis.z,
                     else => return error.RangeOverflow,
                 };
-                const item: field.ScalarItem = .{ .decimal = decimal };
-                try item.serializeToWriter(writer);
+
+                try field.Type.serializeToWriter(.decimal, writer);
+                try decimal.serializeContentToWriter(writer);
             },
             else => return error.MismatchFlag,
         },
         .range => |range| switch (field_type) {
             .list => {
-                try Type.serializeToWriter(.list, writer);
+                try field.Type.serializeToWriter(.list, writer);
                 try ref.valuePtr(.list).serializeContentInRangeToWriter(
                     writer,
                     range.from().get(),
@@ -166,8 +166,8 @@ fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
                     else => return error.RangeOverflow,
                 };
 
-                const item: field.ScalarItem = .{ .decimal = decimal };
-                try item.serializeToWriter(writer);
+                try field.Type.serializeToWriter(.decimal, writer);
+                try decimal.serializeContentToWriter(writer);
             },
             else => return error.MismatchFlag,
         },
@@ -196,7 +196,7 @@ fn update(self: StateMachine, query: *const Query) !void {
     const field_type, const content = try field.splitSerialized(serialized);
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
 
-    if (field_type != ref.type()) return error.MismatchType;
+    if (field_type != ref.type()) return error.Mismatchfield.Type;
 
     switch (field_type) {
         .integer => {
@@ -211,7 +211,7 @@ fn update(self: StateMachine, query: *const Query) !void {
             const value: field.Point = try .initFromContent(self.memory.allocator, content);
             try ref.valuePtr(.point).translate(value.get());
         },
-        .void, .string, .flag, .list, .map => return error.MismatchType,
+        .void, .string, .flag, .list, .map => return error.Mismatchfield.Type,
     }
 }
 
@@ -231,8 +231,8 @@ fn count(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void 
     // Keys will never be a number larger than the maximum range of i64.
     const key_count: i64 = @intCast(self.memory.count());
     const integer: field.Integer = .fromValue(key_count);
-    const item: field.ScalarItem = .{ .integer = integer };
-    try item.serializeToWriter(writer);
+    try field.Type.serializeToWriter(.integer, writer);
+    try integer.serializeContentToWriter(writer);
 }
 
 fn @"type"(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
@@ -267,8 +267,8 @@ fn exist(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void 
     const key_exist = self.memory.search(key) != null;
 
     const flag: field.Flag = if (key_exist) .fromValue(.true) else .fromValue(.false);
-    const item: field.ScalarItem = .{ .flag = flag };
-    try item.serializeToWriter(writer);
+    try field.Type.serializeToWriter(.flag, writer);
+    try flag.serializeContentToWriter(writer);
 }
 
 fn copy(self: StateMachine, query: *const Query) !void {
