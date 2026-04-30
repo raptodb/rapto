@@ -103,8 +103,9 @@ pub fn execute(
 fn ping(_: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
     if (query.flags.noreply.get()) return;
 
-    const item: field.Integer = .initFromValue(1);
-    try field.serializeToWriter(writer, .integer, item.getContent());
+    const item: field.Integer = .fromValue(1);
+    const scalar: field.ScalarItem = .{ .integer = item };
+    try scalar.serializeToWriter(writer);
 }
 
 fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
@@ -126,14 +127,14 @@ fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
             },
             .point => {
                 const item: field.Point.Axis = ref.valuePtr(.point).get();
-                const content = switch (index.get()) {
-                    0 => item.x.getContent(),
-                    1 => item.y.getContent(),
-                    2 => item.z.getContent(),
+                const axis = switch (index.get()) {
+                    0 => item.x,
+                    1 => item.y,
+                    2 => item.z,
                     else => return error.RangeOverflow,
                 };
-
-                try field.serializeToWriter(writer, field_type, content);
+                const scalar: field.ScalarItem = .{ .decimal = axis };
+                try scalar.serializeToWriter(writer);
             },
             else => return error.MismatchFlag,
         },
@@ -157,14 +158,15 @@ fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
                 const item: field.Point.Axis = ref.valuePtr(.point).get();
 
                 if (flag_key.get().len != 1) return error.MismatchFlag;
-                const content = switch (flag_key.get()[0]) {
-                    'x' => item.x.getContent(),
-                    'y' => item.y.getContent(),
-                    'z' => item.z.getContent(),
+                const axis = switch (flag_key.get()[0]) {
+                    'x' => item.x,
+                    'y' => item.y,
+                    'z' => item.z,
                     else => return error.RangeOverflow,
                 };
 
-                try field.serializeToWriter(writer, field_type, content);
+                const scalar: field.ScalarItem = .{ .decimal = axis };
+                try scalar.serializeToWriter(writer);
             },
             else => return error.MismatchFlag,
         },
@@ -197,15 +199,15 @@ fn update(self: StateMachine, query: *const Query) !void {
 
     switch (field_type) {
         .integer => {
-            const value: field.Integer = try .initFromContent(content);
+            const value: field.Integer = try .fromContent(content);
             try ref.valuePtr(.integer).add(value.get());
         },
         .decimal => {
-            const value: field.Decimal = try .initFromContent(content);
+            const value: field.Decimal = try .fromContent(content);
             try ref.valuePtr(.decimal).add(value.get());
         },
         .point => {
-            const value: field.Point = try .initFromContent(self.memory.allocator, content);
+            const value: field.Point = try .fromContent(self.memory.allocator, content);
             try ref.valuePtr(.point).translate(value.get());
         },
         .void, .string, .flag, .list, .map => return error.MismatchType,
@@ -227,8 +229,9 @@ fn count(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void 
 
     // Keys will never be a number larger than the maximum range of i64.
     const key_count: i64 = @intCast(self.memory.count());
-    const item: field.Integer = .initFromValue(key_count);
-    try field.serializeToWriter(writer, .integer, item.getContent());
+    const item: field.Integer = .fromValue(key_count);
+    const scalar: field.ScalarItem = .{ .integer = item };
+    try scalar.serializeToWriter(writer);
 }
 
 fn @"type"(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
@@ -264,8 +267,9 @@ fn exist(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void 
 
     const key_exist = self.memory.search(key) != null;
 
-    const item: field.Flag = if (key_exist) .initFromValue(.true) else .initFromValue(.false);
-    try field.serializeToWriter(writer, .integer, item.getContent());
+    const item: field.Flag = if (key_exist) .fromValue(.true) else .fromValue(.false);
+    const scalar: field.ScalarItem = .{ .flag = item };
+    try scalar.serializeToWriter(writer);
 }
 
 fn copy(self: StateMachine, query: *const Query) !void {

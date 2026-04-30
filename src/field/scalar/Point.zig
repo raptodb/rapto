@@ -22,9 +22,9 @@ pub const Axis = struct {
         if (content.len != (Decimal{}).len() * 3) return error.InvalidFormat;
 
         return .{
-            .x = try .initFromContent(content[0..8]),
-            .y = try .initFromContent(content[8..16]),
-            .z = try .initFromContent(content[16..24]),
+            .x = try .fromContent(content[0..8]),
+            .y = try .fromContent(content[8..16]),
+            .z = try .fromContent(content[16..24]),
         };
     }
 };

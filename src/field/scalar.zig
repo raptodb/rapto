@@ -31,10 +31,10 @@ pub const ScalarItem = union(enum) {
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarItem {
         return switch (field_type) {
-            .void => .{ .void = .initFromContent() },
-            .integer => .{ .integer = try .initFromContent(content) },
-            .decimal => .{ .decimal = try .initFromContent(content) },
-            .flag => .{ .flag = try .initFromContent(content) },
+            .void => .{ .void = .fromContent() },
+            .integer => .{ .integer = try .fromContent(content) },
+            .decimal => .{ .decimal = try .fromContent(content) },
+            .flag => .{ .flag = try .fromContent(content) },
             .string => .{ .string = try .initFromContent(allocator, content) },
             .point => .{ .point = try .initFromContent(allocator, content) },
 

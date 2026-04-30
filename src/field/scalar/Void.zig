@@ -10,7 +10,7 @@ const Void = @This();
 
 const std = @import("std");
 
-pub fn initFromContent() Void {
+pub fn fromContent() Void {
     return .{};
 }
 
@@ -31,7 +31,7 @@ pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) void {
 }
 
 test "Void" {
-    var s: Void = .initFromContent();
+    var s: Void = .fromContent();
 
     try std.testing.expectEqual(void{}, s.get());
     try std.testing.expect(s.len() == 0);

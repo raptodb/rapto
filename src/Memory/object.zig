@@ -195,10 +195,10 @@ pub const Field = struct {
     ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!Field {
         return .{
             .value = switch (field_type) {
-                .void => .{ .void = .initFromContent() },
-                .integer => .{ .integer = try .initFromContent(content) },
-                .decimal => .{ .decimal = try .initFromContent(content) },
-                .flag => .{ .flag = try .initFromContent(content) },
+                .void => .{ .void = .fromContent() },
+                .integer => .{ .integer = try .fromContent(content) },
+                .decimal => .{ .decimal = try .fromContent(content) },
+                .flag => .{ .flag = try .fromContent(content) },
                 .string => .{ .string = try .initFromContent(allocator, content) },
                 .point => .{ .point = try .initFromContent(allocator, content) },
                 .list => .{ .list = try .initFromContent(allocator, content) },

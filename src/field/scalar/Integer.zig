@@ -14,12 +14,12 @@ const std = @import("std");
 
 raw: [8]u8 = undefined,
 
-pub fn initFromContent(content: []const u8) error{MismatchType}!Integer {
+pub fn fromContent(content: []const u8) error{MismatchType}!Integer {
     if (content.len != 8) return error.MismatchType;
     return .{ .raw = content[0..8].* };
 }
 
-pub fn initFromValue(value: i64) Integer {
+pub fn fromValue(value: i64) Integer {
     var raw: [8]u8 = undefined;
     std.mem.writeInt(i64, &raw, value, .little);
     return .{ .raw = raw };
@@ -28,10 +28,6 @@ pub fn initFromValue(value: i64) Integer {
 pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
     self.raw = content[0..8].*;
-}
-
-pub fn getContent(self: Integer) []const u8 {
-    return self.raw[0..];
 }
 
 pub fn get(self: Integer) i64 {
@@ -58,7 +54,7 @@ test "Integer" {
     var test_writer: std.Io.Writer = .fixed(&buf);
 
     try test_writer.writeInt(i64, 100, .little);
-    var s: Integer = try .initFromContent(&buf);
+    var s: Integer = try .fromContent(&buf);
 
     try std.testing.expect(s.get() == 100);
     try std.testing.expect(s.len() == 8);
