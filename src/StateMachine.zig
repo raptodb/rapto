@@ -22,7 +22,7 @@ memory: *Memory,
 pub const FatalError = error{
     // When command received from execute is DOWN
     Shutdown,
-} || std.mem.Allocator.Error || std.Io.Writer.Error || CommandError;
+} || std.mem.Allocator.Error || std.Io.Writer.Error;
 
 /// Union of all errors can be returned from any
 /// functions of commands. Fatal errors as Shutdown
@@ -38,6 +38,7 @@ pub const CommandError = error{
     MismatchFlag,
     MathOverflow,
     RangeOverflow,
+    MapKeyNotFound,
 };
 
 pub fn init(
@@ -57,7 +58,7 @@ pub fn execute(
     const start_offset = writer.end;
 
     // zig fmt: off
-    const maybe_error: CommandError!void = switch (query.command) {
+    const maybe_error: (FatalError || CommandError)!void = switch (query.command) {
         .PING   => self.ping(writer, query),
 
         // CRUD operations
