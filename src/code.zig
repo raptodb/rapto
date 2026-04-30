@@ -7,23 +7,23 @@
 
 const std = @import("std");
 
-const ExecuteError = @import("StateMachine.zig").Error;
+const CommandError = @import("StateMachine.zig").CommandError;
 const ParseError = @import("Task.zig").Query.Error;
 
 pub const Code = enum(u8) {
     // Success (0-99)
     OK = 0,
 
-    // Execute errors from StateMachine (100-199)
-    ExecuteKeyNotFound = 100,
-    ExecuteInvalidKey,
-    ExecuteInvalidFormat,
-    ExecuteMissingTokens,
-    ExecuteMismatchType,
-    ExecuteUnknownType,
-    ExecuteMismatchFlag,
-    ExecuteMathOverflow,
-    ExecuteRangeOverflow,
+    // Command errors from StateMachine (100-199)
+    CommandKeyNotFound = 100,
+    CommandInvalidKey,
+    CommandInvalidFormat,
+    CommandMissingTokens,
+    CommandMismatchType,
+    CommandUnknownType,
+    CommandMismatchFlag,
+    CommandMathOverflow,
+    CommandRangeOverflow,
 
     // Parse errors from Query (200+)
     ParseUnknownCommand = 200,
@@ -31,21 +31,21 @@ pub const Code = enum(u8) {
     ParseInvalidFormat,
 };
 
-pub fn writeCode(writer: *std.Io.Writer, code: Code) error{WriteFailed}!void {
+pub fn writeCode(writer: *std.Io.Writer, code: Code) std.Io.Writer.Error!void {
     return writer.writeByte(@intFromEnum(code));
 }
 
-pub fn fromExecuteError(err: ExecuteError) Code {
+pub fn fromCommandError(err: CommandError) Code {
     return switch (err) {
-        error.KeyNotFound => .ExecuteKeyNotFound,
-        error.InvalidKey => .ExecuteInvalidKey,
-        error.InvalidFormat => .ExecuteInvalidFormat,
-        error.MissingTokens => .ExecuteMissingTokens,
-        error.MismatchType => .ExecuteMismatchType,
-        error.UnknownType => .ExecuteUnknownType,
-        error.MismatchFlag => .ExecuteMismatchFlag,
-        error.MathOverflow => .ExecuteMathOverflow,
-        error.RangeOverflow => .ExecuteRangeOverflow,
+        error.KeyNotFound => .CommandKeyNotFound,
+        error.InvalidKey => .CommandInvalidKey,
+        error.InvalidFormat => .CommandInvalidFormat,
+        error.MissingTokens => .CommandMissingTokens,
+        error.MismatchType => .CommandMismatchType,
+        error.UnknownType => .CommandUnknownType,
+        error.MismatchFlag => .CommandMismatchFlag,
+        error.MathOverflow => .CommandMathOverflow,
+        error.RangeOverflow => .CommandRangeOverflow,
     };
 }
 

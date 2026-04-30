@@ -29,7 +29,7 @@ pub const ScalarItem = union(enum) {
         allocator: std.mem.Allocator,
         field_type: Types,
         content: []const u8,
-    ) error{ OutOfMemory, MismatchType, InvalidFormat }!ScalarItem {
+    ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarItem {
         return switch (field_type) {
             .void => .{ .void = .initFromContent() },
             .integer => .{ .integer = try .initFromContent(content) },
@@ -38,7 +38,7 @@ pub const ScalarItem = union(enum) {
             .string => .{ .string = try .initFromContent(allocator, content) },
             .point => .{ .point = try .initFromContent(allocator, content) },
 
-            // when field type is not a scalar
+            // Collection type is not supported.
             else => {
                 @branchHint(.unlikely);
                 return error.MismatchType;
@@ -62,7 +62,7 @@ pub const ScalarItem = union(enum) {
     pub fn serializeToWriter(
         self: ScalarItem,
         writer: *std.Io.Writer,
-    ) error{WriteFailed}!void {
+    ) std.Io.Writer.Error!void {
         try self.type().serializeToWriter(writer);
         try self.serializeContentToWriter(writer);
     }
@@ -70,7 +70,7 @@ pub const ScalarItem = union(enum) {
     pub fn serializeContentToWriter(
         self: ScalarItem,
         writer: *std.Io.Writer,
-    ) error{WriteFailed}!void {
+    ) std.Io.Writer.Error!void {
         return switch (self) {
             .void => self.void.serializeContentToWriter(writer),
             .integer => self.integer.serializeContentToWriter(writer),

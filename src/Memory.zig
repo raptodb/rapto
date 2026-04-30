@@ -25,17 +25,24 @@ pub fn init(allocator: std.mem.Allocator) Memory {
 pub fn deinit(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+        deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
     self.map.deinit(self.allocator);
 }
+
+pub const PutError = error{
+    InvalidKey,
+    InvalidFormat,
+    MismatchType,
+    UnknownType,
+} || std.mem.Allocator.Error;
 
 pub fn put(
     self: *Memory,
     key: []const u8,
     field_type: field.Types,
     content: []const u8,
-) error{ OutOfMemory, InvalidKey, InvalidFormat, MismatchType, UnknownType }!object.Ref {
+) PutError!object.Ref {
     const entry = try self.map.getOrPutAdapted(
         self.allocator,
         key,
@@ -49,7 +56,7 @@ pub fn put(
     } else {
         errdefer self.map.removeByPtr(entry.key_ptr);
 
-        entry.key_ptr.*, entry.value_ptr.* = try initRef(
+        entry.key_ptr.*, entry.value_ptr.* = try initPair(
             self.allocator,
             key,
             field_type,
@@ -71,7 +78,7 @@ pub fn search(self: *Memory, key: []const u8) ?object.Ref {
 pub fn remove(self: *Memory, key: []const u8) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
     self.map.removeByPtr(ref.key_ptr);
-    deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+    deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
 }
 
 pub fn count(self: *const Memory) u64 {
@@ -81,7 +88,7 @@ pub fn count(self: *const Memory) u64 {
 pub fn clear(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+        deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
 
     self.map.clearRetainingCapacity();
@@ -90,7 +97,7 @@ pub fn clear(self: *Memory) void {
 pub fn free(self: *Memory) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitRef(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+        deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
 
     self.map.clearAndFree(self.allocator);
@@ -148,26 +155,20 @@ const Map = std.HashMapUnmanaged(
     65,
 );
 
-fn initRef(
+fn initPair(
     allocator: std.mem.Allocator,
     key: []const u8,
     field_type: field.Types,
     content: []const u8,
-) error{
-    OutOfMemory,
-    InvalidKey,
-    InvalidFormat,
-    MismatchType,
-    UnknownType,
-}!struct { object.Key, object.Field } {
-    const ref_key: object.Key = try .init(allocator, key, field_type);
-    errdefer ref_key.deinit(allocator);
-    const ref_value: object.Field = try .init(allocator, field_type, content);
+) PutError!struct { object.Key, object.Field } {
+    const pair_key: object.Key = try .init(allocator, key, field_type);
+    errdefer pair_key.deinit(allocator);
+    const pair_value: object.Field = try .init(allocator, field_type, content);
 
-    return .{ ref_key, ref_value };
+    return .{ pair_key, pair_value };
 }
 
-fn deinitRef(allocator: std.mem.Allocator, key: object.Key, value: object.Field) void {
+fn deinitPair(allocator: std.mem.Allocator, key: object.Key, value: object.Field) void {
     key.deinit(allocator);
     value.deinit(allocator, key.getFieldType());
 }

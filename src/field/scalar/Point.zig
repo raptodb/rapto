@@ -34,7 +34,7 @@ value: *Axis,
 pub fn initFromContent(
     allocator: std.mem.Allocator,
     content: []const u8,
-) error{ OutOfMemory, InvalidFormat, MismatchType }!Point {
+) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType })!Point {
     const axis_ptr = try allocator.create(Axis);
     errdefer allocator.destroy(axis_ptr);
 
@@ -68,7 +68,7 @@ pub fn translate(self: Point, delta: Axis) error{MathOverflow}!void {
     try self.value.z.add(dz);
 }
 
-pub fn serializeContentToWriter(self: Point, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: Point, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try self.value.x.serializeContentToWriter(writer);
     try self.value.y.serializeContentToWriter(writer);
     try self.value.z.serializeContentToWriter(writer);

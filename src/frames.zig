@@ -43,7 +43,7 @@ pub fn BuilderType(comptime PrefixType: type) type {
         writer: *std.Io.Writer,
         begin_offset: u64,
 
-        pub fn begin(writer: *std.Io.Writer) error{WriteFailed}!Self {
+        pub fn begin(writer: *std.Io.Writer) std.Io.Writer.Error!Self {
             const header_offset = writer.end;
             try writer.writeInt(PrefixType, 0, .little);
             return .{ .writer = writer, .begin_offset = header_offset };

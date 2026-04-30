@@ -22,7 +22,7 @@ value: *std.ArrayList(ScalarItem),
 pub fn initFromContent(
     allocator: std.mem.Allocator,
     content: []const u8,
-) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!List {
+) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!List {
     const list_ptr = try allocator.create(std.ArrayList(ScalarItem));
     errdefer allocator.destroy(list_ptr);
 
@@ -37,7 +37,7 @@ pub fn insert(
     allocator: std.mem.Allocator,
     index: u64,
     serialized: []const u8,
-) error{ OutOfMemory, MismatchType, InvalidFormat, UnknownType }!void {
+) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, UnknownType })!void {
     const field_type, const content = try field.splitSerialized(serialized);
 
     switch (field_type) {
@@ -66,7 +66,7 @@ fn insertItem(
     allocator: std.mem.Allocator,
     index: u64,
     item: ScalarItem,
-) error{ OutOfMemory, MismatchType, InvalidFormat }!void {
+) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!void {
     return if (index >= self.count())
         self.value.append(allocator, item)
     else
@@ -78,7 +78,7 @@ pub fn set(
     self: *List,
     allocator: std.mem.Allocator,
     serialized: []const u8,
-) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
+) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
     self.removeAll(allocator);
     try appendSerializedList(self.value, allocator, serialized);
 }
@@ -88,7 +88,7 @@ pub fn setByIndex(
     allocator: std.mem.Allocator,
     index: u64,
     serialized: []const u8,
-) error{ OutOfMemory, InvalidFormat, MismatchType, RangeOverflow, UnknownType }!void {
+) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, RangeOverflow, UnknownType })!void {
     if (index >= self.count()) return error.RangeOverflow;
 
     const field_type, const content = try field.splitSerialized(serialized);
@@ -124,7 +124,7 @@ pub fn indexOfItemInRange(
     serialized: []const u8,
     from_index: u64,
     to_index: u64,
-) error{ OutOfMemory, MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType }!u64 {
+) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType })!u64 {
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
 
     const field_type, const content = try field.splitSerialized(serialized);
@@ -144,7 +144,7 @@ pub fn indexOfItem(
     self: List,
     allocator: std.mem.Allocator,
     serialized: []const u8,
-) error{ OutOfMemory, MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType }!u64 {
+) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType })!u64 {
     if (self.count() == 0) return error.ItemNotFound;
     return self.indexOfItemInRange(
         allocator,
@@ -195,7 +195,7 @@ pub fn serializeContentInRangeToWriter(
     }
 }
 
-pub fn serializeContentToWriter(self: List, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: List, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const length = self.count();
     if (length == 0) return;
     return self.serializeContentInRangeToWriter(writer, 0, length - 1) catch |err| switch (err) {
@@ -214,7 +214,7 @@ fn appendSerializedList(
     items: *std.ArrayList(ScalarItem),
     allocator: std.mem.Allocator,
     serialized_list: []const u8,
-) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
+) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
     var iterator = try serializedItemsIterator(serialized_list);
 
     while (iterator.next()) |serialized_field| {

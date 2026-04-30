@@ -20,7 +20,9 @@ pub fn initFromContent(content: []const u8) error{MismatchType}!Integer {
 }
 
 pub fn initFromValue(value: i64) Integer {
-    return .{ .raw = @bitCast(value) };
+    var raw: [8]u8 = undefined;
+    std.mem.writeInt(i64, &raw, value, .little);
+    return .{ .raw = raw };
 }
 
 pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
@@ -45,7 +47,7 @@ pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
     std.mem.writeInt(i64, self.raw[0..], updated_value, .little);
 }
 
-pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll(self.raw[0..]);
 }
 

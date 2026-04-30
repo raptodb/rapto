@@ -51,7 +51,7 @@ pub fn isApproxEqualTo(self: Decimal, value: f64) bool {
     return std.math.approxEqAbs(f64, self.get(), value, 1e-12);
 }
 
-pub fn serializeContentToWriter(self: Decimal, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: Decimal, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll(self.raw[0..]);
 }
 

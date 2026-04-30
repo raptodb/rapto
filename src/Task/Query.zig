@@ -40,7 +40,7 @@ pub const Command = enum(u8) {
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
     }
 
-    fn serializeToWriter(self: Command, writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeToWriter(self: Command, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeByte(@intFromEnum(self));
     }
 };
@@ -125,7 +125,7 @@ pub fn serializeToWriter(
     command: Query.Command,
     flags: Query.Flags,
     args: []const []const u8,
-) error{WriteFailed}!void {
+) std.Io.Writer.Error!void {
     try command.serializeToWriter(writer);
 
     {

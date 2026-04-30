@@ -56,7 +56,7 @@ pub fn len(_: Flag) u64 {
     return @sizeOf(u64);
 }
 
-pub fn serializeContentToWriter(self: Flag, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: Flag, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeInt(u64, @intFromEnum(self.value), .little);
 }
 

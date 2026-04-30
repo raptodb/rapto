@@ -56,7 +56,7 @@ pub const By = struct {
         };
     }
 
-    fn serializeContentToWriter(self: @This(), writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeContentToWriter(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.value) {
             .any => {},
             .index => |value| try value.serializeToWriter(writer),
@@ -82,7 +82,7 @@ pub const Bool = struct {
         return .init(n != 0);
     }
 
-    fn serializeToWriter(self: Bool, writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeToWriter(self: Bool, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeInt(u8, @intFromBool(self.value), .little);
     }
 };
@@ -113,7 +113,7 @@ pub const Range = struct {
         return .init(from_param, to_param);
     }
 
-    fn serializeToWriter(self: Range, writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeToWriter(self: Range, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try self.value.from.serializeToWriter(writer);
         try self.value.to.serializeToWriter(writer);
     }
@@ -134,7 +134,7 @@ pub const Unsigned = struct {
         return .init(try take(reader, u32));
     }
 
-    fn serializeToWriter(self: Unsigned, writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeToWriter(self: Unsigned, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeInt(u32, self.value, .little);
     }
 };
@@ -156,7 +156,7 @@ pub const String = struct {
         return .init(str);
     }
 
-    fn serializeToWriter(self: String, writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeToWriter(self: String, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeInt(u32, @truncate(self.value.len), .little);
         return writer.writeAll(self.value);
     }
@@ -176,12 +176,15 @@ const Tag = enum(u8) {
         return std.enums.fromInt(Tag, int) orelse error.UnknownFlag;
     }
 
-    fn serializeToWriter(self: Tag, writer: *std.Io.Writer) error{WriteFailed}!void {
+    fn serializeToWriter(self: Tag, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeByte(@intFromEnum(self));
     }
 };
 
-pub fn parseFromReader(reader: *std.Io.Reader, length: u32) error{ UnknownFlag, InvalidFormat }!Flags {
+pub fn parseFromReader(
+    reader: *std.Io.Reader,
+    length: u32,
+) error{ UnknownFlag, InvalidFormat }!Flags {
     var self: Flags = .{};
 
     const start = reader.seek;
@@ -228,7 +231,7 @@ pub fn isEqualTo(self: Flags, flags: Flags) bool {
     };
 }
 
-pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     inline for (std.meta.fields(Flags)) |field| {
         const flag = @field(self, field.name);
 

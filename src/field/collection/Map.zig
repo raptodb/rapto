@@ -48,7 +48,7 @@ pub const KeyString = struct {
         return self.str;
     }
 
-    pub fn serializeToWriter(self: KeyString, writer: *std.Io.Writer) error{WriteFailed}!void {
+    pub fn serializeToWriter(self: KeyString, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return field.serializeToWriter(writer, .string, self.get());
     }
 };
@@ -71,7 +71,7 @@ pub fn set(
     self: *Map,
     allocator: std.mem.Allocator,
     content: []const u8,
-) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
+) (std.mem.Allocator.Error || error{ UnknownType, InvalidFormat, MismatchType })!void {
     self.removeAll(allocator);
     try putSerializedMap(self.value, allocator, content);
 }
@@ -83,7 +83,7 @@ pub fn put(
     allocator: std.mem.Allocator,
     serialized_key: []const u8,
     serialized_value: []const u8,
-) error{ OutOfMemory, MismatchType, InvalidFormat, UnknownType }!void {
+) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, UnknownType })!void {
     const key_type, const key_content = try field.splitSerialized(serialized_key);
     if (key_type != .string) return error.MismatchType;
     const key: KeyString = .init(key_content);
@@ -162,7 +162,7 @@ pub fn deinit(self: Map, allocator: std.mem.Allocator) void {
     allocator.destroy(self.value);
 }
 
-pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try field.Types.serializeToWriter(.list, writer);
     var iterator = self.value.keyIterator();
     while (iterator.next()) |key| {
@@ -172,7 +172,7 @@ pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) error{WriteFaile
     }
 }
 
-pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try field.Types.serializeToWriter(.list, writer);
     var iterator = self.value.valueIterator();
     while (iterator.next()) |item| {
@@ -182,7 +182,7 @@ pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) error{WriteFai
     }
 }
 
-pub fn serializeContentToWriter(self: Map, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: Map, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     var iterator = self.get();
     while (iterator.next()) |pair| {
         {
@@ -202,7 +202,7 @@ fn putSerializedMap(
     items: *HashMap,
     allocator: std.mem.Allocator,
     serialized: []const u8,
-) error{ OutOfMemory, UnknownType, InvalidFormat, MismatchType }!void {
+) (std.mem.Allocator.Error || error{ UnknownType, InvalidFormat, MismatchType })!void {
     var iterator = try serializedEntriesIterator(serialized);
     const self: Map = .{ .value = items };
 

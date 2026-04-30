@@ -48,7 +48,7 @@ pub fn serializeToWriter(
     writer: *std.Io.Writer,
     field_type: Types,
     content: []const u8,
-) error{WriteFailed}!void {
+) std.Io.Writer.Error!void {
     try field_type.serializeToWriter(writer);
     try writer.writeAll(content);
 }
@@ -73,7 +73,7 @@ pub const Types = enum(u3) {
         return std.enums.fromInt(Types, int) orelse error.UnknownType;
     }
 
-    pub fn serializeToWriter(self: Types, writer: *std.Io.Writer) error{WriteFailed}!void {
+    pub fn serializeToWriter(self: Types, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeByte(@intFromEnum(self));
     }
 };

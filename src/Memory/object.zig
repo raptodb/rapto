@@ -38,13 +38,13 @@ pub const Key = struct {
     /// Tag encodes field type.
     ptr: TaggedPointer([*:0]align(pointer_alignment.toByteUnits()) u8) = undefined,
 
-    /// Initializes key by duplicating it. Assumes key is sentinel-terminated with 0.
-    /// The validity of key is checked.
+    /// Initializes key by duplicating it. Assumes key is
+    /// sentinel-terminated with 0. The validity of key is checked.
     pub fn init(
         allocator: std.mem.Allocator,
         key: []const u8,
         field_type: field.Types,
-    ) error{ OutOfMemory, InvalidKey }!Key {
+    ) (std.mem.Allocator.Error || error{InvalidKey})!Key {
         assert(key.len > 0);
 
         // The key must not contatins the sentinel byte.
@@ -76,7 +76,7 @@ pub const Key = struct {
         self: *Key,
         allocator: std.mem.Allocator,
         key: []const u8,
-    ) error{ OutOfMemory, InvalidKey }!void {
+    ) (std.mem.Allocator.Error || error{InvalidKey})!void {
         assert(key.len > 0);
         // The key must not contatins the sentinel byte.
         // Sentinel byte is appended in this function.
@@ -192,7 +192,7 @@ pub const Field = struct {
         allocator: std.mem.Allocator,
         field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!Field {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!Field {
         return .{
             .value = switch (field_type) {
                 .void => .{ .void = .initFromContent() },
@@ -212,7 +212,7 @@ pub const Field = struct {
         allocator: std.mem.Allocator,
         field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         return switch (field_type) {
             .void => self.value.void.set(),
             .integer => self.value.integer.set(content),
@@ -231,7 +231,7 @@ pub const Field = struct {
         old_field_type: field.Types,
         new_field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         // deallocate previous field first
         self.deinit(allocator, old_field_type);
 
@@ -270,7 +270,7 @@ pub const Field = struct {
         self: Field,
         writer: *std.Io.Writer,
         field_type: field.Types,
-    ) error{WriteFailed}!void {
+    ) std.Io.Writer.Error!void {
         return switch (field_type) {
             .void => self.value.void.serializeContentToWriter(writer),
             .integer => self.value.integer.serializeContentToWriter(writer),
@@ -300,7 +300,7 @@ pub const Ref = struct {
     key_ptr: *Key,
     value_ptr: *Field,
 
-    /// Wraps pointers to Key and field into Ref. Does not take ownership.
+    /// Wraps pointers from Key and Field into Ref. Does not take ownership.
     pub fn wrap(key_ptr: *Key, value_ptr: *Field) Ref {
         return .{ .key_ptr = key_ptr, .value_ptr = value_ptr };
     }
@@ -314,13 +314,12 @@ pub const Ref = struct {
         comptime field_type: field.Types,
     ) Field.Value.ReturnType(field_type) {
         assert(self.type() == field_type);
-
         return self.value_ptr.get(field_type);
     }
 
-    /// Returns pointer to the field value. Used to access directly
-    /// in the field without copying and for in-place and SPECIFIC operations.
-    /// Use it with caution !!!
+    /// Returns pointer to the field value. Used
+    /// to access directly in the field without
+    /// copying and for in-place and SPECIFIC operations.
     pub inline fn valuePtr(
         self: *const Ref,
         comptime field_type: field.Types,
@@ -332,7 +331,7 @@ pub const Ref = struct {
         self: *const Ref,
         allocator: std.mem.Allocator,
         new_key: []const u8,
-    ) error{ OutOfMemory, InvalidKey }!void {
+    ) (std.mem.Allocator.Error || error{InvalidKey})!void {
         try self.key_ptr.set(allocator, new_key);
     }
 
@@ -344,7 +343,7 @@ pub const Ref = struct {
         allocator: std.mem.Allocator,
         field_type: field.Types,
         content: []const u8,
-    ) error{ OutOfMemory, InvalidFormat, MismatchType, UnknownType }!void {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         const current_field_type = self.type();
 
         if (field_type != current_field_type) {
@@ -367,7 +366,7 @@ pub const Ref = struct {
     pub fn serializeToWriter(
         self: Ref,
         writer: *std.Io.Writer,
-    ) error{WriteFailed}!void {
+    ) std.Io.Writer.Error!void {
         const field_type = self.type();
         try field_type.serializeToWriter(writer);
         try self.value_ptr.serializeContentToWriter(writer, field_type);
@@ -378,7 +377,7 @@ pub const Ref = struct {
     pub fn serializeContentToWriter(
         self: Ref,
         writer: *std.Io.Writer,
-    ) error{WriteFailed}!void {
+    ) std.Io.Writer.Error!void {
         const field_type = self.type();
         try self.value_ptr.serializeContentToWriter(writer, field_type);
     }

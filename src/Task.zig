@@ -48,7 +48,7 @@ pub fn iterator(self: *const Task) Iterator {
 
 const Hasher = std.hash.crc.Crc32Iscsi;
 
-pub fn serializeToWriter(self: *const Task, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeToWriter(self: *const Task, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const hasher_instance: Hasher = .init();
     var hashed_writer: std.Io.Writer.Hashed(Hasher) = .initHasher(
         writer,
@@ -110,8 +110,8 @@ test "Task" {
     }
 
     const pipeline = try allocator.dupe(u8, writer.buffered());
-    const task: Task = .init(pipeline, std.Io.Timestamp.now(io, .awake));
     defer allocator.free(pipeline);
+    const task: Task = .init(pipeline, std.Io.Timestamp.now(io, .awake));
 
     try std.testing.expect(task.timestamp != 0);
 

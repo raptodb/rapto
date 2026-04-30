@@ -19,7 +19,7 @@ pub const Header: type = u32;
 pub fn initFromContent(
     allocator: std.mem.Allocator,
     content: []const u8,
-) error{OutOfMemory}!String {
+) std.mem.Allocator.Error!String {
     const str = try allocator.alloc(u8, @sizeOf(Header) + content.len);
     std.mem.writeInt(Header, str[0..@sizeOf(Header)], @truncate(content.len), .little);
     @memcpy(str[@sizeOf(Header)..], content);
@@ -31,7 +31,7 @@ pub fn set(
     self: *String,
     allocator: std.mem.Allocator,
     content: []const u8,
-) error{OutOfMemory}!void {
+) std.mem.Allocator.Error!void {
     const length = self.len();
 
     // content.len is never over std.math.maxInt(u32).
@@ -72,7 +72,7 @@ pub fn deinit(self: String, allocator: std.mem.Allocator) void {
     allocator.free(self.ptr[0 .. @sizeOf(Header) + self.len()]);
 }
 
-pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) error{WriteFailed}!void {
+pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll(self.get());
 }
 

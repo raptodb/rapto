@@ -19,11 +19,16 @@ const Query = @import("Task.zig").Query;
 
 memory: *Memory,
 
+pub const FatalError = error{
+    // When command received from execute is DOWN
+    Shutdown,
+} || std.mem.Allocator.Error || std.Io.Writer.Error || CommandError;
+
 /// Union of all errors can be returned from any
 /// functions of commands. Fatal errors as Shutdown
 /// or OutOfMemory (as WriteFailed assuming writer
 /// is from Allocating) are excluded.
-pub const Error = error{
+pub const CommandError = error{
     KeyNotFound,
     InvalidKey,
     InvalidFormat,
@@ -48,11 +53,11 @@ pub fn execute(
     self: StateMachine,
     writer: *std.Io.Writer, // Output: maybe Allocating
     query: *const Query, // Input
-) error{ OutOfMemory, Shutdown, WriteFailed }!void {
+) FatalError!void {
     const start_offset = writer.end;
 
     // zig fmt: off
-    const maybe_error = switch (query.command) {
+    const maybe_error: CommandError!void = switch (query.command) {
         .PING   => self.ping(writer, query),
 
         // CRUD operations
@@ -76,7 +81,7 @@ pub fn execute(
     var status_code: code.Code = .OK;
 
     maybe_error catch |err| switch (err) {
-        else => status_code = code.fromExecuteError(@errorCast(err)),
+        else => status_code = code.fromCommandError(@errorCast(err)),
         // Fatal errors are returned directly and handled outside.
         error.OutOfMemory,
         error.WriteFailed,
