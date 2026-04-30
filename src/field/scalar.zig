@@ -7,7 +7,7 @@
 
 const std = @import("std");
 
-const Types = @import("../field.zig").Types;
+const Type = @import("../field.zig").Type;
 
 pub const Void = @import("scalar/Void.zig");
 pub const Integer = @import("scalar/Integer.zig");
@@ -29,7 +29,7 @@ pub const ScalarItem = union(enum) {
 
     pub fn fromContent(
         allocator: std.mem.Allocator,
-        field_type: Types,
+        field_type: Type,
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarItem {
         return switch (field_type) {
@@ -83,11 +83,11 @@ pub const ScalarItem = union(enum) {
         };
     }
 
-    pub fn @"type"(self: ScalarItem) Types {
+    pub fn @"type"(self: ScalarItem) Type {
         const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
-        // this enum is always a subset with less quantity of Types,
+        // this enum is always a subset with less quantity of Type,
         // so the conversion is always possible
-        return Types.fromInt(self_int_enum) catch unreachable;
+        return Type.fromInt(self_int_enum) catch unreachable;
     }
 
     /// Deallocated field. Assumes the field is initializated.

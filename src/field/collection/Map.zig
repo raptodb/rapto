@@ -163,7 +163,7 @@ pub fn deinit(self: Map, allocator: std.mem.Allocator) void {
 }
 
 pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    try field.Types.serializeToWriter(.list, writer);
+    try field.Type.serializeToWriter(.list, writer);
     var iterator = self.value.keyIterator();
     while (iterator.next()) |key| {
         var builder: frames.Builder = try .begin(writer);
@@ -173,7 +173,7 @@ pub fn serializeKeysToWriter(self: Map, writer: *std.Io.Writer) std.Io.Writer.Er
 }
 
 pub fn serializeValuesToWriter(self: Map, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    try field.Types.serializeToWriter(.list, writer);
+    try field.Type.serializeToWriter(.list, writer);
     var iterator = self.value.valueIterator();
     while (iterator.next()) |item| {
         var builder: frames.Builder = try .begin(writer);
@@ -246,7 +246,7 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
     errdefer allocating.deinit();
     var writer = &allocating.writer;
 
-    try field.Types.serializeToWriter(.map, writer);
+    try field.Type.serializeToWriter(.map, writer);
 
     for (entries) |entry| {
         {
@@ -335,7 +335,7 @@ test "Map" {
     });
     defer allocator.free(serialized_all);
 
-    try std.testing.expect(serialized_all[0] == @intFromEnum(field.Types.map));
+    try std.testing.expect(serialized_all[0] == @intFromEnum(field.Type.map));
 
     var m: Map = try .initFromContent(allocator, serialized_all);
     defer m.deinit(allocator);
@@ -392,14 +392,14 @@ test "Map" {
         var al: std.Io.Writer.Allocating = .init(allocator);
         defer al.deinit();
         try m.serializeKeysToWriter(&al.writer);
-        try std.testing.expect(al.written()[0] == @intFromEnum(field.Types.list));
+        try std.testing.expect(al.written()[0] == @intFromEnum(field.Type.list));
     }
 
     {
         var al: std.Io.Writer.Allocating = .init(allocator);
         defer al.deinit();
         try m.serializeValuesToWriter(&al.writer);
-        try std.testing.expect(al.written()[0] == @intFromEnum(field.Types.list));
+        try std.testing.expect(al.written()[0] == @intFromEnum(field.Type.list));
     }
 
     const serialized_small = try serializeEntries(allocator, &.{
@@ -430,7 +430,7 @@ test "Map" {
     {
         var al: std.Io.Writer.Allocating = .init(allocator);
         defer al.deinit();
-        try field.Types.serializeToWriter(.map, &al.writer);
+        try field.Type.serializeToWriter(.map, &al.writer);
         try m.serializeContentToWriter(&al.writer);
         const roundtrip_buf = try al.toOwnedSlice();
         defer allocator.free(roundtrip_buf);

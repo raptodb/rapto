@@ -14,7 +14,7 @@ const field = @import("field.zig");
 const frames = @import("frames.zig");
 const assert = std.debug.assert;
 
-const Types = field.Types;
+const Type = field.Type;
 const Memory = @import("Memory.zig");
 const Query = @import("Task.zig").Query;
 
@@ -141,7 +141,7 @@ fn get(self: StateMachine, writer: *std.Io.Writer, query: *const Query) !void {
         },
         .range => |range| switch (field_type) {
             .list => {
-                try Types.serializeToWriter(.list, writer);
+                try Type.serializeToWriter(.list, writer);
                 try ref.valuePtr(.list).serializeContentInRangeToWriter(
                     writer,
                     range.from().get(),

@@ -43,7 +43,7 @@ pub const Key = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         key: []const u8,
-        field_type: field.Types,
+        field_type: field.Type,
     ) (std.mem.Allocator.Error || error{InvalidKey})!Key {
         assert(key.len > 0);
 
@@ -63,7 +63,7 @@ pub const Key = struct {
     /// is used mostly under tests. Assumes key is sentinel-terminated with 0.
     fn fromSlice(
         key: [:0]align(pointer_alignment.toByteUnits()) const u8,
-        field_type: field.Types,
+        field_type: field.Type,
     ) error{InvalidKey}!Key {
         assert(key.len > 0);
 
@@ -122,12 +122,12 @@ pub const Key = struct {
         return key.len == i;
     }
 
-    pub fn getFieldType(self: Key) field.Types {
+    pub fn getFieldType(self: Key) field.Type {
         const tag = self.ptr.getTag();
-        return field.Types.fromInt(tag) catch unreachable;
+        return field.Type.fromInt(tag) catch unreachable;
     }
 
-    pub fn setFieldType(self: *Key, field_type: field.Types) void {
+    pub fn setFieldType(self: *Key, field_type: field.Type) void {
         self.ptr.setTag(@intFromEnum(field_type));
     }
 
@@ -160,7 +160,7 @@ pub const Field = struct {
 
         /// Returns type of the generic get function.
         /// These types are "complex" to exploit zero-copy returns.
-        pub fn ReturnType(comptime field_type: field.Types) type {
+        pub fn ReturnType(comptime field_type: field.Type) type {
             return switch (field_type) {
                 .void => void,
                 .integer => i64,
@@ -174,7 +174,7 @@ pub const Field = struct {
         }
 
         /// Returns the complex type of the field.
-        pub fn UnionType(comptime field_type: field.Types) type {
+        pub fn UnionType(comptime field_type: field.Type) type {
             return switch (field_type) {
                 .void => field.Void,
                 .integer => field.Integer,
@@ -190,7 +190,7 @@ pub const Field = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        field_type: field.Types,
+        field_type: field.Type,
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!Field {
         return .{
@@ -210,7 +210,7 @@ pub const Field = struct {
     pub fn setAsSameType(
         self: *Field,
         allocator: std.mem.Allocator,
-        field_type: field.Types,
+        field_type: field.Type,
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         return switch (field_type) {
@@ -228,8 +228,8 @@ pub const Field = struct {
     pub fn setAsDifferentType(
         self: *Field,
         allocator: std.mem.Allocator,
-        old_field_type: field.Types,
-        new_field_type: field.Types,
+        old_field_type: field.Type,
+        new_field_type: field.Type,
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         // deallocate previous field first
@@ -240,7 +240,7 @@ pub const Field = struct {
     }
 
     /// Limits: get must not allocate memory.
-    pub fn get(self: Field, comptime field_type: field.Types) Value.ReturnType(field_type) {
+    pub fn get(self: Field, comptime field_type: field.Type) Value.ReturnType(field_type) {
         return switch (field_type) {
             .void => self.value.void.get(),
             .integer => self.value.integer.get(),
@@ -253,7 +253,7 @@ pub const Field = struct {
         };
     }
 
-    pub inline fn ptr(self: *Field, field_type: field.Types) *Value.UnionType(field_type) {
+    pub inline fn ptr(self: *Field, field_type: field.Type) *Value.UnionType(field_type) {
         return switch (field_type) {
             .void => &self.value.void,
             .integer => &self.value.integer,
@@ -269,7 +269,7 @@ pub const Field = struct {
     pub fn serializeContentToWriter(
         self: Field,
         writer: *std.Io.Writer,
-        field_type: field.Types,
+        field_type: field.Type,
     ) std.Io.Writer.Error!void {
         return switch (field_type) {
             .void => self.value.void.serializeContentToWriter(writer),
@@ -283,7 +283,7 @@ pub const Field = struct {
         };
     }
 
-    pub fn deinit(self: Field, allocator: std.mem.Allocator, field_type: field.Types) void {
+    pub fn deinit(self: Field, allocator: std.mem.Allocator, field_type: field.Type) void {
         switch (field_type) {
             .void, .integer, .decimal, .flag => {},
             .string => self.value.string.deinit(allocator),
@@ -311,7 +311,7 @@ pub const Ref = struct {
 
     pub fn value(
         self: Ref,
-        comptime field_type: field.Types,
+        comptime field_type: field.Type,
     ) Field.Value.ReturnType(field_type) {
         assert(self.type() == field_type);
         return self.value_ptr.get(field_type);
@@ -322,7 +322,7 @@ pub const Ref = struct {
     /// copying and for in-place and SPECIFIC operations.
     pub inline fn valuePtr(
         self: *const Ref,
-        comptime field_type: field.Types,
+        comptime field_type: field.Type,
     ) *Field.Value.UnionType(field_type) {
         return self.value_ptr.ptr(field_type);
     }
@@ -341,7 +341,7 @@ pub const Ref = struct {
     pub fn setValue(
         self: *const Ref,
         allocator: std.mem.Allocator,
-        field_type: field.Types,
+        field_type: field.Type,
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         const current_field_type = self.type();
@@ -383,7 +383,7 @@ pub const Ref = struct {
     }
 
     /// Returns type of field exploiting tag of pointer to key.
-    pub fn @"type"(self: Ref) field.Types {
+    pub fn @"type"(self: Ref) field.Type {
         return self.key_ptr.getFieldType();
     }
 };

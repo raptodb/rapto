@@ -362,7 +362,7 @@ fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8
     errdefer allocating.deinit();
     const writer = &allocating.writer;
 
-    try field.Types.serializeToWriter(.list, writer);
+    try field.Type.serializeToWriter(.list, writer);
     for (items) |item| {
         var builder: frames.Builder = try .begin(writer);
         defer builder.end();

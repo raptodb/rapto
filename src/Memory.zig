@@ -40,7 +40,7 @@ pub const PutError = error{
 pub fn put(
     self: *Memory,
     key: []const u8,
-    field_type: field.Types,
+    field_type: field.Type,
     content: []const u8,
 ) PutError!object.Ref {
     const entry = try self.map.getOrPutAdapted(
@@ -158,7 +158,7 @@ const Map = std.HashMapUnmanaged(
 fn initPair(
     allocator: std.mem.Allocator,
     key: []const u8,
-    field_type: field.Types,
+    field_type: field.Type,
     content: []const u8,
 ) PutError!struct { object.Key, object.Field } {
     const pair_key: object.Key = try .init(allocator, key, field_type);
