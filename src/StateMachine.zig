@@ -196,22 +196,22 @@ fn update(self: StateMachine, query: *const Query) !void {
     const field_type, const content = try field.splitSerialized(serialized);
     const ref = self.memory.search(key) orelse return error.KeyNotFound;
 
-    if (field_type != ref.type()) return error.Mismatchfield.Type;
+    if (field_type != ref.type()) return error.MismatchType;
 
     switch (field_type) {
         .integer => {
-            const value: field.Integer = try .initFromContent(content);
+            const value: field.Integer = try .fromContent(content);
             try ref.valuePtr(.integer).add(value.get());
         },
         .decimal => {
-            const value: field.Decimal = try .initFromContent(content);
+            const value: field.Decimal = try .fromContent(content);
             try ref.valuePtr(.decimal).add(value.get());
         },
         .point => {
-            const value: field.Point = try .initFromContent(self.memory.allocator, content);
-            try ref.valuePtr(.point).translate(value.get());
+            const value: field.Point.Axis = try .parse(content);
+            try ref.valuePtr(.point).translate(value);
         },
-        .void, .string, .flag, .list, .map => return error.Mismatchfield.Type,
+        .void, .string, .flag, .list, .map => return error.MismatchType,
     }
 }
 
