@@ -14,20 +14,18 @@ const std = @import("std");
 const object = @import("Memory/object.zig");
 const field = @import("field.zig");
 
-allocator: std.mem.Allocator,
-/// Hashmap of items. Internal API should not be used directly.
+/// Hashmap of items. Internal API
+/// should not be used directly.
 map: Map,
 
-pub fn init(allocator: std.mem.Allocator) Memory {
-    return .{ .allocator = allocator, .map = .empty };
-}
+pub const init: Memory = .{ .map = .empty };
 
-pub fn deinit(self: *Memory) void {
+pub fn deinit(self: *Memory, allocator: std.mem.Allocator) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+        deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
-    self.map.deinit(self.allocator);
+    self.map.deinit(allocator);
 }
 
 pub const PutError = error{
@@ -39,12 +37,13 @@ pub const PutError = error{
 
 pub fn put(
     self: *Memory,
+    allocator: std.mem.Allocator,
     key: []const u8,
     field_type: field.Type,
     content: []const u8,
 ) PutError!object.Ref {
     const entry = try self.map.getOrPutAdapted(
-        self.allocator,
+        allocator,
         key,
         SearchContext{},
     );
@@ -52,12 +51,12 @@ pub fn put(
     const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
 
     if (entry.found_existing) {
-        try ref.setValue(self.allocator, field_type, content);
+        try ref.setValue(allocator, field_type, content);
     } else {
         errdefer self.map.removeByPtr(entry.key_ptr);
 
         entry.key_ptr.*, entry.value_ptr.* = try initPair(
-            self.allocator,
+            allocator,
             key,
             field_type,
             content,
@@ -75,32 +74,31 @@ pub fn search(self: *Memory, key: []const u8) ?object.Ref {
 }
 
 /// Removes key from memory. Associated object.Ref will be invalidated.
-pub fn remove(self: *Memory, key: []const u8) error{KeyNotFound}!void {
+pub fn remove(self: *Memory, allocator: std.mem.Allocator, key: []const u8) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
     self.map.removeByPtr(ref.key_ptr);
-    deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+    deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
 }
 
 pub fn count(self: *const Memory) u64 {
     return self.map.count();
 }
 
-pub fn clear(self: *Memory) void {
+pub fn clear(self: *Memory, allocator: std.mem.Allocator) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+        deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
-
     self.map.clearRetainingCapacity();
 }
 
-pub fn free(self: *Memory) void {
+pub fn free(self: *Memory, allocator: std.mem.Allocator) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitPair(self.allocator, ref.key_ptr.*, ref.value_ptr.*);
+        deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
 
-    self.map.clearAndFree(self.allocator);
+    self.map.clearAndFree(allocator);
 }
 
 pub const Iterator = struct {
