@@ -19,52 +19,71 @@ pub const ExtendedIterator = IteratorType(u64);
 pub const Builder = BuilderType(u32);
 pub const ExtendedBuilder = BuilderType(u64);
 
-pub fn IteratorType(comptime PrefixType: type) type {
+pub fn IteratorType(comptime HeaderType: type) type {
     return struct {
         const Self = @This();
 
-        reader: std.Io.Reader,
+        frames: []const u8,
+        seek: usize,
 
         pub fn init(frames: []const u8) Self {
-            return .{ .reader = .fixed(frames) };
+            return .{ .frames = frames, .seek = 0 };
         }
 
         pub fn next(self: *Self) ?[]const u8 {
-            const len = self.reader.takeInt(PrefixType, .little) catch return null;
-            return self.reader.take(len) catch return null;
+            const header_size = @sizeOf(HeaderType);
+
+            if (self.remaining() < header_size) return null;
+            const len = std.mem.readInt(
+                HeaderType,
+                self.frames[self.seek .. self.seek + header_size][0..header_size],
+                .little,
+            );
+            self.seek += header_size;
+
+            if (self.remaining() < len) return null;
+            const content = self.frames[self.seek .. self.seek + len];
+            self.seek += len;
+
+            return content;
+        }
+
+        fn remaining(self: Self) usize {
+            return self.frames.len - self.seek;
         }
     };
 }
 
-pub fn BuilderType(comptime PrefixType: type) type {
+pub fn BuilderType(comptime HeaderType: type) type {
     return struct {
         const Self = @This();
 
         writer: *std.Io.Writer,
-        begin_offset: u64,
+        begin_offset: usize,
 
         pub fn begin(writer: *std.Io.Writer) std.Io.Writer.Error!Self {
             const header_offset = writer.end;
-            try writer.writeInt(PrefixType, 0, .little);
+            try writer.writeInt(HeaderType, 0, .little);
             return .{ .writer = writer, .begin_offset = header_offset };
         }
 
-        pub fn end(self: *Self) void {
-            assert(self.writer.buffer.len >= @sizeOf(PrefixType));
-            assert(self.writer.buffer.len >= self.begin_offset + @sizeOf(PrefixType));
+        pub fn end(self: Self) void {
+            const header_size = @sizeOf(HeaderType);
+
+            assert(self.writer.buffer.len >= header_size);
+            assert(self.writer.buffer.len >= self.begin_offset + header_size);
             assert(self.writer.end >= self.begin_offset);
 
-            const prefix_size = @sizeOf(PrefixType);
-            const size_from_begin = self.writer.end - self.begin_offset - prefix_size;
+            const size_from_begin = self.writer.end - self.begin_offset - header_size;
 
-            assert(size_from_begin <= std.math.maxInt(PrefixType));
+            assert(size_from_begin <= std.math.maxInt(HeaderType));
 
             const ptr_buf =
-                self.writer.buffer[self.begin_offset .. self.begin_offset + prefix_size].ptr;
+                self.writer.buffer[self.begin_offset .. self.begin_offset + header_size].ptr;
 
             std.mem.writeInt(
-                PrefixType,
-                ptr_buf[0..prefix_size],
+                HeaderType,
+                ptr_buf[0..header_size],
                 @intCast(size_from_begin),
                 .little,
             );
