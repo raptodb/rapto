@@ -9,6 +9,7 @@
 const String = @This();
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 /// Pointer to byte array. The first 4 bytes
 /// header represents the length of string.
@@ -37,7 +38,7 @@ pub fn set(
     // content.len is never over std.math.maxInt(u32).
     // each Task, has one or multiple query with a max length
     // of std.math.maxInt(u32), so is impossible a loss.
-    std.debug.assert(content.len <= std.math.maxInt(u32));
+    assert(content.len <= std.math.maxInt(u32));
     const content_length: u32 = @truncate(content.len);
 
     if (length != content_length) {

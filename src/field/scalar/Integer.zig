@@ -31,7 +31,7 @@ pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
 }
 
 pub fn get(self: Integer) i64 {
-    return std.mem.readInt(i64, self.raw[0..], .little);
+    return std.mem.readInt(i64, &self.raw, .little);
 }
 
 pub fn len(_: Integer) u64 {
@@ -40,11 +40,11 @@ pub fn len(_: Integer) u64 {
 
 pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
     const updated_value = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
-    std.mem.writeInt(i64, self.raw[0..], updated_value, .little);
+    std.mem.writeInt(i64, &self.raw, updated_value, .little);
 }
 
 pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    try writer.writeAll(self.raw[0..]);
+    try writer.writeAll(&self.raw);
 }
 
 test "Integer" {
