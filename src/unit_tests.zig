@@ -22,7 +22,7 @@ comptime {
     _ = @import("main.zig");
     _ = @import("Memory.zig");
     _ = @import("Memory/object.zig");
-    _ = @import("StateMachine.zig");
+    _ = @import("state_machine.zig");
     _ = @import("tagged_pointer.zig");
     _ = @import("Task.zig");
     _ = @import("Task/Query.zig");
