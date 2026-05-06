@@ -14,6 +14,11 @@ const assert = std.debug.assert;
 pub const Flags = @import("Query/Flags.zig");
 pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFormat };
 
+command: Command,
+flags: Flags,
+/// Best accessed via `.argsIterator()`
+args: []const u8,
+
 pub const Command = enum(u8) {
     ping = 0,
 
@@ -44,10 +49,6 @@ pub const Command = enum(u8) {
         return writer.writeByte(@intFromEnum(self));
     }
 };
-
-command: Command,
-flags: Flags,
-args: frames.Iterator,
 
 /// Parses a Query from a serialized input.
 /// The input must follow this layout:
@@ -95,8 +96,12 @@ pub fn parse(serialized: []const u8) Error!Query {
     return .{
         .command = command,
         .flags = flags,
-        .args = .init(serialized[reader.seek..]),
+        .args = serialized[reader.seek..],
     };
+}
+
+pub fn argsIterator(self: *const Query) frames.Iterator {
+    return .init(self.args);
 }
 
 pub fn isEqualTo(self: *const Query, query: *const Query) bool {
@@ -104,8 +109,8 @@ pub fn isEqualTo(self: *const Query, query: *const Query) bool {
 
     if (!self.flags.isEqualTo(query.flags)) return false;
 
-    var self_args = self.args;
-    var args = query.args;
+    var self_args = self.argsIterator();
+    var args = query.argsIterator();
     while (true) {
         const self_arg = self_args.next();
         const arg = args.next();
