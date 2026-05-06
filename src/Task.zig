@@ -95,10 +95,10 @@ test "Task" {
         flags: Query.Flags,
         args: []const []const u8,
     }{
-        .{ .command = .PING, .flags = .{}, .args = &.{} },
-        .{ .command = .SET, .flags = .{ .noreply = .init(true) }, .args = &.{} },
-        .{ .command = .GET, .flags = .{}, .args = &.{"k"} },
-        .{ .command = .COPY, .flags = .{}, .args = &.{ "k1", "k2" } },
+        .{ .command = .ping, .flags = .{}, .args = &.{} },
+        .{ .command = .set, .flags = .{ .noreply = .init(true) }, .args = &.{} },
+        .{ .command = .get, .flags = .{}, .args = &.{"k"} },
+        .{ .command = .copy, .flags = .{}, .args = &.{ "k1", "k2" } },
     };
 
     for (queries) |q| {

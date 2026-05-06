@@ -15,25 +15,25 @@ pub const Flags = @import("Query/Flags.zig");
 pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFormat };
 
 pub const Command = enum(u8) {
-    PING = 0,
+    ping = 0,
 
     // CRUD operations
-    SET = 1,
-    GET = 2,
-    UPDATE = 3,
-    DEL = 4,
+    set = 1,
+    get = 2,
+    update = 3,
+    del = 4,
 
     // ordered by insertion, do not
     // reorder or change values to
     // maintain compatibility across versions
-    COPY,
-    RENAME,
-    COUNT,
-    TYPE,
-    LIST,
-    EXIST,
-    ERASE,
-    DOWN = std.math.maxInt(u8),
+    copy,
+    rename,
+    count,
+    type,
+    list,
+    exist,
+    erase,
+    down = std.math.maxInt(u8),
 
     fn parseFromReader(reader: *std.Io.Reader) error{ InvalidFormat, UnknownCommand }!Command {
         const int = reader.takeByte() catch return error.InvalidFormat;
