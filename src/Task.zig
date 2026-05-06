@@ -121,9 +121,9 @@ test "Task" {
         const q = try it.next().?;
         try std.testing.expectEqual(expected.command, q.command);
         try std.testing.expectEqual(expected.flags.noreply.get(), q.flags.noreply.get());
-        var args = q.args;
-        for (expected.args) |a|
-            try std.testing.expectEqualStrings(a, args.next().?);
+        var args = q.argsIterator();
+        for (expected.args) |expected_arg|
+            try std.testing.expectEqualStrings(expected_arg, args.next().?);
         try std.testing.expectEqual(null, args.next());
     }
 
