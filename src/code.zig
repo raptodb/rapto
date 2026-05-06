@@ -7,7 +7,7 @@
 
 const std = @import("std");
 
-const CommandError = @import("StateMachine.zig").CommandError;
+const CommandError = @import("state_machine.zig").CommandError;
 const ParseError = @import("Task.zig").Query.Error;
 
 pub const Code = enum(u8) {
