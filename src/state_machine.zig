@@ -49,28 +49,48 @@ pub fn execute(
 ) FatalError!void {
     const start_offset = writer.end;
 
+    // zig fmt: off
     const maybe_error = switch (query.command) {
-        .set, .update, .del, .copy, .rename, .erase => err: {
-            break :err dispatchRead(allocator, memory, query);
-        },
-        .ping, .get, .count, .type, .list, .exist => err: {
+        .set    => set(allocator, memory, query),
+        .update => update(memory, query),
+        .del    => del(allocator, memory, query),
+        .copy   => copy(allocator, memory, query),
+        .rename => rename(allocator, memory, query),
+        .erase  => erase(allocator, memory, query),
+        
+        inline else => |write_command| err: {
             if (query.flags.noreply.get()) return;
-            break :err dispatchWrite(memory, writer, query);
+
+            break :err switch (write_command) {
+                .ping  => ping(writer, query),
+                .get   => get(memory, writer, query),
+                .count => count(memory, writer, query),
+                .type  => @"type"(memory, writer, query),
+                .list  => list(memory, writer, query),
+                .exist => exist(memory, writer, query),
+
+                // Handled earlier.
+                else => unreachable,
+            };
         },
+
         .down => error.Shutdown,
     };
+    // zig fmt: on
 
     var status_code: code.Code = .OK;
     maybe_error catch |err| {
         @branchHint(.cold);
-        status_code = switch (err) {
+        switch (err) {
             // Fatal errors are returned directly and handled outside.
             error.OutOfMemory,
             error.WriteFailed,
             error.Shutdown,
             => |e| return e,
-            else => code.fromCommandError(@errorCast(err)),
-        };
+            else => {
+                status_code = code.fromCommandError(@errorCast(err));
+            },
+        }
     };
 
     // When response is written in buffer, it is an implicit OK.
@@ -78,42 +98,6 @@ pub fn execute(
     if (writer.end == start_offset and !query.flags.noreply.get()) {
         return code.writeCode(writer, status_code);
     }
-}
-
-fn dispatchWrite(
-    memory: *Memory,
-    writer: *std.Io.Writer,
-    query: *const Query,
-) !void {
-    // zig fmt: off
-    return switch (query.command) {
-        .ping  => ping(writer, query),
-        .get   => get(memory, writer, query),
-        .count => count(memory, writer, query),
-        .type  => @"type"(memory, writer, query),
-        .list  => list(memory, writer, query),
-        .exist => exist(memory, writer, query),
-        else => unreachable,
-    };
-    // zig fmt: on
-}
-
-fn dispatchRead(
-    allocator: std.mem.Allocator,
-    memory: *Memory,
-    query: *const Query,
-) !void {
-    // zig fmt: off
-    return switch (query.command) {
-        .set    => set(allocator, memory, query),
-        .update => update(memory, query),
-        .del    => del(allocator, memory, query),
-        .copy   => copy(allocator, memory, query),
-        .rename => rename(allocator, memory, query),
-        .erase  => erase(allocator, memory, query),
-        else => unreachable,
-    };
-    // zig fmt: on
 }
 
 fn ping(
