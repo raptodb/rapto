@@ -49,12 +49,29 @@ pub fn execute(
 ) FatalError!void {
     const start_offset = writer.end;
 
-    const status_code = try dispatch(
-        allocator,
-        memory,
-        writer,
-        query,
-    );
+    const maybe_error = switch (query.command) {
+        .set, .update, .del, .copy, .rename, .erase => err: {
+            break :err dispatchRead(allocator, memory, query);
+        },
+        .ping, .get, .count, .type, .list, .exist => err: {
+            if (query.flags.noreply.get()) return;
+            break :err dispatchWrite(memory, writer, query);
+        },
+        .down => error.Shutdown,
+    };
+
+    var status_code: code.Code = .OK;
+    maybe_error catch |err| {
+        @branchHint(.cold);
+        status_code = switch (err) {
+            // Fatal errors are returned directly and handled outside.
+            error.OutOfMemory,
+            error.WriteFailed,
+            error.Shutdown,
+            => |e| return e,
+            else => code.fromCommandError(@errorCast(err)),
+        };
+    };
 
     // When response is written in buffer, it is an implicit OK.
     // While, when noreply is enabled, response is not written.
@@ -63,51 +80,40 @@ pub fn execute(
     }
 }
 
-fn dispatch(
-    allocator: std.mem.Allocator,
+fn dispatchWrite(
     memory: *Memory,
     writer: *std.Io.Writer,
     query: *const Query,
-) FatalError!code.Code {
+) !void {
     // zig fmt: off
-    const maybe_error = switch (query.command) {
+    return switch (query.command) {
+        .ping  => ping(writer, query),
+        .get   => get(memory, writer, query),
+        .count => count(memory, writer, query),
+        .type  => @"type"(memory, writer, query),
+        .list  => list(memory, writer, query),
+        .exist => exist(memory, writer, query),
+        else => unreachable,
+    };
+    // zig fmt: on
+}
+
+fn dispatchRead(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    query: *const Query,
+) !void {
+    // zig fmt: off
+    return switch (query.command) {
         .set    => set(allocator, memory, query),
         .update => update(memory, query),
         .del    => del(allocator, memory, query),
         .copy   => copy(allocator, memory, query),
         .rename => rename(allocator, memory, query),
         .erase  => erase(allocator, memory, query),
-
-        inline else => |_, comptime_tag| {
-            if (query.flags.noreply.get()) return;
-
-            switch (comptime_tag) {
-                .ping  => ping(writer, query),
-                .get   => get(memory, writer, query),
-                .count => count(memory, writer, query),
-                .type  => @"type"(memory, writer, query),
-                .list  => list(memory, writer, query),
-                .exist => exist(memory, writer, query),
-            }
-        },
-
-        .down => error.Shutdown,
+        else => unreachable,
     };
     // zig fmt: on
-
-    maybe_error catch |err| {
-        @branchHint(.cold);
-        return switch (err) {
-            // Fatal errors are returned directly and handled outside.
-            error.OutOfMemory,
-            error.WriteFailed,
-            error.Shutdown,
-            => |e| e,
-            else => code.fromCommandError(@errorCast(err)),
-        };
-    };
-
-    return .OK;
 }
 
 fn ping(
