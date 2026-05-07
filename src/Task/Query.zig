@@ -80,16 +80,15 @@ pub const Command = enum(u8) {
 /// All length fields are encoded using the predefined header type.
 pub fn parse(serialized: []const u8) Error!Query {
     var reader: std.Io.Reader = .fixed(serialized);
-    const reader_ptr = &reader;
 
-    const command: Command = try .parseFromReader(reader_ptr);
+    const command: Command = try .parseFromReader(&reader);
 
     const length = reader.takeInt(u32, .little) catch
         return error.InvalidFormat;
     if (length > serialized.len - reader.seek)
         return error.InvalidFormat;
 
-    const flags: Flags = try .parseFromReader(reader_ptr, length);
+    const flags: Flags = try .parseFromReader(&reader, length);
 
     assert(reader.seek <= serialized.len);
 
