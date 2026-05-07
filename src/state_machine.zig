@@ -71,21 +71,25 @@ fn dispatch(
 ) FatalError!code.Code {
     // zig fmt: off
     const maybe_error = switch (query.command) {
-        .ping   => ping(writer, query),
-
-        // CRUD operations
         .set    => set(allocator, memory, query),
-        .get    => get(memory, writer, query),
         .update => update(memory, query),
         .del    => del(allocator, memory, query),
-
         .copy   => copy(allocator, memory, query),
         .rename => rename(allocator, memory, query),
-        .count  => count(memory, writer, query),
-        .type   => @"type"(memory, writer, query),
-        .list   => list(memory, writer, query),
-        .exist  => exist(memory, writer, query),
         .erase  => erase(allocator, memory, query),
+
+        inline else => |_, comptime_tag| {
+            if (query.flags.noreply.get()) return;
+
+            switch (comptime_tag) {
+                .ping  => ping(writer, query),
+                .get   => get(memory, writer, query),
+                .count => count(memory, writer, query),
+                .type  => @"type"(memory, writer, query),
+                .list  => list(memory, writer, query),
+                .exist => exist(memory, writer, query),
+            }
+        },
 
         .down => error.Shutdown,
     };
@@ -110,7 +114,7 @@ fn ping(
     writer: *std.Io.Writer,
     query: *const Query,
 ) !void {
-    if (query.flags.noreply.get()) return;
+    assert(!query.flags.noreply.get());
 
     const integer: field.Integer = .fromValue(1);
     try field.Type.serializeToWriter(.integer, writer);
@@ -122,9 +126,9 @@ fn get(
     writer: *std.Io.Writer,
     query: *const Query,
 ) !void {
-    var args = query.argsIterator();
+    assert(!query.flags.noreply.get());
 
-    if (query.flags.noreply.get()) return;
+    var args = query.argsIterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = memory.search(key) orelse return error.KeyNotFound;
@@ -259,7 +263,7 @@ fn count(
     writer: *std.Io.Writer,
     query: *const Query,
 ) !void {
-    if (query.flags.noreply.get()) return;
+    assert(!query.flags.noreply.get());
 
     // Keys will never be a number larger than the maximum range of i64.
     const key_count: i64 = @intCast(memory.count());
@@ -273,9 +277,9 @@ fn @"type"(
     writer: *std.Io.Writer,
     query: *const Query,
 ) !void {
-    var args = query.argsIterator();
+    assert(!query.flags.noreply.get());
 
-    if (query.flags.noreply.get()) return;
+    var args = query.argsIterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = memory.search(key) orelse return error.KeyNotFound;
@@ -288,7 +292,7 @@ fn list(
     writer: *std.Io.Writer,
     query: *const Query,
 ) !void {
-    if (query.flags.noreply.get()) return;
+    assert(!query.flags.noreply.get());
 
     var iterator = memory.iterator();
     while (iterator.next()) |ref| {
@@ -303,9 +307,9 @@ fn exist(
     writer: *std.Io.Writer,
     query: *const Query,
 ) !void {
-    var args = query.argsIterator();
+    assert(!query.flags.noreply.get());
 
-    if (query.flags.noreply.get()) return;
+    var args = query.argsIterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const key_exist = memory.search(key) != null;
