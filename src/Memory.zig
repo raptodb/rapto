@@ -11,8 +11,8 @@
 const Memory = @This();
 
 const std = @import("std");
-const field = @import("field.zig");
 
+pub const field = @import("Memory/field.zig");
 pub const object = @import("Memory/object.zig");
 
 /// Hashmap of items. Internal API

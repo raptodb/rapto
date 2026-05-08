@@ -6,7 +6,7 @@
 //! It contains the implementation of object.
 
 const std = @import("std");
-const field = @import("../field.zig");
+const field = @import("field.zig");
 const assert = std.debug.assert;
 
 const TaggedPointer = @import("../tagged_pointer.zig").TaggedPointer;

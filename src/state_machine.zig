@@ -7,8 +7,8 @@
 
 const std = @import("std");
 const code = @import("code.zig");
-const field = @import("field.zig");
 const frames = @import("frames.zig");
+const field = Memory.field;
 const object = Memory.object;
 const assert = std.debug.assert;
 

@@ -7,20 +7,20 @@
 
 comptime {
     _ = @import("code.zig");
-    _ = @import("field.zig");
-    _ = @import("field/collection.zig");
-    _ = @import("field/collection/List.zig");
-    _ = @import("field/collection/Map.zig");
-    _ = @import("field/scalar.zig");
-    _ = @import("field/scalar/Decimal.zig");
-    _ = @import("field/scalar/Flag.zig");
-    _ = @import("field/scalar/Integer.zig");
-    _ = @import("field/scalar/Point.zig");
-    _ = @import("field/scalar/String.zig");
-    _ = @import("field/scalar/Void.zig");
     _ = @import("frames.zig");
     _ = @import("main.zig");
     _ = @import("Memory.zig");
+    _ = @import("Memory/field.zig");
+    _ = @import("Memory/field/collection.zig");
+    _ = @import("Memory/field/collection/List.zig");
+    _ = @import("Memory/field/collection/Map.zig");
+    _ = @import("Memory/field/scalar.zig");
+    _ = @import("Memory/field/scalar/Decimal.zig");
+    _ = @import("Memory/field/scalar/Flag.zig");
+    _ = @import("Memory/field/scalar/Integer.zig");
+    _ = @import("Memory/field/scalar/Point.zig");
+    _ = @import("Memory/field/scalar/String.zig");
+    _ = @import("Memory/field/scalar/Void.zig");
     _ = @import("Memory/object.zig");
     _ = @import("state_machine.zig");
     _ = @import("tagged_pointer.zig");
