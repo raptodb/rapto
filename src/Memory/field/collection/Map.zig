@@ -12,12 +12,11 @@
 const Map = @This();
 
 const std = @import("std");
-const frames = @import("../../frames.zig");
+const frames = @import("../../../frames.zig");
 const field = @import("../../field.zig");
 
 const ScalarItem = @import("../scalar.zig").ScalarItem;
 const String = @import("../scalar.zig").String;
-const List = @import("../collection.zig").List;
 
 pub const MapContext = struct {
     pub fn hash(_: @This(), s: KeyString) u64 {
