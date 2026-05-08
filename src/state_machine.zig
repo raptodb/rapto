@@ -49,26 +49,6 @@ pub fn execute(
 ) FatalError!void {
     const start_offset = writer.end;
 
-    const status_code = try dispatch(
-        allocator,
-        memory,
-        writer,
-        query,
-    );
-
-    // When response is written in buffer, it is an implicit OK.
-    // While, when noreply is enabled, response is not written.
-    if (writer.end == start_offset and !query.flags.noreply.get()) {
-        return code.writeCode(writer, status_code);
-    }
-}
-
-fn dispatch(
-    allocator: std.mem.Allocator,
-    memory: *Memory,
-    writer: *std.Io.Writer,
-    query: *const Query,
-) FatalError!code.Code {
     // zig fmt: off
     const maybe_error = switch (query.command) {
         .set    => set(allocator, memory, query),
@@ -77,37 +57,47 @@ fn dispatch(
         .copy   => copy(allocator, memory, query),
         .rename => rename(allocator, memory, query),
         .erase  => erase(allocator, memory, query),
-
-        inline else => |_, comptime_tag| {
+        
+        inline else => |write_command| err: {
             if (query.flags.noreply.get()) return;
 
-            switch (comptime_tag) {
+            break :err switch (write_command) {
                 .ping  => ping(writer, query),
                 .get   => get(memory, writer, query),
                 .count => count(memory, writer, query),
                 .type  => @"type"(memory, writer, query),
                 .list  => list(memory, writer, query),
                 .exist => exist(memory, writer, query),
-            }
+
+                // Handled earlier.
+                else => unreachable,
+            };
         },
 
         .down => error.Shutdown,
     };
     // zig fmt: on
 
+    var status_code: code.Code = .OK;
     maybe_error catch |err| {
         @branchHint(.cold);
-        return switch (err) {
+        switch (err) {
             // Fatal errors are returned directly and handled outside.
             error.OutOfMemory,
             error.WriteFailed,
             error.Shutdown,
-            => |e| e,
-            else => code.fromCommandError(@errorCast(err)),
-        };
+            => |e| return e,
+            else => {
+                status_code = code.fromCommandError(@errorCast(err));
+            },
+        }
     };
 
-    return .OK;
+    // When response is written in buffer, it is an implicit OK.
+    // While, when noreply is enabled, response is not written.
+    if (writer.end == start_offset and !query.flags.noreply.get()) {
+        return code.writeCode(writer, status_code);
+    }
 }
 
 fn ping(
