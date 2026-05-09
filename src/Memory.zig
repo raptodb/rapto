@@ -98,7 +98,6 @@ pub fn free(self: *Memory, allocator: std.mem.Allocator) void {
     while (iter.next()) |ref| {
         deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
-
     self.map.clearAndFree(allocator);
 }
 
@@ -142,8 +141,14 @@ const PutContext = struct {
         const rhs = b.ptr.getPointer();
 
         var i: u64 = 0;
-        while (lhs[i] == rhs[i] and lhs[i] != 0) i += 1;
-        return lhs[i] == rhs[i];
+        while (lhs[i] != 0) : (i += 1) {
+            if (lhs[i] != rhs[i]) {
+                @branchHint(.unpredictable);
+                return false;
+            }
+        }
+
+        return true;
     }
 };
 
