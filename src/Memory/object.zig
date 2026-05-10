@@ -216,31 +216,16 @@ pub const Field = struct {
         self.value = new_field.value;
     }
 
-    /// Limits: get must not allocate memory.
     pub fn get(self: Field, comptime field_type: field.Type) Value.ReturnType(field_type) {
-        return switch (field_type) {
-            .void => self.value.void.get(),
-            .integer => self.value.integer.get(),
-            .decimal => self.value.decimal.get(),
-            .flag => self.value.flag.get(),
-            .string => self.value.string.get(),
-            .point => self.value.point.get(),
-            .list => self.value.list.get(),
-            .map => self.value.map.get(),
-        };
+        switch (field_type) {
+            inline else => |ft| try @field(self.value, @tagName(ft)).get(),
+        }
     }
 
     pub inline fn ptr(self: *Field, field_type: field.Type) *Value.UnionType(field_type) {
-        return switch (field_type) {
-            .void => &self.value.void,
-            .integer => &self.value.integer,
-            .decimal => &self.value.decimal,
-            .flag => &self.value.flag,
-            .string => &self.value.string,
-            .point => &self.value.point,
-            .list => &self.value.list,
-            .map => &self.value.map,
-        };
+        switch (field_type) {
+            inline else => |ft| &@field(self.value, @tagName(ft)),
+        }
     }
 
     pub fn serializeContentToWriter(
@@ -248,25 +233,17 @@ pub const Field = struct {
         writer: *std.Io.Writer,
         field_type: field.Type,
     ) std.Io.Writer.Error!void {
-        return switch (field_type) {
-            .void => self.value.void.serializeContentToWriter(writer),
-            .integer => self.value.integer.serializeContentToWriter(writer),
-            .decimal => self.value.decimal.serializeContentToWriter(writer),
-            .flag => self.value.flag.serializeContentToWriter(writer),
-            .string => self.value.string.serializeContentToWriter(writer),
-            .point => self.value.point.serializeContentToWriter(writer),
-            .list => self.value.list.serializeContentToWriter(writer),
-            .map => self.value.map.serializeContentToWriter(writer),
-        };
+        switch (field_type) {
+            inline else => |ft| {
+                try @field(self.value, @tagName(ft)).serializeContentToWriter(writer);
+            },
+        }
     }
 
     pub fn deinit(self: Field, allocator: std.mem.Allocator, field_type: field.Type) void {
         switch (field_type) {
             .void, .integer, .decimal, .flag => {},
-            .string => self.value.string.deinit(allocator),
-            .point => self.value.point.deinit(allocator),
-            .list => self.value.list.deinit(allocator),
-            .map => self.value.map.deinit(allocator),
+            inline else => |ft| @field(self.value, @tagName(ft)).deinit(allocator),
         }
     }
 };
