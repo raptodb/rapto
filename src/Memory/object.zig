@@ -192,13 +192,12 @@ pub const Field = struct {
     ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
         return switch (field_type) {
             .void => self.value.void.set(),
-            .integer => self.value.integer.set(content),
-            .decimal => self.value.decimal.set(content),
-            .flag => self.value.flag.set(content),
-            .string => self.value.string.set(allocator, content),
-            .point => self.value.point.set(content),
-            .list => self.value.list.set(allocator, content),
-            .map => self.value.map.set(allocator, content),
+            inline .integer, .decimal, .flag, .point => |ft| {
+                try @field(self.value, @tagName(ft)).set(content);
+            },
+            inline .string, .list, .map => |ft| {
+                try @field(self.value, @tagName(ft)).set(allocator, content);
+            },
         };
     }
 
