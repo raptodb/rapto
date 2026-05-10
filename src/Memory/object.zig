@@ -34,92 +34,69 @@ comptime {
 }
 
 pub const Key = struct {
-    /// Tagged pointer to key sentinel-terminated string.
-    /// Tag encodes field type.
-    ptr: TaggedPointer([*:0]align(pointer_alignment.toByteUnits()) u8) = undefined,
+    /// Tagged pointer to key. Tag encodes field type.
+    /// The maximum length is 2^8-1, for performance
+    /// purposes.
+    ptr: TaggedPointer([*]align(pointer_alignment.toByteUnits()) u8) = undefined,
 
-    /// Initializes key by duplicating it. Assumes key is
-    /// sentinel-terminated with 0. The validity of key is checked.
+    /// Initializes key by duplicating it.
+    /// Checks if length of key is within 2^8-1.
     pub fn init(
         allocator: std.mem.Allocator,
         key: []const u8,
         field_type: field.Type,
-    ) (std.mem.Allocator.Error || error{InvalidKey})!Key {
+    ) (std.mem.Allocator.Error || error{KeyTooLong})!Key {
         assert(key.len > 0);
+        if (key.len > std.math.maxInt(u8)) return error.KeyTooLong;
 
-        // The key must not contatins the sentinel byte.
-        // Sentinel byte is appended in this function.
-        if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
-
-        const buf = try allocator.alignedAlloc(u8, pointer_alignment, key.len + 1);
+        const buf = try allocator.alignedAlloc(u8, pointer_alignment, 1 + key.len);
         errdefer allocator.free(buf);
-        @memcpy(buf[0..key.len], key);
-        buf[key.len] = 0;
 
-        return fromSlice(buf[0..key.len :0], field_type);
-    }
+        buf[0] = @truncate(key.len);
+        @memcpy(buf[1..], key);
 
-    /// Initializes key with externally-managed memory. This function
-    /// is used mostly under tests. Assumes key is sentinel-terminated with 0.
-    fn fromSlice(
-        key: [:0]align(pointer_alignment.toByteUnits()) const u8,
-        field_type: field.Type,
-    ) error{InvalidKey}!Key {
-        assert(key.len > 0);
-
-        return .{ .ptr = .init(key.ptr, @intFromEnum(field_type)) };
+        return .{ .ptr = .init(buf.ptr, @intFromEnum(field_type)) };
     }
 
     /// Sets a new key. Reallocates if length is different.
-    /// The validity of key is checked.
+    /// Checks if length of key is within 2^8-1.
     pub fn set(
         self: *Key,
         allocator: std.mem.Allocator,
         key: []const u8,
-    ) (std.mem.Allocator.Error || error{InvalidKey})!void {
+    ) (std.mem.Allocator.Error || error{KeyTooLong})!void {
         assert(key.len > 0);
-        // The key must not contatins the sentinel byte.
-        // Sentinel byte is appended in this function.
-        if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
+        if (key.len > std.math.maxInt(u8)) return error.KeyTooLong;
 
-        var ptr = self.ptr.getPointer();
+        const key_length: u8 = @truncate(key.len);
         const length = self.len();
 
-        if (key.len != length) {
-            // Reallocate key with sentinel
-            const buf = try allocator.realloc(ptr[0 .. length + 1], key.len + 1);
-            buf[key.len] = 0;
+        var ptr = self.ptr.getPointer();
 
-            ptr = @ptrCast(buf);
+        if (length != key_length) {
+            const slice = try allocator.realloc(
+                ptr[0 .. 1 + length],
+                1 + key_length,
+            );
+
+            ptr = @ptrCast(slice);
             self.ptr.setPointer(ptr);
+
+            ptr[0] = key_length;
         }
 
-        @memcpy(ptr[0..key.len], key);
+        @memcpy(ptr[1 .. 1 + key_length], key);
     }
 
     pub fn get(self: Key) []const u8 {
-        const ptr = self.ptr.getPointer();
-        return ptr[0..self.len()];
+        const key_ptr = self.ptr.getPointer()[1..];
+        return key_ptr[0..self.len()];
     }
 
-    pub fn len(self: Key) u64 {
+    pub fn len(self: Key) u8 {
         const ptr = self.ptr.getPointer();
-        return std.mem.indexOfSentinel(u8, 0, ptr);
-    }
-
-    pub fn isEqualTo(self: Key, key: []const u8) bool {
-        const ptr = self.ptr.getPointer();
-
-        var i: usize = 0;
-        while (ptr[i] != 0 and i < key.len) : (i += 1) {
-            if (key[i] != ptr[i]) {
-                @branchHint(.unpredictable);
-                return false;
-            }
-        }
-
-        // if length does not match, keys are not equals
-        return key.len == i;
+        // Length is stored in the first byte.
+        return ptr[0];
     }
 
     pub fn getFieldType(self: Key) field.Type {
@@ -134,7 +111,7 @@ pub const Key = struct {
     /// Deallocates key string with included sentinel.
     pub fn deinit(self: Key, allocator: std.mem.Allocator) void {
         const ptr = self.ptr.getPointer();
-        allocator.free(ptr[0 .. self.len() + 1]);
+        allocator.free(ptr[0 .. 1 + self.len()]);
     }
 };
 
@@ -331,7 +308,7 @@ pub const Ref = struct {
         self: *const Ref,
         allocator: std.mem.Allocator,
         new_key: []const u8,
-    ) (std.mem.Allocator.Error || error{InvalidKey})!void {
+    ) (std.mem.Allocator.Error || error{ InvalidKey, KeyTooLong })!void {
         try self.key_ptr.set(allocator, new_key);
     }
 
@@ -440,18 +417,11 @@ test "Ref" {
     }
 
     {
-        var key: Key = try .init(allocator, "valid", .integer);
-        var f: Field = try .init(allocator, .integer, &integer_content);
-
-        const ref: Ref = .wrap(&key, &f);
-        defer {
-            ref.key_ptr.deinit(allocator);
-            ref.value_ptr.deinit(allocator, ref.key_ptr.getFieldType());
-        }
-
-        try std.testing.expectError(error.InvalidKey, ref.setKey(allocator, "in\x00valid"));
-        try std.testing.expectEqualStrings("valid", ref.key());
-        try std.testing.expectEqual(.integer, ref.type());
+        var raw_key: [260]u8 = @splat(0);
+        try std.testing.expectError(
+            error.KeyTooLong,
+            Key.init(allocator, &raw_key, .integer),
+        );
     }
 
     {

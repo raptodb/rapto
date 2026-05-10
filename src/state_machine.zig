@@ -27,7 +27,7 @@ pub const FatalError = error{
 /// is from Allocating) are excluded.
 pub const CommandError = error{
     KeyNotFound,
-    InvalidKey,
+    KeyTooLong,
     InvalidFormat,
     MissingTokens,
     MismatchType,

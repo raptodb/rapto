@@ -128,7 +128,7 @@ const SearchContext = struct {
         return std.hash.Wyhash.hash(0, s);
     }
     pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
-        return b.isEqualTo(a);
+        return std.mem.eql(u8, a, b.get());
     }
 };
 
@@ -137,18 +137,7 @@ const PutContext = struct {
         return (SearchContext{}).hash(s.get());
     }
     pub fn eql(_: @This(), a: object.Key, b: object.Key) bool {
-        const lhs = a.ptr.getPointer();
-        const rhs = b.ptr.getPointer();
-
-        var i: u64 = 0;
-        while (lhs[i] != 0) : (i += 1) {
-            if (lhs[i] != rhs[i]) {
-                @branchHint(.unpredictable);
-                return false;
-            }
-        }
-
-        return true;
+        return (SearchContext{}).eql(a.get(), b);
     }
 };
 
