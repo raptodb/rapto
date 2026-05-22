@@ -40,8 +40,7 @@ pub const Command = enum(u8) {
     erase,
     down = std.math.maxInt(u8),
 
-    fn parseFromReader(reader: *std.Io.Reader) error{ InvalidFormat, UnknownCommand }!Command {
-        const int = reader.takeByte() catch return error.InvalidFormat;
+    fn parse(int: u8) error{UnknownCommand}!Command {
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
     }
 
@@ -81,7 +80,7 @@ pub const Command = enum(u8) {
 pub fn parse(serialized: []const u8) Error!Query {
     var reader: std.Io.Reader = .fixed(serialized);
 
-    const command: Command = try .parseFromReader(&reader);
+    const command: Command = try .parse(reader.takeByte() catch return error.InvalidFormat);
 
     const length = reader.takeInt(u32, .little) catch
         return error.InvalidFormat;
