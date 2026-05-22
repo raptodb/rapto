@@ -68,8 +68,6 @@ pub fn put(
 }
 
 pub fn search(self: *Memory, key: []const u8) ?object.Ref {
-    if (self.map.count() == 0) return null;
-
     const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse return null;
     return .wrap(entry.key_ptr, entry.value_ptr);
 }
@@ -164,4 +162,41 @@ fn initPair(
 fn deinitPair(allocator: std.mem.Allocator, key: object.Key, value: object.Field) void {
     key.deinit(allocator);
     value.deinit(allocator, key.getFieldType());
+}
+
+pub fn main(in: std.process.Init) !void {
+    const io = in.io;
+    const gpa = in.gpa;
+
+    var key1: [128]u8 = undefined;
+    var key2: [128]u8 = undefined;
+    io.random(&key1);
+    io.random(&key2);
+    for (0..key1.len, 0..key2.len) |k1, k2| {
+        if (key1[k1] == 0) key1[k1] = 1;
+        if (key2[k2] == 0) key2[k2] = 1;
+    }
+
+    var map: Memory = .init;
+    defer map.deinit(gpa);
+    _ = try map.put(gpa, &key1, .void, "");
+
+    const N = 10_000_000;
+
+    const keys = [_][128]u8{ key1, key2 };
+    var sum: usize = 0;
+
+    var i: usize = 0;
+    while (i < N) : (i += 1) {
+        const k = &keys[i & 1];
+        const ref = map.search(k);
+
+        if (ref) |r| {
+            sum +%= @intFromPtr(r.key_ptr);
+        } else {
+            sum +%= 1;
+        }
+    }
+
+    std.mem.doNotOptimizeAway(sum);
 }

@@ -244,6 +244,8 @@ fn rename(
     const current_key = args.next() orelse return error.MissingTokens;
     const new_key = args.next() orelse return error.MissingTokens;
 
+    if (std.mem.eql(u8, current_key, new_key)) return;
+
     const ref = memory.search(current_key) orelse return error.KeyNotFound;
     try ref.setKey(allocator, new_key);
 }
