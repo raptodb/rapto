@@ -36,6 +36,7 @@ pub const CommandError = error{
     MathOverflow,
     RangeOverflow,
     MapKeyNotFound,
+    DuplicatedKey,
 };
 
 /// Executes query on this configuration. Fatal errors will be returned
@@ -245,6 +246,7 @@ fn rename(
     const new_key = args.next() orelse return error.MissingTokens;
 
     if (std.mem.eql(u8, current_key, new_key)) return;
+    if (memory.search(new_key) != null) return error.DuplicatedKey;
 
     const ref = memory.search(current_key) orelse return error.KeyNotFound;
     try ref.setKey(allocator, new_key);

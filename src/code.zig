@@ -25,6 +25,7 @@ pub const Code = enum(u8) {
     CommandMathOverflow,
     CommandRangeOverflow,
     CommandMapKeyNotFound,
+    CommandDuplicatedKey,
 
     // Parse errors from Query (200+)
     ParseUnknownCommand = 200,
@@ -48,6 +49,7 @@ pub fn fromCommandError(err: CommandError) Code {
         error.MathOverflow => .CommandMathOverflow,
         error.RangeOverflow => .CommandRangeOverflow,
         error.MapKeyNotFound => .CommandMapKeyNotFound,
+        error.DuplicatedKey => .CommandDuplicatedKey,
     };
 }
 
