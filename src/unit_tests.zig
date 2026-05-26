@@ -6,6 +6,7 @@
 //! It contains the implementation of unit tests and semantic analysis.
 
 comptime {
+    _ = @import("Aof.zig");
     _ = @import("code.zig");
     _ = @import("frames.zig");
     _ = @import("main.zig");
