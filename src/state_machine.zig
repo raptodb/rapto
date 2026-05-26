@@ -12,7 +12,7 @@ const object = Memory.object;
 const assert = std.debug.assert;
 
 const Memory = @import("Memory.zig");
-const Query = @import("Task.zig").Query;
+const Query = @import("Query.zig");
 const Flags = Query.Flags;
 
 pub const FatalError = error{
