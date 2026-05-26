@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of void field.
+//! It contains the implementation of void value.
 
-/// Void field type represented as "void" string. Indicates a empty value.
+/// Void value type represented as "void" string. Indicates an empty value.
 const Void = @This();
 
 const std = @import("std");

@@ -8,7 +8,6 @@
 const std = @import("std");
 const code = @import("code.zig");
 const frames = @import("frames.zig");
-const field = Memory.field;
 const object = Memory.object;
 const assert = std.debug.assert;
 
@@ -107,8 +106,8 @@ fn ping(
 ) !void {
     assert(!query.flags.noreply.get());
 
-    const integer: field.Integer = .fromValue(1);
-    try field.Type.serializeToWriter(.integer, writer);
+    const integer: object.value.Integer = .fromValue(1);
+    try object.value.Type.serializeToWriter(.integer, writer);
     try integer.serializeContentToWriter(writer);
 }
 
@@ -146,7 +145,7 @@ fn getByIndex(ref: object.Ref, writer: *std.Io.Writer, index: Flags.Unsigned) !v
                 2 => axis.z,
                 else => return error.RangeOverflow,
             };
-            try field.Type.serializeToWriter(.decimal, writer);
+            try object.value.Type.serializeToWriter(.decimal, writer);
             try decimal.serializeContentToWriter(writer);
         },
         else => error.MismatchFlag,
@@ -156,7 +155,7 @@ fn getByIndex(ref: object.Ref, writer: *std.Io.Writer, index: Flags.Unsigned) !v
 fn getByRange(ref: object.Ref, writer: *std.Io.Writer, range: Flags.Range) !void {
     return switch (ref.type()) {
         .list => {
-            try field.Type.serializeToWriter(.list, writer);
+            try object.value.Type.serializeToWriter(.list, writer);
             try ref.valuePtr(.list).serializeContentInRangeToWriter(
                 writer,
                 range.from().get(),
@@ -182,7 +181,7 @@ fn getByKey(ref: object.Ref, writer: *std.Io.Writer, key: Flags.String) !void {
                 'z' => axis.z,
                 else => return error.RangeOverflow,
             };
-            try field.Type.serializeToWriter(.decimal, writer);
+            try object.value.Type.serializeToWriter(.decimal, writer);
             try decimal.serializeContentToWriter(writer);
         },
         else => error.MismatchFlag,
@@ -199,9 +198,9 @@ fn set(
     const key = args.next() orelse return error.MissingTokens;
     const serialized_value = args.next() orelse return error.MissingTokens;
 
-    const field_type, const content = try field.splitSerialized(serialized_value);
+    const value_type, const content = try object.value.splitSerialized(serialized_value);
 
-    _ = try memory.put(allocator, key, field_type, content);
+    _ = try memory.put(allocator, key, value_type, content);
 }
 
 fn update(
@@ -213,23 +212,23 @@ fn update(
     const key = args.next() orelse return error.MissingTokens;
     const serialized = args.next() orelse return error.MissingTokens;
 
-    const field_type, const content = try field.splitSerialized(serialized);
+    const value_type, const content = try object.value.splitSerialized(serialized);
     const ref = memory.search(key) orelse return error.KeyNotFound;
 
-    if (field_type != ref.type()) return error.MismatchType;
+    if (value_type != ref.type()) return error.MismatchType;
 
-    switch (field_type) {
+    switch (value_type) {
         .integer => {
-            const value: field.Integer = try .fromContent(content);
-            try ref.valuePtr(.integer).add(value.get());
+            const v: object.value.Integer = try .fromContent(content);
+            try ref.valuePtr(.integer).add(v.get());
         },
         .decimal => {
-            const value: field.Decimal = try .fromContent(content);
-            try ref.valuePtr(.decimal).add(value.get());
+            const v: object.value.Decimal = try .fromContent(content);
+            try ref.valuePtr(.decimal).add(v.get());
         },
         .point => {
-            const value: field.Point.Axis = try .parse(content);
-            try ref.valuePtr(.point).translate(value);
+            const v: object.value.Point.Axis = try .parse(content);
+            try ref.valuePtr(.point).translate(v);
         },
         .void, .string, .flag, .list, .map => return error.MismatchType,
     }
@@ -261,8 +260,8 @@ fn count(
 
     // Keys will never be a number larger than the maximum range of i64.
     const key_count: i64 = @intCast(memory.count());
-    const integer: field.Integer = .fromValue(key_count);
-    try field.Type.serializeToWriter(.integer, writer);
+    const integer: object.value.Integer = .fromValue(key_count);
+    try object.value.Type.serializeToWriter(.integer, writer);
     try integer.serializeContentToWriter(writer);
 }
 
@@ -308,8 +307,8 @@ fn exist(
     const key = args.next() orelse return error.MissingTokens;
     const key_exist = memory.search(key) != null;
 
-    const flag: field.Flag = if (key_exist) .fromValue(.true) else .fromValue(.false);
-    try field.Type.serializeToWriter(.flag, writer);
+    const flag: object.value.Flag = if (key_exist) .fromValue(.true) else .fromValue(.false);
+    try object.value.Type.serializeToWriter(.flag, writer);
     try flag.serializeContentToWriter(writer);
 }
 
@@ -324,7 +323,7 @@ fn copy(
     const dst_key = args.next() orelse return error.MissingTokens;
 
     const ref = memory.search(src_key) orelse return error.KeyNotFound;
-    const field_type = ref.type();
+    const value_type = ref.type();
 
     var content_allocating: std.Io.Writer.Allocating = .init(allocator);
     defer content_allocating.deinit();
@@ -332,7 +331,7 @@ fn copy(
 
     const content = content_allocating.written();
 
-    _ = try memory.put(allocator, dst_key, field_type, content);
+    _ = try memory.put(allocator, dst_key, value_type, content);
 }
 
 fn del(

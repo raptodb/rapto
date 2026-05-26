@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of point field.
+//! It contains the implementation of point value.
 
-/// Point field type represented as spatial
+/// Point value type represented as spatial
 /// coordinates with x, y and z decimal axes.
 const Point = @This();
 

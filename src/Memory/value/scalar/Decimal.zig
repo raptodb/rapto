@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of decimal field.
+//! It contains the implementation of decimal value.
 
-/// Decimal field type represents double-precision floating-point (FP64).
+/// Decimal value type represents double-precision floating-point (FP64).
 /// This implementation is more efficient for decimal calculations.
 const Decimal = @This();
 

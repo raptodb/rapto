@@ -3,21 +3,19 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of list field.
+//! It contains the implementation of list.
 
-/// List field type represented as list of scalar items. Each item has a
-/// length header of 4 bytes. (below, H refers to every byte of header)
-/// Example: [HHHH[serialized]HHHH[serialized]HHHH[serialized]HHHH[serialized]]
+/// List value type represented as list of scalar items.
 const List = @This();
 
 const std = @import("std");
-const field = @import("../../field.zig");
+const value = @import("../../value.zig");
 const frames = @import("../../../frames.zig");
 const assert = std.debug.assert;
 
 const ScalarItem = @import("../scalar.zig").ScalarItem;
 
-value: *std.ArrayList(ScalarItem),
+ptr: *std.ArrayList(ScalarItem),
 
 pub fn initFromContent(
     allocator: std.mem.Allocator,
@@ -28,7 +26,7 @@ pub fn initFromContent(
 
     list_ptr.* = .empty;
     try appendSerializedList(list_ptr, allocator, content);
-    return .{ .value = list_ptr };
+    return .{ .ptr = list_ptr };
 }
 
 /// Inserts or appends a serialized scalar type or a List.
@@ -38,21 +36,21 @@ pub fn insert(
     index: u64,
     serialized: []const u8,
 ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, UnknownType })!void {
-    const field_type, const content = try field.splitSerialized(serialized);
+    const value_type, const content = try value.splitSerialized(serialized);
 
-    switch (field_type) {
+    switch (value_type) {
         else => {
-            const item: ScalarItem = try .fromContent(allocator, field_type, content);
+            const item: ScalarItem = try .fromContent(allocator, value_type, content);
             return self.insertItem(allocator, index, item);
         },
         .list => {
             var offset: u64 = 0;
             var iterator = try serializedItemsIterator(serialized);
-            while (iterator.next()) |serialized_field| : (offset += 1) {
-                const field_type_item, const content_item =
-                    try field.splitSerialized(serialized_field);
+            while (iterator.next()) |serialized_value| : (offset += 1) {
+                const value_type_item, const content_item =
+                    try value.splitSerialized(serialized_value);
 
-                const item: ScalarItem = try .fromContent(allocator, field_type_item, content_item);
+                const item: ScalarItem = try .fromContent(allocator, value_type_item, content_item);
                 try self.insertItem(allocator, index + offset, item);
             }
         },
@@ -68,9 +66,9 @@ fn insertItem(
     item: ScalarItem,
 ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!void {
     return if (index >= self.count())
-        self.value.append(allocator, item)
+        self.ptr.append(allocator, item)
     else
-        self.value.insert(allocator, index, item);
+        self.ptr.insert(allocator, index, item);
 }
 
 /// Replaces List with a new serialized list.
@@ -80,7 +78,7 @@ pub fn set(
     serialized: []const u8,
 ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
     self.removeAll(allocator);
-    try appendSerializedList(self.value, allocator, serialized);
+    try appendSerializedList(self.ptr, allocator, serialized);
 }
 
 pub fn setByIndex(
@@ -91,10 +89,10 @@ pub fn setByIndex(
 ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, RangeOverflow, UnknownType })!void {
     if (index >= self.count()) return error.RangeOverflow;
 
-    const field_type, const content = try field.splitSerialized(serialized);
+    const value_type, const content = try value.splitSerialized(serialized);
 
-    self.value.items[index].deinit(allocator);
-    self.value.items[index] = try .fromContent(allocator, field_type, content);
+    self.ptr.items[index].deinit(allocator);
+    self.ptr.items[index] = try .fromContent(allocator, value_type, content);
 }
 
 pub fn get(self: List) []const ScalarItem {
@@ -115,7 +113,7 @@ pub fn getByRange(
     to_index: u64,
 ) error{RangeOverflow}![]const ScalarItem {
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
-    return self.value.items[from_index .. to_index + 1];
+    return self.ptr.items[from_index .. to_index + 1];
 }
 
 pub fn indexOfItemInRange(
@@ -127,13 +125,13 @@ pub fn indexOfItemInRange(
 ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, RangeOverflow, ItemNotFound, UnknownType })!u64 {
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
 
-    const field_type, const content = try field.splitSerialized(serialized);
+    const value_type, const content = try value.splitSerialized(serialized);
 
-    const this_item: ScalarItem = try .fromContent(allocator, field_type, content);
+    const this_item: ScalarItem = try .fromContent(allocator, value_type, content);
     defer this_item.deinit(allocator);
 
     for (from_index..to_index + 1) |index| {
-        const item = self.value.items[index];
+        const item = self.ptr.items[index];
         if (this_item.compare(item)) return index;
     }
 
@@ -165,8 +163,8 @@ pub fn removeByRange(
 ) error{RangeOverflow}!void {
     if (self.count() == 0) return;
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
-    for (self.value.items[from_index .. to_index + 1]) |item| item.deinit(allocator);
-    self.value.replaceRangeAssumeCapacity(from_index, to_index - from_index + 1, &.{});
+    for (self.ptr.items[from_index .. to_index + 1]) |item| item.deinit(allocator);
+    self.ptr.replaceRangeAssumeCapacity(from_index, to_index - from_index + 1, &.{});
 }
 
 pub fn removeAll(self: List, allocator: std.mem.Allocator) void {
@@ -177,7 +175,7 @@ pub fn removeAll(self: List, allocator: std.mem.Allocator) void {
 }
 
 pub fn count(self: List) u64 {
-    return self.value.items.len;
+    return self.ptr.items.len;
 }
 
 pub fn serializeContentInRangeToWriter(
@@ -188,7 +186,7 @@ pub fn serializeContentInRangeToWriter(
 ) error{ WriteFailed, RangeOverflow }!void {
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
 
-    for (self.value.items[from_index .. to_index + 1]) |item| {
+    for (self.ptr.items[from_index .. to_index + 1]) |item| {
         var builder: frames.Builder = try .begin(writer);
         defer builder.end();
         try item.serializeToWriter(writer);
@@ -206,8 +204,8 @@ pub fn serializeContentToWriter(self: List, writer: *std.Io.Writer) std.Io.Write
 
 pub fn deinit(self: List, allocator: std.mem.Allocator) void {
     self.removeAll(allocator);
-    self.value.deinit(allocator);
-    allocator.destroy(self.value);
+    self.ptr.deinit(allocator);
+    allocator.destroy(self.ptr);
 }
 
 fn appendSerializedList(
@@ -217,10 +215,10 @@ fn appendSerializedList(
 ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
     var iterator = try serializedItemsIterator(serialized_list);
 
-    while (iterator.next()) |serialized_field| {
-        const field_type, const content = try field.splitSerialized(serialized_field);
+    while (iterator.next()) |serialized_value| {
+        const value_type, const content = try value.splitSerialized(serialized_value);
 
-        const item: ScalarItem = try .fromContent(allocator, field_type, content);
+        const item: ScalarItem = try .fromContent(allocator, value_type, content);
         errdefer item.deinit(allocator);
         try items.append(allocator, item);
     }
@@ -229,8 +227,8 @@ fn appendSerializedList(
 fn serializedItemsIterator(
     serialized: []const u8,
 ) error{ MismatchType, InvalidFormat, UnknownType }!frames.Iterator {
-    const field_type, const content = try field.splitSerialized(serialized);
-    if (field_type != .list) return error.MismatchType;
+    const value_type, const content = try value.splitSerialized(serialized);
+    if (value_type != .list) return error.MismatchType;
     return .init(content);
 }
 
@@ -362,7 +360,7 @@ fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8
     errdefer allocating.deinit();
     const writer = &allocating.writer;
 
-    try field.Type.serializeToWriter(.list, writer);
+    try value.Type.serializeToWriter(.list, writer);
     for (items) |item| {
         var builder: frames.Builder = try .begin(writer);
         defer builder.end();

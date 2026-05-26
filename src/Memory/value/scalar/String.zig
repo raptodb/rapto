@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of string field.
+//! It contains the implementation of string value.
 
-/// String field type represented as raw bytes data.
+/// String value type represented as raw bytes data.
 const String = @This();
 
 const std = @import("std");
@@ -36,7 +36,7 @@ pub fn set(
     const length = self.len();
 
     // content.len is never over std.math.maxInt(u32).
-    // each Task, has one or multiple query with a max length
+    // each pipeline, has one or multiple query with a max length
     // of std.math.maxInt(u32), so is impossible a loss.
     assert(content.len <= std.math.maxInt(u32));
     const content_length: u32 = @truncate(content.len);

@@ -12,7 +12,6 @@ const Memory = @This();
 
 const std = @import("std");
 
-pub const field = @import("Memory/field.zig");
 pub const object = @import("Memory/object.zig");
 
 /// Hashmap of items. Internal API
@@ -37,7 +36,7 @@ pub fn put(
     self: *Memory,
     allocator: std.mem.Allocator,
     key: []const u8,
-    field_type: field.Type,
+    value_type: object.value.Type,
     content: []const u8,
 ) PutError!object.Ref {
     const entry = try self.map.getOrPutAdapted(
@@ -49,14 +48,14 @@ pub fn put(
     const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
 
     if (entry.found_existing) {
-        try ref.setValue(allocator, field_type, content);
+        try ref.setValue(allocator, value_type, content);
     } else {
         errdefer self.map.removeByPtr(entry.key_ptr);
 
         entry.key_ptr.*, entry.value_ptr.* = try initPair(
             allocator,
             key,
-            field_type,
+            value_type,
             content,
         );
     }
@@ -134,7 +133,7 @@ const PutContext = struct {
 
 const Map = std.HashMapUnmanaged(
     object.Key,
-    object.Field,
+    object.Value,
     PutContext,
     65,
 );
@@ -142,17 +141,17 @@ const Map = std.HashMapUnmanaged(
 fn initPair(
     allocator: std.mem.Allocator,
     key: []const u8,
-    field_type: field.Type,
+    value_type: object.value.Type,
     content: []const u8,
-) PutError!struct { object.Key, object.Field } {
-    const pair_key: object.Key = try .init(allocator, key, field_type);
+) PutError!struct { object.Key, object.Value } {
+    const pair_key: object.Key = try .init(allocator, key, value_type);
     errdefer pair_key.deinit(allocator);
-    const pair_value: object.Field = try .init(allocator, field_type, content);
+    const pair_value: object.Value = try .init(allocator, value_type, content);
 
     return .{ pair_key, pair_value };
 }
 
-fn deinitPair(allocator: std.mem.Allocator, key: object.Key, value: object.Field) void {
+fn deinitPair(allocator: std.mem.Allocator, key: object.Key, value: object.Value) void {
     key.deinit(allocator);
-    value.deinit(allocator, key.getFieldType());
+    value.deinit(allocator, key.getValueType());
 }

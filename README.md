@@ -14,7 +14,7 @@ Rapto takes into consideration multiple architectural aspects that differentiate
 
 - **Cache-aware**: Memory is managed through a flat hashmap containing key-value pairs with a total size of 16 bytes. The pointer associated with the key encodes the value type directly inside the pointer LSB bits, reducing cache accesses and memory overhead. Although this choice introduces coupling between key and value type, the `Ref` wrapper provides a safe and typed access layer.
 
-- **Flexibility**: Although Rapto maintains a simple and direct key-value model, it also supports structured field types such as `list` and `map`, allowing representation of slightly more complex data without introducing document systems or additional layers.
+- **Flexibility**: Although Rapto maintains a simple and direct key-value model, it also supports structured value types such as `list` and `map`, allowing representation of slightly more complex data without introducing document systems or additional layers.
 
 ## For contributors
 

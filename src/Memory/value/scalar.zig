@@ -3,11 +3,11 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of scalar fields.
+//! It contains the implementation of scalars.
 
 const std = @import("std");
 
-const Type = @import("../field.zig").Type;
+const value = @import("../value.zig");
 
 pub const Void = @import("scalar/Void.zig");
 pub const Integer = @import("scalar/Integer.zig");
@@ -16,8 +16,8 @@ pub const Flag = @import("scalar/Flag.zig");
 pub const String = @import("scalar/String.zig");
 pub const Point = @import("scalar/Point.zig");
 
-/// Scalar field types used by List or Map as item.
-/// Item contains information about field type,
+/// Scalar value types used by List or Map as item.
+/// Item contains information about the value type,
 /// allowing the serializeToWriter method.
 pub const ScalarItem = union(enum) {
     void: Void,
@@ -29,10 +29,10 @@ pub const ScalarItem = union(enum) {
 
     pub fn fromContent(
         allocator: std.mem.Allocator,
-        field_type: Type,
+        value_type: value.Type,
         content: []const u8,
     ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarItem {
-        return switch (field_type) {
+        return switch (value_type) {
             .void => .{ .void = .fromContent() },
             .integer => .{ .integer = try .fromContent(content) },
             .decimal => .{ .decimal = try .fromContent(content) },
@@ -53,11 +53,11 @@ pub const ScalarItem = union(enum) {
 
         return switch (self) {
             .void => true,
-            .integer => |value| value.get() == item.integer.get(),
-            .decimal => |value| value.isApproxEqualTo(item.decimal.get()),
-            .flag => |value| value.get() == item.flag.get(),
-            .string => |value| std.mem.eql(u8, value.get(), item.string.get()),
-            .point => |value| std.meta.eql(value.get(), item.point.get()),
+            .integer => |v| v.get() == item.integer.get(),
+            .decimal => |v| v.isApproxEqualTo(item.decimal.get()),
+            .flag => |v| v.get() == item.flag.get(),
+            .string => |v| std.mem.eql(u8, v.get(), item.string.get()),
+            .point => |v| std.meta.eql(v.get(), item.point.get()),
         };
     }
 
@@ -83,14 +83,14 @@ pub const ScalarItem = union(enum) {
         };
     }
 
-    pub fn @"type"(self: ScalarItem) Type {
+    pub fn @"type"(self: ScalarItem) value.Type {
         const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
         // this enum is always a subset with less quantity of Type,
         // so the conversion is always possible
-        return Type.fromInt(self_int_enum) catch unreachable;
+        return value.Type.fromInt(self_int_enum) catch unreachable;
     }
 
-    /// Deallocated field. Assumes the field is initializated.
+    /// Deallocates value. Assumes the value is initialized.
     pub fn deinit(self: ScalarItem, allocator: std.mem.Allocator) void {
         switch (self) {
             .void, .integer, .decimal, .flag => {},

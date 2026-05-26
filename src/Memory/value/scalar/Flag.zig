@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of flag field.
+//! It contains the implementation of flag value.
 
-/// Flag field type represented indicator that signals errors, conditions
+/// Flag value type represented indicator that signals errors, conditions
 /// or common states as boolean (true or false).
 const Flag = @This();
 

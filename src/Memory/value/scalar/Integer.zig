@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of integer field.
+//! It contains the implementation of integer value.
 
-/// Integer field type represents signed integer of 64 bits.
+/// Integer value type represents signed integer of 64 bits.
 /// This implementation is more efficient for integer calculations.
 /// Useful for counters, timestamps and identifiers.
 const Integer = @This();
