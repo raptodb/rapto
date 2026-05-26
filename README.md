@@ -1,6 +1,3 @@
-### This branch is dedicated to a complete redesign of the entire architecture. The database completely changes its data storage model, task management, and the entire system.
-### When this branch is ready to go, the documentation and presentation will be changed; at this moment this README is not updated/valid.
-
 <br><br>
 
 <div align="center">
@@ -9,51 +6,19 @@
 
 <br><br>
 
-## The Rapto database
+Rapto takes into consideration multiple architectural aspects that differentiate it from traditional in-memory databases. Performance does not derive exclusively from the classic in-memory model, but also from the execution model, protocol, and memory layout that provide these characteristics:
 
-Rapto is an in-memory key-value database with persistent storage. It is designed to ensure speed and simplicity in operations and is used in very specific contexts.
+- **Scalability**: The runtime uses a completely single-threaded event-driven architecture based exclusively on `poll`. This linear model avoids synchronization, cache contention, and overhead introduced by threads or context-switching. In addition, memory remains preallocated to maintain predictable and stable behavior even under high workloads.
 
-The supported data types are intentionally minimal for reasons of efficiency and purpose and include `integer`, `decimal` and `string`. They are subject to continuous optimization to maximize performance in query operations.
+- **Performance**: For common read and write operations, latencies often remain below ten microseconds. This is possible thanks to the frame-based protocol, aggressive buffer reuse, and the in-memory storage system, designed to favor zero-copy deserialization and minimize allocations during serialization and query execution.
 
-The contexts of use are limited and very specific, such as real-time monitoring, embedded systems, LRU cache. For a general overview, it is recommended to use a few frequently accessed keys.
+- **Cache-aware**: Memory is managed through a flat hashmap containing key-value pairs with a total size of 16 bytes. The pointer associated with the key encodes the value type directly inside the pointer LSB bits, reducing cache accesses and memory overhead. Although this choice introduces coupling between key and value type, the `Ref` wrapper provides a safe and typed access layer.
 
-## The pillars
+- **Flexibility**: Although Rapto maintains a simple and direct key-value model, it also supports structured field types such as `list` and `map`, allowing representation of slightly more complex data without introducing document systems or additional layers.
 
-**🎯 _Quality_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Architecture and code quality ensuring readability and maintainability.
+## For contributors
 
-**🛡️ _Security_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Built using trusted, safety-focused languages like Zig.
-
-**👣 _Footprinting_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Memory is used efficiently by tracking it at each operation.
-
-**⚡ _Performance_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Optimized for peak computational and memory efficiency.
-
-**🦾 _Flexibility_** <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Introduction of new features without cost and performance regression.
-
-> ***The foundation of all these pillars is the reliability that Rapto is committed to ensuring in professional systems.***
-
-## Benchmarks
-
-Valid benchmarks are available through Rapto clients. <br>
-Internal tests focused on query resolution showed latencies in a few microseconds.
-> [!IMPORTANT]
-> However, these results are not publicly verified and should be considered indicative only.
-
-Benchmarks should be based on <ins>max</ins>, <ins>min</ins> and <ins>avg</ins> statistics based on 2000 epochs of `SET` and `GET` which give a general overview of the performance.
-
-#### Official Rapto clients
-
-| Client                                            | Server version        | Benchmark tested | AVG stats              |
-| :------------------------------------------------ | :-------------------: | :--------------: | :--------------------: |
-| [zig-rapto](https://github.com/raptodb/zig-rapto) | `v0.1.0` (unreleased) | ✅               | `SET`: 19µs, `GET`:12µs |
-
-## Documentation
-
-The only official documentation of Rapto resides in the [wiki](https://github.com/raptodb/rapto/wiki) of this repository.
+In addition to Rapto's adoption of [Contributor Covenant](https://www.contributor-covenant.org/), contributors are discouraged from relying on LLMs to generate code or prose. AI-generated code and writing are often repetitive, low-quality, and inconsistent in style, and are frequently submitted without proper supervision or a full understanding by their authors.
 
 ## License
 
