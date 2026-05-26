@@ -25,8 +25,7 @@ comptime {
     _ = @import("Memory/value/scalar/Void.zig");
     _ = @import("state_machine.zig");
     _ = @import("tagged_pointer.zig");
-    _ = @import("Task.zig");
-    _ = @import("Task/Query.zig");
-    _ = @import("Task/Query/Flags.zig");
+    _ = @import("Query.zig");
+    _ = @import("Query/Flags.zig");
     _ = @import("zprof.zig");
 }

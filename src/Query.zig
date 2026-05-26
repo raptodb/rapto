@@ -8,7 +8,7 @@
 const Query = @This();
 
 const std = @import("std");
-const frames = @import("../frames.zig");
+const frames = @import("frames.zig");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
@@ -42,6 +42,14 @@ pub const Command = enum(u8) {
 
     fn parse(int: u8) error{UnknownCommand}!Command {
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
+    }
+
+    pub fn kind(self: Command) enum { read, write, control } {
+        return switch (self) {
+            .set, .update, .del, .copy, .rename, .erase => .write,
+            .ping, .get, .count, .type, .list, .exist => .read,
+            .down => .control,
+        };
     }
 
     fn serializeToWriter(self: Command, writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -116,7 +124,8 @@ pub fn isEqualTo(self: *const Query, query: *const Query) bool {
 
         if (self_arg != null and arg != null) {
             if (!std.mem.eql(u8, self_arg.?, arg.?)) return false;
-        }
+        } else return false;
+
     }
 
     return true;
