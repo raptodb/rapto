@@ -61,6 +61,7 @@ pub fn BuilderType(comptime HeaderType: type) type {
         writer: *std.Io.Writer,
         begin_offset: usize,
 
+        /// Assumes writer is derived from `std.Io.Writer.Allocating`.
         pub fn begin(writer: *std.Io.Writer) std.Io.Writer.Error!Self {
             const header_offset = writer.end;
             try writer.writeInt(HeaderType, 0, .little);
