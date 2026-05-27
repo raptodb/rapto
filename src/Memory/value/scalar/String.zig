@@ -35,9 +35,7 @@ pub fn set(
 ) std.mem.Allocator.Error!void {
     const length = self.len();
 
-    // content.len is never over std.math.maxInt(u32).
-    // each pipeline, has one or multiple query with a max length
-    // of std.math.maxInt(u32), so is impossible a loss.
+    // content.len is never longer than serialized query.
     assert(content.len <= std.math.maxInt(u32));
     const content_length: u32 = @truncate(content.len);
 
