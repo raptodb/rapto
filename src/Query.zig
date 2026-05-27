@@ -120,12 +120,11 @@ pub fn isEqualTo(self: *const Query, query: *const Query) bool {
     while (true) {
         const self_arg = self_args.next();
         const arg = args.next();
-        if (self_arg == null and arg == null) return true;
 
+        if (self_arg == null and arg == null) return true;
         if (self_arg != null and arg != null) {
             if (!std.mem.eql(u8, self_arg.?, arg.?)) return false;
         } else return false;
-
     }
 
     return true;

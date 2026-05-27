@@ -82,11 +82,6 @@ pub fn begin(self: *Aof, timestamp: std.Io.Timestamp) std.mem.Allocator.Error!Bu
 const Iterator = struct {
     reader: std.Io.Reader,
 
-    fn fromReader(aof: *Aof, io: std.Io, buf: []u8) Iterator {
-        const reader = aof.file.reader(io, buf);
-        return .{ .reader = reader.interface };
-    }
-
     const Pipeline = struct {
         reader: std.Io.Reader,
 
@@ -109,7 +104,8 @@ const Iterator = struct {
 };
 
 pub fn iterator(self: *Aof, io: std.Io, buf: []u8) Iterator {
-    return .fromReader(self, io, buf);
+    const reader = self.file.reader(io, buf);
+    return .{ .reader = reader.interface };
 }
 
 pub fn flush(self: *Aof, io: std.Io) std.Io.File.Writer.Error!void {
