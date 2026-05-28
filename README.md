@@ -1,4 +1,4 @@
-<ins>**Currently unstable and uncompleted*</ins>
+<ins>**Currently unstable and incomplete*</ins>
 
 <br><br>
 
