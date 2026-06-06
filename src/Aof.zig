@@ -57,7 +57,7 @@ pub const Builder = struct {
 
         const builder = frames.ExtendedBuilder.begin(writer) catch
             return error.OutOfMemory;
-        writer.writeInt(i64, timestamp.toMicroseconds(), .little) catch
+        writer.writeInt(i96, timestamp.toNanoseconds(), .little) catch
             return error.OutOfMemory;
 
         return .{ .wrapped_builder = builder };
@@ -90,7 +90,7 @@ const Iterator = struct {
         ) std.Io.Reader.Error!struct { std.Io.Timestamp, frames.Iterator } {
             const timestamp = try self.reader.takeInt(i64, .little);
             return .{
-                .fromNanoseconds(@as(i96, timestamp) * std.time.ns_per_us),
+                .fromNanoseconds(timestamp),
                 .init(self.reader.buffered()),
             };
         }

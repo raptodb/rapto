@@ -58,10 +58,10 @@ pub fn execute(
         .rename => rename(allocator, memory, query),
         .erase  => erase(allocator, memory, query),
         
-        inline else => |write_command| err: {
+        inline else => |read_command| err: {
             if (query.flags.noreply.get()) return;
 
-            break :err switch (write_command) {
+            break :err switch (read_command) {
                 .ping  => ping(writer, query),
                 .get   => get(memory, writer, query),
                 .count => count(memory, writer, query),

@@ -14,7 +14,7 @@ pub const Code = enum(u8) {
     // Success (0-99)
     OK = 0,
 
-    // Command errors from StateMachine (100-199)
+    // Command errors from state_machine (100-199)
     CommandKeyNotFound = 100,
     CommandInvalidKey,
     CommandInvalidFormat,
