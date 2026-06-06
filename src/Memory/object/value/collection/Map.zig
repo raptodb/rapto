@@ -11,7 +11,7 @@
 const Map = @This();
 
 const std = @import("std");
-const frames = @import("../../../frames.zig");
+const frames = @import("../../../../frames.zig");
 const value = @import("../../value.zig");
 
 const ScalarItem = @import("../scalar.zig").ScalarItem;

@@ -26,7 +26,7 @@ pub fn deinit(self: *Memory, allocator: std.mem.Allocator) void {
 }
 
 pub const PutError = error{
-    KeyTooLong,
+    InvalidKey,
     InvalidFormat,
     MismatchType,
     UnknownType,

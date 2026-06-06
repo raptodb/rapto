@@ -10,7 +10,7 @@ const List = @This();
 
 const std = @import("std");
 const value = @import("../../value.zig");
-const frames = @import("../../../frames.zig");
+const frames = @import("../../../../frames.zig");
 const assert = std.debug.assert;
 
 const ScalarItem = @import("../scalar.zig").ScalarItem;

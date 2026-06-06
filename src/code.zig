@@ -16,7 +16,7 @@ pub const Code = enum(u8) {
 
     // Command errors from StateMachine (100-199)
     CommandKeyNotFound = 100,
-    CommandKeyTooLong,
+    CommandInvalidKey,
     CommandInvalidFormat,
     CommandMissingTokens,
     CommandMismatchType,
@@ -40,7 +40,7 @@ pub fn writeCode(writer: *std.Io.Writer, code: Code) std.Io.Writer.Error!void {
 pub fn fromCommandError(err: CommandError) Code {
     return switch (err) {
         error.KeyNotFound => .CommandKeyNotFound,
-        error.KeyTooLong => .CommandKeyTooLong,
+        error.InvalidKey => .CommandInvalidKey,
         error.InvalidFormat => .CommandInvalidFormat,
         error.MissingTokens => .CommandMissingTokens,
         error.MismatchType => .CommandMismatchType,

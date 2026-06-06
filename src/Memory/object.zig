@@ -6,10 +6,10 @@
 //! It contains the implementation of object.
 
 const std = @import("std");
-pub const value = @import("value.zig");
+pub const value = @import("object/value.zig");
 const assert = std.debug.assert;
 
-pub const Key = @import("Key.zig");
+pub const Key = @import("object/Key.zig");
 pub const Value = value.Value;
 
 comptime {
@@ -63,7 +63,7 @@ pub const Ref = struct {
         self: Ref,
         allocator: std.mem.Allocator,
         new_key: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidKey, KeyTooLong })!void {
+    ) (std.mem.Allocator.Error || error{ InvalidKey })!void {
         try self.key_ptr.set(allocator, new_key);
     }
 
@@ -170,7 +170,7 @@ test "Ref" {
     {
         var raw_key: [260]u8 = @splat(0);
         try std.testing.expectError(
-            error.KeyTooLong,
+            error.InvalidKey,
             Key.init(allocator, &raw_key, .integer),
         );
     }

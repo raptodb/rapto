@@ -3,7 +3,7 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of object.
+//! It contains the implementation of Key.
 
 const Key = @This();
 
@@ -11,7 +11,7 @@ const std = @import("std");
 const value = @import("value.zig");
 const assert = std.debug.assert;
 
-const TaggedPointer = @import("../tagged_pointer.zig").TaggedPointer;
+const TaggedPointer = @import("tagged_pointer.zig").TaggedPointer;
 
 /// Pointer alignment of current architecture.
 /// Defined for clarity and conventional purposes.
@@ -32,9 +32,9 @@ pub fn init(
     allocator: std.mem.Allocator,
     key: []const u8,
     value_type: value.Type,
-) (std.mem.Allocator.Error || error{KeyTooLong})!Key {
-    assert(key.len > 0);
-    if (key.len > std.math.maxInt(u8)) return error.KeyTooLong;
+) (std.mem.Allocator.Error || error{InvalidKey})!Key {
+    if (key.len > std.math.maxInt(u8) or
+        key.len == 0) return error.InvalidKey;
 
     const buf = try allocator.alignedAlloc(u8, pointer_alignment, 1 + key.len);
     errdefer allocator.free(buf);
@@ -51,9 +51,9 @@ pub fn set(
     self: *Key,
     allocator: std.mem.Allocator,
     key: []const u8,
-) (std.mem.Allocator.Error || error{KeyTooLong})!void {
-    assert(key.len > 0);
-    if (key.len > std.math.maxInt(u8)) return error.KeyTooLong;
+) (std.mem.Allocator.Error || error{InvalidKey})!void {
+    if (key.len > std.math.maxInt(u8) or
+        key.len == 0) return error.InvalidKey;
 
     const key_length: u8 = @truncate(key.len);
     const length = self.len();
