@@ -63,7 +63,7 @@ pub const Ref = struct {
         self: Ref,
         allocator: std.mem.Allocator,
         new_key: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidKey })!void {
+    ) (std.mem.Allocator.Error || error{InvalidKey})!void {
         try self.key_ptr.set(allocator, new_key);
     }
 
