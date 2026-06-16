@@ -12,11 +12,12 @@ const frames = @import("frames.zig");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
-pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFormat };
+pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFlagUnion, InvalidFormat };
 
 command: Command,
 flags: Flags,
-/// Best accessed via `.argsIterator()`
+/// Best accessed via `.argsIterator()`.
+/// Format is equivalent to Frames.
 args: []const u8,
 
 pub const Command = enum(u8) {
@@ -28,9 +29,9 @@ pub const Command = enum(u8) {
     update = 3,
     del = 4,
 
-    // ordered by insertion, do not
-    // reorder or change values to
-    // maintain compatibility across versions
+    // ordered by insertion, do not reorder
+    // or change fields to maintain
+    // compatibility across versions
     copy,
     rename,
     count,
@@ -66,25 +67,22 @@ pub const Command = enum(u8) {
 ///
 /// FLAGS
 ///   Each flag is encoded as:
-///     [tag][value]
+///     [tag bitmask][value][value]...
 ///   where:
-///     - key   : fixed-size flag identifier (u8)
-///     - value : own format per flag
-///
-///   Multiple flags are concatenated sequentially:
-///     [flag][flag]...
+///     - tag bitmask : bitmask of all enabled flags (u64)
+///     - value       : value for each flag
 ///
 /// ARGS
 ///   Each arg is encoded as frame:
-///     [len:u32][arg]...
+///     [len(arg):u32][arg]...
 ///
 ///   Multiple arguments are concatenated sequentially:
 ///     [arg][arg]...
 ///
 /// FULL QUERY LAYOUT
-///   [COMMAND][len:u32][FLAGS][ARGS]
+///   [COMMAND][len(FLAGS):u32][FLAGS][ARGS]
 ///
-/// All length fields are encoded using the predefined header type.
+/// All length-prefixed field are encoded through Frames.
 pub fn parse(serialized: []const u8) Error!Query {
     var reader: std.Io.Reader = .fixed(serialized);
 
@@ -95,7 +93,7 @@ pub fn parse(serialized: []const u8) Error!Query {
     if (length > serialized.len - reader.seek)
         return error.InvalidFormat;
 
-    const flags: Flags = try .parseFromReader(&reader, length);
+    const flags: Flags = try .parseFromReader(&reader);
 
     assert(reader.seek <= serialized.len);
 
@@ -112,24 +110,28 @@ pub fn argsIterator(self: *const Query) frames.Iterator {
 
 pub fn isEqualTo(self: *const Query, query: *const Query) bool {
     if (self.command != query.command) return false;
-
     if (!self.flags.isEqualTo(query.flags)) return false;
+    return std.mem.eql(u8, self.args, query.args);
+}
 
-    var self_args = self.argsIterator();
-    var args = query.argsIterator();
-    while (true) {
-        const self_arg = self_args.next();
-        const arg = args.next();
+pub fn testIsEqualTo(actual: []const u8, expected: []const []const u8) bool {
+    var i: u64 = 0;
+    var actual_iter: frames.Iterator = .init(actual);
+    while (true) : (i += 1) {
+        const actual_part = actual_iter.next();
+        const expected_part = if (i >= expected.len) null else expected[i];
 
-        if (self_arg == null and arg == null) return true;
-        if (self_arg != null and arg != null) {
-            if (std.mem.eql(u8, self_arg.?, arg.?)) continue;
-        } else return false;
+        if (actual_part == null and expected_part == null) return true;
+        if (actual_part != null and expected_part != null) {
+            if (std.mem.eql(u8, actual_part.?, expected_part.?)) continue;
+        }
+
+        return false;
     }
 }
 
 /// This function is used for tests.
-pub fn serializeToWriter(
+pub fn testSerializeToWriter(
     writer: *std.Io.Writer,
     command: Query.Command,
     flags: Query.Flags,
@@ -147,5 +149,202 @@ pub fn serializeToWriter(
         var builder: frames.Builder = try .begin(writer);
         defer builder.end();
         try writer.writeAll(arg);
+    }
+}
+
+test "Query" {
+    const TestQueryLayout = struct {
+        command: Query.Command,
+        flags: Query.Flags,
+        args: []const []const u8,
+    };
+
+    const cases = [_]TestQueryLayout{
+        .{
+            .command = .ping,
+            .flags = .{},
+            .args = &.{},
+        },
+        .{
+            .command = .get,
+            .flags = .{},
+            .args = &.{"key"},
+        },
+        .{
+            .command = .set,
+            .flags = .{},
+            .args = &.{ "key", "value" },
+        },
+        .{
+            .command = .set,
+            .flags = .{},
+            .args = &.{""},
+        },
+        .{
+            .command = .set,
+            .flags = .{},
+            .args = &.{ "", "" },
+        },
+        .{
+            .command = .get,
+            .flags = .{
+                .noreply = .init(true),
+            },
+            .args = &.{"user"},
+        },
+        .{
+            .command = .erase,
+            .flags = .{
+                .free = .init(true),
+            },
+            .args = &.{"some flags"},
+        },
+        .{
+            .command = .list,
+            .flags = .{
+                .by = .init(.index, Query.Flags.Unsigned.init(0)),
+            },
+            .args = &.{"user*"},
+        },
+        .{
+            .command = .list,
+            .flags = .{
+                .by = .init(.index, Query.Flags.Unsigned.init(64)),
+            },
+            .args = &.{"*user"},
+        },
+        .{
+            .command = .list,
+            .flags = .{
+                .by = .init(.index, Query.Flags.Unsigned.init(std.math.maxInt(u32))),
+            },
+            .args = &.{"*user"},
+        },
+        .{
+            .command = .list,
+            .flags = .{
+                .by = .init(
+                    .range,
+                    Query.Flags.Range.init(
+                        .init(0),
+                        .init(10),
+                    ),
+                ),
+            },
+            .args = &.{"users"},
+        },
+        .{
+            .command = .list,
+            .flags = .{
+                .by = .init(
+                    .range,
+                    Query.Flags.Range.init(
+                        .init(1),
+                        .init(std.math.maxInt(u32)),
+                    ),
+                ),
+            },
+            .args = &.{"users"},
+        },
+        .{
+            .command = .exist,
+            .flags = .{
+                .by = .init(
+                    .key,
+                    Query.Flags.String.init("user:123"),
+                ),
+            },
+            .args = &.{},
+        },
+        .{
+            .command = .exist,
+            .flags = .{
+                .by = .init(
+                    .key,
+                    Query.Flags.String.init(""),
+                ),
+            },
+            .args = &.{},
+        },
+        .{
+            .command = .rename,
+            .flags = .{
+                .noreply = .init(true),
+                .free = .init(true),
+                .by = .init(
+                    .index,
+                    Query.Flags.Unsigned.init(7),
+                ),
+            },
+            .args = &.{ "old", "new" },
+        },
+        .{
+            .command = .del,
+            .flags = .{
+                .noreply = .init(true),
+                .free = .init(true),
+                .by = .init(
+                    .range,
+                    Query.Flags.Range.init(
+                        .init(5),
+                        .init(20),
+                    ),
+                ),
+            },
+            .args = &.{},
+        },
+        .{
+            .command = .count,
+            .flags = .{
+                .noreply = .init(true),
+                .by = .init(
+                    .key,
+                    Query.Flags.String.init("active"),
+                ),
+            },
+            .args = &.{"sessions"},
+        },
+        .{
+            .command = .copy,
+            .flags = .{},
+            .args = &.{ "a", "b", "c", "d", "e", "f", "g" },
+        },
+        .{
+            .command = .set,
+            .flags = .{},
+            .args = &.{
+                "hello\nworld",
+                "value\t123",
+            },
+        },
+        .{
+            .command = .set,
+            .flags = .{},
+            .args = &.{ "ciao", "你好", "🚀" },
+        },
+        .{
+            .command = .update,
+            .flags = .{},
+            .args = &.{
+                &@as([128]u8, @splat('a')),
+            },
+        },
+        .{
+            .command = .down,
+            .flags = .{},
+            .args = &.{},
+        },
+    };
+
+    for (cases) |expected| {
+        var buffer: [512]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&buffer);
+
+        try testSerializeToWriter(&writer, expected.command, expected.flags, expected.args);
+        const parsed: Query = try .parse(writer.buffered());
+
+        try std.testing.expect(parsed.command == expected.command);
+        try std.testing.expect(parsed.flags.isEqualTo(expected.flags));
+        try std.testing.expect(testIsEqualTo(parsed.args, expected.args));
     }
 }
