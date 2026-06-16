@@ -57,7 +57,5 @@ In addition to Rapto's adoption of [Contributor Covenant](https://www.contributo
 
 ## License
 
-Copyright (c) raptodb <br>
-Copyright (c) Andrea Vaccaro
-
-The content of this repository is licensed under the [BSD-3-Clause](LICENSE.md) license.
+Copyright (c) Andrea Vaccaro, raptodb <br>
+The content of this repository is licensed under the [Apache-2.0](LICENSE.md) license.
