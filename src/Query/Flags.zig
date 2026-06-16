@@ -17,11 +17,13 @@ noreply: Bool = .init(false),
 /// If true, ERASE operations
 /// frees all objects.
 free: Bool = .init(false),
-/// Specifies which elements has
-/// been selected for the operation.
-by: By = .default,
+/// Specifies which elements will be
+/// filtered for the operation.
+/// This affects key or value, related
+/// to the type of the operation.
+filter_by: FilterBy = .default,
 
-pub const By = struct {
+pub const FilterBy = struct {
     value: Union,
 
     const Union = union(enum) {
@@ -30,12 +32,13 @@ pub const By = struct {
         index: Unsigned,
         range: Range,
         key: String,
+        regex: String,
     };
 
-    const default: By = .{ .value = .any };
+    const default: FilterBy = .{ .value = .any };
 
-    pub fn init(comptime by_tag: enum { any, index, range, key }, flag: anytype) By {
-        return .{ .value = switch (by_tag) {
+    pub fn init(comptime filter_by_tag: enum { any, index, range, key }, flag: anytype) FilterBy {
+        return .{ .value = switch (filter_by_tag) {
             .any => .any,
             .index => .{ .index = flag },
             .range => .{ .range = flag },
@@ -43,24 +46,24 @@ pub const By = struct {
         } };
     }
 
-    pub fn get(self: By) Union {
+    pub fn get(self: FilterBy) Union {
         return self.value;
     }
 
-    fn tag(self: By) Tag {
+    fn tag(self: FilterBy) Tag {
         return switch (self.value) {
-            .any => .byany,
-            .index => .byindex,
-            .range => .byrange,
-            .key => .bykey,
+            .any => .filter_by_any,
+            .index => .filter_by_index,
+            .range => .filter_by_range,
+            .key => .filter_by_key,
         };
     }
 
     fn parseContentFromReader(
         reader: *std.Io.Reader,
-        comptime by_tag: enum { any, index, range, key },
-    ) error{InvalidFormat}!By {
-        return .{ .value = switch (by_tag) {
+        comptime filter_by_tag: enum { any, index, range, key },
+    ) error{InvalidFormat}!FilterBy {
+        return .{ .value = switch (filter_by_tag) {
             .any => .any,
             .index => .{ .index = try .parseFromReader(reader) },
             .range => .{ .range = try .parseFromReader(reader) },
@@ -68,7 +71,7 @@ pub const By = struct {
         } };
     }
 
-    fn serializeContentToWriter(self: By, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn serializeContentToWriter(self: FilterBy, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.value) {
             .any => {},
             .index => |value| try value.serializeToWriter(writer),
@@ -179,10 +182,10 @@ const Tag = enum(u6) {
     noreply = 0,
     free,
 
-    byindex,
-    byrange,
-    bykey,
-    byany,
+    filter_by_any,
+    filter_by_index,
+    filter_by_range,
+    filter_by_key,
 
     fn bitmask(self: Tag) u64 {
         return @as(u64, 1) << @as(u6, @intFromEnum(self));
@@ -194,14 +197,15 @@ pub fn parseFromReader(reader: *std.Io.Reader) Error!Flags {
 
     const mask = try take(reader, u64);
 
-    const by_bits = mask & (Tag.bitmask(.byindex) | Tag.bitmask(.byrange) | Tag.bitmask(.bykey));
+    const by_bits =
+        mask & (Tag.bitmask(.filter_by_index) | Tag.bitmask(.filter_by_range) | Tag.bitmask(.filter_by_key));
     if (@popCount(by_bits) > 1) return error.InvalidFlagUnion;
 
     if (mask & Tag.bitmask(.noreply) != 0) self.noreply = try Bool.parseFromReader(reader);
     if (mask & Tag.bitmask(.free) != 0) self.free = try Bool.parseFromReader(reader);
-    if (mask & Tag.bitmask(.byindex) != 0) self.by = try By.parseContentFromReader(reader, .index);
-    if (mask & Tag.bitmask(.byrange) != 0) self.by = try By.parseContentFromReader(reader, .range);
-    if (mask & Tag.bitmask(.bykey) != 0) self.by = try By.parseContentFromReader(reader, .key);
+    if (mask & Tag.bitmask(.filter_by_index) != 0) self.filter_by = try FilterBy.parseContentFromReader(reader, .index);
+    if (mask & Tag.bitmask(.filter_by_range) != 0) self.filter_by = try FilterBy.parseContentFromReader(reader, .range);
+    if (mask & Tag.bitmask(.filter_by_key) != 0) self.filter_by = try FilterBy.parseContentFromReader(reader, .key);
 
     return self;
 }
@@ -210,35 +214,35 @@ pub fn serializeToWriter(self: Flags, writer: *std.Io.Writer) std.Io.Writer.Erro
     var mask: u64 = 0;
     if (self.noreply.get()) mask |= Tag.bitmask(.noreply);
     if (self.free.get()) mask |= Tag.bitmask(.free);
-    mask |= switch (self.by.value) {
+    mask |= switch (self.filter_by.value) {
         .any => 0,
-        .index => Tag.bitmask(.byindex),
-        .range => Tag.bitmask(.byrange),
-        .key => Tag.bitmask(.bykey),
+        .index => Tag.bitmask(.filter_by_index),
+        .range => Tag.bitmask(.filter_by_range),
+        .key => Tag.bitmask(.filter_by_key),
     };
     try writer.writeInt(u64, mask, .little);
 
     if (self.noreply.get()) try self.noreply.serializeToWriter(writer);
     if (self.free.get()) try self.free.serializeToWriter(writer);
-    try self.by.serializeContentToWriter(writer);
+    try self.filter_by.serializeContentToWriter(writer);
 }
 
 pub fn isEqualTo(self: Flags, flags: Flags) bool {
     if (self.noreply.get() != flags.noreply.get()) return false;
     if (self.free.get() != flags.free.get()) return false;
 
-    return switch (self.by.value) {
-        .any => flags.by.value == .any,
-        .index => |v| switch (flags.by.value) {
+    return switch (self.filter_by.value) {
+        .any => flags.filter_by.value == .any,
+        .index => |v| switch (flags.filter_by.value) {
             .index => |pv| v.get() == pv.get(),
             else => false,
         },
-        .range => |r| switch (flags.by.value) {
+        .range => |r| switch (flags.filter_by.value) {
             .range => |pr| r.from().get() == pr.from().get() and
                 r.to().get() == pr.to().get(),
             else => false,
         },
-        .key => |k| switch (flags.by.value) {
+        .key => |k| switch (flags.filter_by.value) {
             .key => |pk| std.mem.eql(u8, k.get(), pk.get()),
             else => false,
         },
@@ -254,46 +258,46 @@ test "Flags" {
         .{},
         .{ .noreply = .init(true) },
         .{ .free = .init(true) },
-        .{ .by = .init(.index, Unsigned.init(0)) },
-        .{ .by = .init(.index, Unsigned.init(42)) },
-        .{ .by = .init(.index, Unsigned.init(std.math.maxInt(u32))) },
-        .{ .by = .init(.range, Range.init(.init(0), .init(0))) },
-        .{ .by = .init(.range, Range.init(.init(5), .init(15))) },
-        .{ .by = .init(.range, Range.init(.init(0), .init(std.math.maxInt(u32)))) },
-        .{ .by = .init(.key, String.init("")) },
-        .{ .by = .init(.key, String.init("a")) },
-        .{ .by = .init(.key, String.init("abc")) },
-        .{ .by = .init(.key, String.init("longer_key_test")) },
+        .{ .filter_by = .init(.index, Unsigned.init(0)) },
+        .{ .filter_by = .init(.index, Unsigned.init(42)) },
+        .{ .filter_by = .init(.index, Unsigned.init(std.math.maxInt(u32))) },
+        .{ .filter_by = .init(.range, Range.init(.init(0), .init(0))) },
+        .{ .filter_by = .init(.range, Range.init(.init(5), .init(15))) },
+        .{ .filter_by = .init(.range, Range.init(.init(0), .init(std.math.maxInt(u32)))) },
+        .{ .filter_by = .init(.key, String.init("")) },
+        .{ .filter_by = .init(.key, String.init("a")) },
+        .{ .filter_by = .init(.key, String.init("abc")) },
+        .{ .filter_by = .init(.key, String.init("longer_key_test")) },
         .{
             .noreply = .init(true),
-            .by = .init(.index, Unsigned.init(1)),
+            .filter_by = .init(.index, Unsigned.init(1)),
         },
         .{
             .free = .init(true),
-            .by = .init(.range, Range.init(.init(10), .init(20))),
-        },
-        .{
-            .noreply = .init(true),
-            .free = .init(true),
-            .by = .init(.index, Unsigned.init(999)),
+            .filter_by = .init(.range, Range.init(.init(10), .init(20))),
         },
         .{
             .noreply = .init(true),
             .free = .init(true),
-            .by = .init(.range, Range.init(.init(1), .init(1))),
-        },
-        .{
-            .noreply = .init(true),
-            .by = .init(.key, String.init("user:123")),
-        },
-        .{
-            .free = .init(true),
-            .by = .init(.key, String.init("session_token")),
+            .filter_by = .init(.index, Unsigned.init(999)),
         },
         .{
             .noreply = .init(true),
             .free = .init(true),
-            .by = .init(.key, String.init("abc")),
+            .filter_by = .init(.range, Range.init(.init(1), .init(1))),
+        },
+        .{
+            .noreply = .init(true),
+            .filter_by = .init(.key, String.init("user:123")),
+        },
+        .{
+            .free = .init(true),
+            .filter_by = .init(.key, String.init("session_token")),
+        },
+        .{
+            .noreply = .init(true),
+            .free = .init(true),
+            .filter_by = .init(.key, String.init("abc")),
         },
     };
 

@@ -202,28 +202,28 @@ test "Query" {
         .{
             .command = .list,
             .flags = .{
-                .by = .init(.index, Query.Flags.Unsigned.init(0)),
+                .filter_by = .init(.index, Query.Flags.Unsigned.init(0)),
             },
             .args = &.{"user*"},
         },
         .{
             .command = .list,
             .flags = .{
-                .by = .init(.index, Query.Flags.Unsigned.init(64)),
+                .filter_by = .init(.index, Query.Flags.Unsigned.init(64)),
             },
             .args = &.{"*user"},
         },
         .{
             .command = .list,
             .flags = .{
-                .by = .init(.index, Query.Flags.Unsigned.init(std.math.maxInt(u32))),
+                .filter_by = .init(.index, Query.Flags.Unsigned.init(std.math.maxInt(u32))),
             },
             .args = &.{"*user"},
         },
         .{
             .command = .list,
             .flags = .{
-                .by = .init(
+                .filter_by = .init(
                     .range,
                     Query.Flags.Range.init(
                         .init(0),
@@ -236,7 +236,7 @@ test "Query" {
         .{
             .command = .list,
             .flags = .{
-                .by = .init(
+                .filter_by = .init(
                     .range,
                     Query.Flags.Range.init(
                         .init(1),
@@ -249,7 +249,7 @@ test "Query" {
         .{
             .command = .exist,
             .flags = .{
-                .by = .init(
+                .filter_by = .init(
                     .key,
                     Query.Flags.String.init("user:123"),
                 ),
@@ -259,7 +259,7 @@ test "Query" {
         .{
             .command = .exist,
             .flags = .{
-                .by = .init(
+                .filter_by = .init(
                     .key,
                     Query.Flags.String.init(""),
                 ),
@@ -271,7 +271,7 @@ test "Query" {
             .flags = .{
                 .noreply = .init(true),
                 .free = .init(true),
-                .by = .init(
+                .filter_by = .init(
                     .index,
                     Query.Flags.Unsigned.init(7),
                 ),
@@ -283,7 +283,7 @@ test "Query" {
             .flags = .{
                 .noreply = .init(true),
                 .free = .init(true),
-                .by = .init(
+                .filter_by = .init(
                     .range,
                     Query.Flags.Range.init(
                         .init(5),
@@ -297,7 +297,7 @@ test "Query" {
             .command = .count,
             .flags = .{
                 .noreply = .init(true),
-                .by = .init(
+                .filter_by = .init(
                     .key,
                     Query.Flags.String.init("active"),
                 ),
