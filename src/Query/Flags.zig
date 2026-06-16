@@ -32,7 +32,6 @@ pub const FilterBy = struct {
         index: Unsigned,
         range: Range,
         key: String,
-        regex: String,
     };
 
     const default: FilterBy = .{ .value = .any };
