@@ -8,6 +8,7 @@
 comptime {
     _ = @import("Aof.zig");
     _ = @import("cli.zig");
+    _ = @import("cli/Server.zig");
     _ = @import("code.zig");
     _ = @import("frames.zig");
     _ = @import("main.zig");
