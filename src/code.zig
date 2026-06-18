@@ -31,6 +31,7 @@ pub const Code = enum(u8) {
     ParseUnknownCommand = 200,
     ParseUnknownFlag,
     ParseInvalidFormat,
+    ParseInvalidFlagUnion,
 };
 
 pub fn writeCode(writer: *std.Io.Writer, code: Code) std.Io.Writer.Error!void {
@@ -58,5 +59,6 @@ pub fn fromParseError(err: ParseError) Code {
         error.UnknownCommand => .ParseUnknownCommand,
         error.UnknownFlag => .ParseUnknownFlag,
         error.InvalidFormat => .ParseInvalidFormat,
+        error.InvalidFlagUnion => .ParseInvalidFlagUnion,
     };
 }
