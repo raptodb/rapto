@@ -94,30 +94,20 @@ pub const Value = union {
     /// Returns type of the generic get function.
     /// These types are "complex" to exploit zero-copy returns.
     pub fn ReturnType(comptime value_type: Type) type {
-        return switch (value_type) {
-            .void => void,
-            .integer => i64,
-            .decimal => f64,
-            .string => []const u8,
-            .flag => Flag.Status,
-            .point => Point.Axis,
-            .list => []ScalarItem,
-            .map => Map.HashMap.Iterator,
-        };
+        const get_fn = UnionType(value_type).get;
+        return @typeInfo(@TypeOf(get_fn)).@"fn".return_type orelse unreachable;
     }
 
-    /// Returns the complex type of the
+    test ReturnType {
+        assert(ReturnType(.void) == void);
+        assert(ReturnType(.decimal) == f64);
+        assert(ReturnType(.string) == []const u8);
+        assert(ReturnType(.list) == []const ScalarValue);
+    }
+
     pub fn UnionType(comptime value_type: Type) type {
-        return switch (value_type) {
-            .void => Void,
-            .integer => Integer,
-            .decimal => Decimal,
-            .flag => Flag,
-            .string => String,
-            .point => Point,
-            .list => List,
-            .map => Map,
-        };
+        const tag = comptime std.meta.stringToEnum(std.meta.FieldEnum(Value), @tagName(value_type));
+        return std.meta.fieldInfo(Value, tag orelse unreachable).type;
     }
 
     pub fn init(

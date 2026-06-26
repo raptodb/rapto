@@ -69,7 +69,11 @@ pub fn search(self: *Memory, key: []const u8) ?object.Ref {
 }
 
 /// Removes key from memory. Associated object.Ref will be invalidated.
-pub fn remove(self: *Memory, allocator: std.mem.Allocator, key: []const u8) error{KeyNotFound}!void {
+pub fn remove(
+    self: *Memory,
+    allocator: std.mem.Allocator,
+    key: []const u8,
+) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
     self.map.removeByPtr(ref.key_ptr);
     deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
@@ -95,10 +99,6 @@ pub const Iterator = struct {
     memory: *Memory,
     wrapped_iterator: Map.Iterator,
 
-    pub fn init(memory: *Memory, wrapped_iterator: Map.Iterator) Iterator {
-        return .{ .memory = memory, .wrapped_iterator = wrapped_iterator };
-    }
-
     pub fn next(self: *Iterator) ?object.Ref {
         const entry = self.wrapped_iterator.next() orelse return null;
         return .wrap(entry.key_ptr, entry.value_ptr);
@@ -110,7 +110,7 @@ pub const Iterator = struct {
 };
 
 pub fn iterator(self: *Memory) Iterator {
-    return .init(self, self.map.iterator());
+    return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
 }
 
 const SearchContext = struct {
