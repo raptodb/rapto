@@ -132,9 +132,9 @@ pub fn removeByKey(
 
 pub fn removeAll(self: Map, allocator: std.mem.Allocator) void {
     var iterator = self.get();
-    while (iterator.next()) |pair| {
-        allocator.free(pair.getKey().get());
-        pair.getValue().deinit(allocator);
+    while (iterator.next()) |entry| {
+        allocator.free(entry.key_ptr.get());
+        entry.value_ptr.deinit(allocator);
     }
     self.ptr.clearAndFree(allocator);
 }

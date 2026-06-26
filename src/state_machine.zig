@@ -325,8 +325,3 @@ fn del(
     const key = args.next() orelse return error.MissingTokens;
     return memory.remove(allocator, key);
 }
-
-    allocator: std.mem.Allocator,
-    memory: *Memory,
-    query: *const Query,
-    }

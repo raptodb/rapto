@@ -245,6 +245,7 @@ test "Query" {
             .args = &.{"users"},
         },
         .{
+            .command = .list,
             .flags = .{
                 .filter_by = .init(
                     .key,
@@ -252,14 +253,13 @@ test "Query" {
                 ),
             },
             .args = &.{},
-            .command = .list,
         },
         .{
+            .command = .list,
             .flags = .{
                 .filter_by = .init(
                     .key,
                     Query.Flags.String.init(""),
-            .command = .list,
                 ),
             },
             .args = &.{},
