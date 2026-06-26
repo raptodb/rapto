@@ -24,7 +24,7 @@ pub const Command = enum(u8) {
     ping = 0,
 
     // CRUD operations
-    set = 1,
+    insert = 1,
     get = 2,
     update = 3,
     del = 4,

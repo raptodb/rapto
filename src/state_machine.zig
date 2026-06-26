@@ -40,7 +40,7 @@ pub const CommandError = error{
 
 /// Executes query on this configuration. Fatal errors will be returned
 /// directly instead of Dispatch errors, these will be written on writer.
-/// If no error is occurred, writes OK code to output.
+/// If no error is occurred, the function writes OK code to output.
 pub fn execute(
     allocator: std.mem.Allocator,
     memory: *Memory, // Storage of state
@@ -51,8 +51,8 @@ pub fn execute(
 
     // zig fmt: off
     const maybe_error = switch (query.command) {
-        .set    => set(allocator, memory, query),
         .update => update(memory, query),
+        .insert => insert(allocator, memory, query),
         .del    => del(allocator, memory, query),
         .copy   => copy(allocator, memory, query),
         .rename => rename(allocator, memory, query),
@@ -186,7 +186,7 @@ fn getByKey(ref: object.Ref, writer: *std.Io.Writer, key: Flags.String) !void {
     };
 }
 
-fn set(
+fn insert(
     allocator: std.mem.Allocator,
     memory: *Memory,
     query: *const Query,
