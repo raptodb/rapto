@@ -19,7 +19,7 @@ pub const Point = @import("scalar/Point.zig");
 /// Scalar value types used by List or Map as item.
 /// Item contains information about the value type,
 /// allowing the serializeToWriter method.
-pub const ScalarItem = union(enum) {
+pub const ScalarValue = union(enum) {
     void: Void,
     integer: Integer,
     decimal: Decimal,
@@ -27,11 +27,21 @@ pub const ScalarItem = union(enum) {
     string: String,
     point: Point,
 
-    pub fn fromContent(
+    pub fn from(value_type: value.Type, v: anytype) ScalarValue {
+        switch (value_type) {
+            inline else => |tag| @unionInit(
+                ScalarValue,
+                @tagName(tag),
+                v,
+            ),
+        }
+    }
+
+    pub fn initFromContent(
         allocator: std.mem.Allocator,
         value_type: value.Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarItem {
+    ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarValue {
         return switch (value_type) {
             .void => .{ .void = .fromContent() },
             .integer => .{ .integer = try .fromContent(content) },
@@ -48,7 +58,16 @@ pub const ScalarItem = union(enum) {
         };
     }
 
-    pub fn compare(self: ScalarItem, item: ScalarItem) bool {
+    /// Deallocates value. Assuming value is initialized.
+    pub fn deinit(self: ScalarValue, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .void, .integer, .decimal, .flag => {},
+            .string => self.string.deinit(allocator),
+            .point => self.point.deinit(allocator),
+        }
+    }
+
+    pub fn compare(self: ScalarValue, item: ScalarValue) bool {
         if (std.meta.activeTag(self) != std.meta.activeTag(item)) return false;
 
         return switch (self) {
@@ -62,7 +81,7 @@ pub const ScalarItem = union(enum) {
     }
 
     pub fn serializeToWriter(
-        self: ScalarItem,
+        self: ScalarValue,
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
         try self.type().serializeToWriter(writer);
@@ -70,32 +89,21 @@ pub const ScalarItem = union(enum) {
     }
 
     pub fn serializeContentToWriter(
-        self: ScalarItem,
+        self: ScalarValue,
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
         return switch (self) {
             .void => self.void.serializeContentToWriter(writer),
-            .integer => self.integer.serializeContentToWriter(writer),
-            .decimal => self.decimal.serializeContentToWriter(writer),
-            .flag => self.flag.serializeContentToWriter(writer),
-            .string => self.string.serializeContentToWriter(writer),
-            .point => self.point.serializeContentToWriter(writer),
+            inline else => |_, tag| {
+                try @field(self, @tagName(tag)).serializeContentToWriter(writer);
+            },
         };
     }
 
-    pub fn @"type"(self: ScalarItem) value.Type {
+    pub fn @"type"(self: ScalarValue) value.Type {
         const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
         // this enum is always a subset with less quantity of Type,
         // so the conversion is always possible
         return value.Type.fromInt(self_int_enum) catch unreachable;
-    }
-
-    /// Deallocates value. Assumes the value is initialized.
-    pub fn deinit(self: ScalarItem, allocator: std.mem.Allocator) void {
-        switch (self) {
-            .void, .integer, .decimal, .flag => {},
-            .string => self.string.deinit(allocator),
-            .point => self.point.deinit(allocator),
-        }
     }
 };

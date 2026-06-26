@@ -13,15 +13,15 @@ const value = @import("../../value.zig");
 const frames = @import("../../../../frames.zig");
 const assert = std.debug.assert;
 
-const ScalarItem = @import("../scalar.zig").ScalarItem;
+const ScalarValue = @import("../scalar.zig").ScalarValue;
 
-ptr: *std.ArrayList(ScalarItem),
+ptr: *std.ArrayList(ScalarValue),
 
 pub fn initFromContent(
     allocator: std.mem.Allocator,
     content: []const u8,
 ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!List {
-    const list_ptr = try allocator.create(std.ArrayList(ScalarItem));
+    const list_ptr = try allocator.create(std.ArrayList(ScalarValue));
     errdefer allocator.destroy(list_ptr);
 
     list_ptr.* = .empty;
@@ -40,7 +40,7 @@ pub fn insert(
 
     switch (value_type) {
         else => {
-            const item: ScalarItem = try .fromContent(allocator, value_type, content);
+            const item: ScalarValue = try .initFromContent(allocator, value_type, content);
             return self.insertItem(allocator, index, item);
         },
         .list => {
@@ -50,7 +50,7 @@ pub fn insert(
                 const value_type_item, const content_item =
                     try value.splitSerialized(serialized_value);
 
-                const item: ScalarItem = try .fromContent(allocator, value_type_item, content_item);
+                const item: ScalarValue = try .initFromContent(allocator, value_type_item, content_item);
                 try self.insertItem(allocator, index + offset, item);
             }
         },
@@ -63,7 +63,7 @@ fn insertItem(
     self: *List,
     allocator: std.mem.Allocator,
     index: u64,
-    item: ScalarItem,
+    item: ScalarValue,
 ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!void {
     return if (index >= self.count())
         self.ptr.append(allocator, item)
@@ -92,17 +92,17 @@ pub fn setByIndex(
     const value_type, const content = try value.splitSerialized(serialized);
 
     self.ptr.items[index].deinit(allocator);
-    self.ptr.items[index] = try .fromContent(allocator, value_type, content);
+    self.ptr.items[index] = try .initFromContent(allocator, value_type, content);
 }
 
-pub fn get(self: List) []const ScalarItem {
+pub fn get(self: List) []const ScalarValue {
     if (self.count() == 0) return &.{};
     return self.getByRange(0, self.count() - 1) catch |err| switch (err) {
         error.RangeOverflow => unreachable,
     };
 }
 
-pub fn getByIndex(self: List, index: u64) error{RangeOverflow}!ScalarItem {
+pub fn getByIndex(self: List, index: u64) error{RangeOverflow}!ScalarValue {
     const range = try self.getByRange(index, index);
     return range[0];
 }
@@ -111,7 +111,7 @@ pub fn getByRange(
     self: List,
     from_index: u64,
     to_index: u64,
-) error{RangeOverflow}![]const ScalarItem {
+) error{RangeOverflow}![]const ScalarValue {
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
     return self.ptr.items[from_index .. to_index + 1];
 }
@@ -127,7 +127,7 @@ pub fn indexOfItemInRange(
 
     const value_type, const content = try value.splitSerialized(serialized);
 
-    const this_item: ScalarItem = try .fromContent(allocator, value_type, content);
+    const this_item: ScalarValue = try .initFromContent(allocator, value_type, content);
     defer this_item.deinit(allocator);
 
     for (from_index..to_index + 1) |index| {
@@ -209,7 +209,7 @@ pub fn deinit(self: List, allocator: std.mem.Allocator) void {
 }
 
 fn appendSerializedList(
-    items: *std.ArrayList(ScalarItem),
+    items: *std.ArrayList(ScalarValue),
     allocator: std.mem.Allocator,
     serialized_list: []const u8,
 ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
@@ -218,7 +218,7 @@ fn appendSerializedList(
     while (iterator.next()) |serialized_value| {
         const value_type, const content = try value.splitSerialized(serialized_value);
 
-        const item: ScalarItem = try .fromContent(allocator, value_type, content);
+        const item: ScalarValue = try .initFromContent(allocator, value_type, content);
         errdefer item.deinit(allocator);
         try items.append(allocator, item);
     }
@@ -235,10 +235,10 @@ fn serializedItemsIterator(
 test "List" {
     const allocator = std.testing.allocator;
 
-    var si1 = try ScalarItem.fromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(u64, 10))));
+    var si1: ScalarValue = try .initFromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(u64, 10))));
     defer si1.deinit(allocator);
 
-    var sf1 = try ScalarItem.fromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 1))));
+    var sf1: ScalarValue = try .initFromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 1))));
     defer sf1.deinit(allocator);
 
     const serialized = try serializeItems(allocator, &.{ si1, sf1 });
@@ -255,7 +255,7 @@ test "List" {
     defer pw_allocating.deinit();
     var pw = &pw_allocating.writer;
 
-    var str_item = try ScalarItem.fromContent(allocator, .string, "example, \"string\"");
+    var str_item: ScalarValue = try .initFromContent(allocator, .string, "example, \"string\"");
     defer str_item.deinit(allocator);
     _ = pw.consumeAll();
     try str_item.serializeToWriter(pw);
@@ -265,23 +265,25 @@ test "List" {
     try pw.writeInt(u64, @bitCast(@as(f64, 1)), .little);
     try pw.writeInt(u64, @bitCast(@as(f64, 2)), .little);
     try pw.writeInt(u64, @bitCast(@as(f64, 3)), .little);
-    var point_item = try ScalarItem.fromContent(allocator, .point, pw.buffered());
+    var point_item: ScalarValue = try .initFromContent(allocator, .point, pw.buffered());
     defer point_item.deinit(allocator);
     _ = pw.consumeAll();
     try point_item.serializeToWriter(pw);
     try s.insert(allocator, 0, pw.buffered());
 
-    var err_flag = try ScalarItem.fromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 3))));
+    var err_flag: ScalarValue = try .initFromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 3))));
     defer err_flag.deinit(allocator);
     var tmp = try serializeItems(allocator, &.{err_flag});
     try s.insert(allocator, 0, tmp);
     allocator.free(tmp);
 
-    var dec_item = try ScalarItem.fromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
+    var dec_item: ScalarValue = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
     defer dec_item.deinit(allocator);
-    tmp = try serializeItems(allocator, &.{dec_item});
-    try s.insert(allocator, 1, tmp);
-    allocator.free(tmp);
+    {
+        tmp = try serializeItems(allocator, &.{dec_item});
+        defer allocator.free(tmp);
+        try s.insert(allocator, 1, tmp);
+    }
 
     try std.testing.expect(s.count() == 6);
     try std.testing.expect((try s.getByIndex(0)).flag.get() == .@"error");
@@ -296,14 +298,14 @@ test "List" {
     try std.testing.expect((try s.getByIndex(4)).flag.get() == .true);
     try std.testing.expectEqualStrings("example, \"string\"", (try s.getByIndex(5)).string.get());
 
-    var str2 = try ScalarItem.fromContent(allocator, .string, "example2");
+    var str2: ScalarValue = try .initFromContent(allocator, .string, "example2");
     defer str2.deinit(allocator);
     _ = pw.consumeAll();
     try str2.serializeToWriter(pw);
     try s.setByIndex(allocator, 3, pw.buffered());
     try std.testing.expectEqualStrings("example2", (try s.getByIndex(3)).string.get());
 
-    var void_item = try ScalarItem.fromContent(allocator, .void, &.{});
+    var void_item: ScalarValue = try .initFromContent(allocator, .void, &.{});
     defer void_item.deinit(allocator);
     _ = pw.consumeAll();
     try void_item.serializeToWriter(pw);
@@ -329,7 +331,7 @@ test "List" {
 
     try std.testing.expectError(error.MismatchType, s.indexOfItem(allocator, serialized));
 
-    var dec_item2 = try ScalarItem.fromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
+    var dec_item2: ScalarValue = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
     defer dec_item2.deinit(allocator);
     _ = pw.consumeAll();
     try dec_item2.serializeToWriter(pw);
@@ -351,8 +353,6 @@ test "List" {
     try s.serializeContentToWriter(pw);
     try std.testing.expect(pw.buffered().len == 0);
 
-    try std.testing.expectError(error.MismatchType, ScalarItem.fromContent(allocator, .map, &.{}));
-    try std.testing.expectError(error.MismatchType, ScalarItem.fromContent(allocator, .list, &.{}));
 }
 
 fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8 {
@@ -368,4 +368,6 @@ fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8
     }
 
     return allocating.toOwnedSlice();
+    try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .map, &.{}));
+    try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .list, &.{}));
 }

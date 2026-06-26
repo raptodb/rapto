@@ -14,7 +14,7 @@ const std = @import("std");
 const frames = @import("../../../../frames.zig");
 const value = @import("../../value.zig");
 
-const ScalarItem = @import("../scalar.zig").ScalarItem;
+const ScalarValue = @import("../scalar.zig").ScalarValue;
 const String = @import("../scalar.zig").String;
 
 pub const MapContext = struct {
@@ -28,7 +28,7 @@ pub const MapContext = struct {
 
 pub const HashMap = std.HashMapUnmanaged(
     KeyString,
-    ScalarItem,
+    ScalarValue,
     MapContext,
     std.hash_map.default_max_load_percentage,
 );
@@ -38,7 +38,7 @@ pub const HashMap = std.HashMapUnmanaged(
 pub const KeyString = struct {
     str: []const u8,
 
-    pub fn init(content: []const u8) KeyString {
+    pub fn fromOwned(content: []const u8) KeyString {
         return .{ .str = content };
     }
 
@@ -84,18 +84,18 @@ pub fn put(
 ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat, UnknownType })!void {
     const key_type, const key_content = try value.splitSerialized(serialized_key);
     if (key_type != .string) return error.MismatchType;
-    const key: KeyString = .init(key_content);
+    const key: KeyString = .fromOwned(key_content);
     const gop = try self.ptr.getOrPut(allocator, key);
 
     const value_type, const value_content = try value.splitSerialized(serialized_value);
-    const new_value: ScalarItem = try .fromContent(allocator, value_type, value_content);
+    const new_value: ScalarValue = try .initFromContent(allocator, value_type, value_content);
     errdefer new_value.deinit(allocator);
 
     if (gop.found_existing) {
         gop.value_ptr.deinit(allocator);
     } else {
         const key_copy = try allocator.dupe(u8, key_content);
-        gop.key_ptr.* = .init(key_copy);
+        gop.key_ptr.* = .fromOwned(key_copy);
     }
 
     gop.value_ptr.* = new_value;
@@ -108,11 +108,11 @@ pub fn get(self: Map) HashMap.Iterator {
 pub fn getByKey(
     self: Map,
     serialized: []const u8,
-) error{ MismatchType, MapKeyNotFound, InvalidFormat, UnknownType }!ScalarItem {
+) error{ MismatchType, MapKeyNotFound, InvalidFormat, UnknownType }!ScalarValue {
     const key_type, const content = try value.splitSerialized(serialized);
     if (key_type != .string) return error.MismatchType;
 
-    const key: KeyString = .init(content);
+    const key: KeyString = .fromOwned(content);
     return self.ptr.get(key) orelse error.MapKeyNotFound;
 }
 
@@ -124,7 +124,7 @@ pub fn removeByKey(
     const key_type, const content = try value.splitSerialized(serialized);
     if (key_type != .string) return error.MismatchType;
 
-    const key: KeyString = .init(content);
+    const key: KeyString = .fromOwned(content);
     const entry = self.ptr.fetchRemove(key) orelse return error.MapKeyNotFound;
     allocator.free(entry.key.str);
     entry.value.deinit(allocator);
@@ -132,9 +132,9 @@ pub fn removeByKey(
 
 pub fn removeAll(self: Map, allocator: std.mem.Allocator) void {
     var iterator = self.get();
-    while (iterator.next()) |entry| {
-        allocator.free(entry.key_ptr.str);
-        entry.value_ptr.deinit(allocator);
+    while (iterator.next()) |pair| {
+        allocator.free(pair.getKey().get());
+        pair.getValue().deinit(allocator);
     }
     self.ptr.clearAndFree(allocator);
 }
@@ -146,7 +146,7 @@ pub fn exists(
     const key_type, const content = try value.splitSerialized(serialized);
     if (key_type != .string) return error.MismatchType;
 
-    const key: KeyString = .init(content);
+    const key: KeyString = .fromOwned(content);
     return self.ptr.contains(key);
 }
 
@@ -204,8 +204,9 @@ fn putSerializedMap(
     var iterator = try serializedEntriesIterator(serialized);
     const self: Map = .{ .ptr = items };
 
-    while (iterator.next()) |entry|
+    while (iterator.next()) |entry| {
         try self.put(allocator, entry.serialized_key, entry.serialized_value);
+    }
 }
 
 /// Iterator of serialized entries in a serialized Map.
@@ -265,15 +266,15 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const MapEntry) ![]
 test "Map" {
     const allocator = std.testing.allocator;
 
-    var int_item = try ScalarItem.fromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(i64, 42))));
+    var int_item: ScalarValue = try .initFromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(i64, 42))));
     defer int_item.deinit(allocator);
-    var dec_item = try ScalarItem.fromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(f64, 3.14))));
+    var dec_item: ScalarValue = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(f64, 3.14))));
     defer dec_item.deinit(allocator);
-    var flag_item = try ScalarItem.fromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 1))));
+    var flag_item: ScalarValue = try .initFromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 1))));
     defer flag_item.deinit(allocator);
-    var str_item = try ScalarItem.fromContent(allocator, .string, "hello");
+    var str_item: ScalarValue = try .initFromContent(allocator, .string, "hello");
     defer str_item.deinit(allocator);
-    var void_item = try ScalarItem.fromContent(allocator, .void, &.{});
+    var void_item: ScalarValue = try .initFromContent(allocator, .void, &.{});
     defer void_item.deinit(allocator);
 
     var point_buf: [24]u8 = undefined;
@@ -281,20 +282,20 @@ test "Map" {
     try point_writer.writeInt(u64, @bitCast(@as(f64, 1.0)), .little);
     try point_writer.writeInt(u64, @bitCast(@as(f64, 2.0)), .little);
     try point_writer.writeInt(u64, @bitCast(@as(f64, 3.0)), .little);
-    var point_item = try ScalarItem.fromContent(allocator, .point, point_writer.buffered());
+    var point_item: ScalarValue = try .initFromContent(allocator, .point, point_writer.buffered());
     defer point_item.deinit(allocator);
 
-    const sv_int = try serializeScalarItem(allocator, int_item);
+    const sv_int = try serializeScalarValue(allocator, int_item);
     defer allocator.free(sv_int);
-    const sv_dec = try serializeScalarItem(allocator, dec_item);
+    const sv_dec = try serializeScalarValue(allocator, dec_item);
     defer allocator.free(sv_dec);
-    const sv_flag = try serializeScalarItem(allocator, flag_item);
+    const sv_flag = try serializeScalarValue(allocator, flag_item);
     defer allocator.free(sv_flag);
-    const sv_str = try serializeScalarItem(allocator, str_item);
+    const sv_str = try serializeScalarValue(allocator, str_item);
     defer allocator.free(sv_str);
-    const sv_void = try serializeScalarItem(allocator, void_item);
+    const sv_void = try serializeScalarValue(allocator, void_item);
     defer allocator.free(sv_void);
-    const sv_point = try serializeScalarItem(allocator, point_item);
+    const sv_point = try serializeScalarValue(allocator, point_item);
     defer allocator.free(sv_point);
 
     const k_count = "count";
@@ -360,9 +361,9 @@ test "Map" {
     try std.testing.expect(!(try m.exists(sk_ghost)));
     try std.testing.expectError(error.MismatchType, m.exists(sv_int));
 
-    var int_item2 = try ScalarItem.fromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(i64, 99))));
+    var int_item2: ScalarValue = try .initFromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(i64, 99))));
     defer int_item2.deinit(allocator);
-    const sv_int2 = try serializeScalarItem(allocator, int_item2);
+    const sv_int2 = try serializeScalarValue(allocator, int_item2);
     defer allocator.free(sv_int2);
 
     try m.put(allocator, sk_count, sv_int2);
@@ -447,7 +448,7 @@ test "Map" {
     }
 }
 
-fn serializeScalarItem(allocator: std.mem.Allocator, item: ScalarItem) ![]u8 {
+fn serializeScalarValue(allocator: std.mem.Allocator, item: ScalarValue) ![]u8 {
     var allocating: std.Io.Writer.Allocating = .init(allocator);
     errdefer allocating.deinit();
     try item.serializeToWriter(&allocating.writer);

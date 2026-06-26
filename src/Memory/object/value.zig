@@ -8,7 +8,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const ScalarItem = @import("value/scalar.zig").ScalarItem;
+pub const ScalarValue = @import("value/scalar.zig").ScalarValue;
 
 pub const Void = @import("value/scalar.zig").Void;
 pub const Integer = @import("value/scalar.zig").Integer;
