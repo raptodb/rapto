@@ -37,8 +37,6 @@ pub const Command = enum(u8) {
     count,
     type,
     list,
-    exist,
-    erase,
     down = std.math.maxInt(u8),
 
     fn parse(int: u8) error{UnknownCommand}!Command {
@@ -47,8 +45,8 @@ pub const Command = enum(u8) {
 
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
-            .set, .update, .del, .copy, .rename, .erase => .write,
-            .ping, .get, .count, .type, .list, .exist => .read,
+            .set, .update, .del, .copy, .rename => .write,
+            .ping, .get, .count, .type, .list => .read,
             .down => .control,
         };
     }
@@ -193,11 +191,11 @@ test "Query" {
             .args = &.{"user"},
         },
         .{
-            .command = .erase,
             .flags = .{
                 .free = .init(true),
             },
             .args = &.{"some flags"},
+            .command = .list,
         },
         .{
             .command = .list,
@@ -247,7 +245,6 @@ test "Query" {
             .args = &.{"users"},
         },
         .{
-            .command = .exist,
             .flags = .{
                 .filter_by = .init(
                     .key,
@@ -255,13 +252,14 @@ test "Query" {
                 ),
             },
             .args = &.{},
+            .command = .list,
         },
         .{
-            .command = .exist,
             .flags = .{
                 .filter_by = .init(
                     .key,
                     Query.Flags.String.init(""),
+            .command = .list,
                 ),
             },
             .args = &.{},

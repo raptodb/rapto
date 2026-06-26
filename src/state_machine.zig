@@ -56,7 +56,6 @@ pub fn execute(
         .del    => del(allocator, memory, query),
         .copy   => copy(allocator, memory, query),
         .rename => rename(allocator, memory, query),
-        .erase  => erase(allocator, memory, query),
         
         inline else => |read_command| err: {
             if (query.flags.noreply.get()) return;
@@ -67,7 +66,6 @@ pub fn execute(
                 .count => count(memory, writer, query),
                 .type  => @"type"(memory, writer, query),
                 .list  => list(memory, writer, query),
-                .exist => exist(memory, writer, query),
 
                 // Handled earlier.
                 else => unreachable,
@@ -295,23 +293,6 @@ fn list(
     }
 }
 
-fn exist(
-    memory: *Memory,
-    writer: *std.Io.Writer,
-    query: *const Query,
-) !void {
-    assert(!query.flags.noreply.get());
-
-    var args = query.argsIterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const key_exist = memory.search(key) != null;
-
-    const flag: object.value.Flag = if (key_exist) .fromValue(.true) else .fromValue(.false);
-    try object.value.Type.serializeToWriter(.flag, writer);
-    try flag.serializeContentToWriter(writer);
-}
-
 fn copy(
     allocator: std.mem.Allocator,
     memory: *Memory,
@@ -345,13 +326,7 @@ fn del(
     return memory.remove(allocator, key);
 }
 
-fn erase(
     allocator: std.mem.Allocator,
     memory: *Memory,
     query: *const Query,
-) void {
-    switch (query.flags.free.get()) {
-        true => memory.free(allocator),
-        false => memory.clear(allocator),
     }
-}
