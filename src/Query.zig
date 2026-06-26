@@ -45,7 +45,7 @@ pub const Command = enum(u8) {
 
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
-            .set, .update, .del, .copy, .rename => .write,
+            .insert, .update, .del, .copy, .rename => .write,
             .ping, .get, .count, .type, .list => .read,
             .down => .control,
         };
@@ -169,17 +169,17 @@ test "Query" {
             .args = &.{"key"},
         },
         .{
-            .command = .set,
+            .command = .insert,
             .flags = .{},
             .args = &.{ "key", "value" },
         },
         .{
-            .command = .set,
+            .command = .insert,
             .flags = .{},
             .args = &.{""},
         },
         .{
-            .command = .set,
+            .command = .insert,
             .flags = .{},
             .args = &.{ "", "" },
         },
@@ -308,7 +308,7 @@ test "Query" {
             .args = &.{ "a", "b", "c", "d", "e", "f", "g" },
         },
         .{
-            .command = .set,
+            .command = .insert,
             .flags = .{},
             .args = &.{
                 "hello\nworld",
@@ -316,7 +316,7 @@ test "Query" {
             },
         },
         .{
-            .command = .set,
+            .command = .insert,
             .flags = .{},
             .args = &.{ "ciao", "你好", "🚀" },
         },
