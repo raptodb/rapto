@@ -360,7 +360,7 @@ test "List" {
     try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .list, &.{}));
 }
 
-fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8 {
+fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarValue) ![]u8 {
     var allocating: std.Io.Writer.Allocating = .init(allocator);
     errdefer allocating.deinit();
     const writer = &allocating.writer;
