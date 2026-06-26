@@ -273,9 +273,12 @@ test "List" {
 
     var err_flag: ScalarValue = try .initFromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 3))));
     defer err_flag.deinit(allocator);
-    var tmp = try serializeItems(allocator, &.{err_flag});
-    try s.insert(allocator, 0, tmp);
-    allocator.free(tmp);
+    var tmp = blk: {
+        const tmp = try serializeItems(allocator, &.{err_flag});
+        defer allocator.free(tmp);
+        try s.insert(allocator, 0, tmp);
+        break :blk tmp;
+    };
 
     var dec_item: ScalarValue = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
     defer dec_item.deinit(allocator);
@@ -353,6 +356,8 @@ test "List" {
     try s.serializeContentToWriter(pw);
     try std.testing.expect(pw.buffered().len == 0);
 
+    try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .map, &.{}));
+    try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .list, &.{}));
 }
 
 fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8 {
@@ -368,6 +373,4 @@ fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarItem) ![]u8
     }
 
     return allocating.toOwnedSlice();
-    try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .map, &.{}));
-    try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .list, &.{}));
 }
