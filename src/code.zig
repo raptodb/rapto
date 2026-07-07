@@ -12,53 +12,42 @@ const ParseError = @import("Query.zig").Error;
 
 pub const Code = enum(u8) {
     // Success (0-99)
-    OK = 0,
+    ok = 0,
 
-    // Command errors from state_machine (100-199)
-    CommandKeyNotFound = 100,
-    CommandInvalidKey,
-    CommandInvalidFormat,
-    CommandMissingTokens,
-    CommandMismatchType,
-    CommandUnknownType,
-    CommandMismatchFlag,
-    CommandMathOverflow,
-    CommandRangeOverflow,
-    CommandMapKeyNotFound,
-    CommandDuplicatedKey,
+    key_not_found = 100,
+    invalid_key,
+    invalid_format,
+    missing_tokens,
+    mismatch_type,
+    unknown_type,
+    missing_flag,
+    math_overflow,
+    range_overflow,
+    map_key_not_found,
+    duplicated_key,
+    unknown_command,
+    unknown_flag,
 
-    // Parse errors from Query (200+)
-    ParseUnknownCommand = 200,
-    ParseUnknownFlag,
-    ParseInvalidFormat,
-    ParseInvalidFlagUnion,
+    pub fn writeError(code: Code, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return writer.writeInt(u8, @intFromEnum(code), .little);
+    }
+
+    pub fn from(err: anyerror) Code {
+        return switch (err) {
+            error.KeyNotFound => .key_not_found,
+            error.InvalidKey => .invalid_key,
+            error.InvalidFormat => .invalid_format,
+            error.MissingTokens => .missing_tokens,
+            error.MismatchType => .mismatch_type,
+            error.UnknownType => .unknown_type,
+            error.MathOverflow => .math_overflow,
+            error.RangeOverflow => .range_overflow,
+            error.MapKeyNotFound => .map_key_not_found,
+            error.DuplicatedKey => .duplicated_key,
+            error.UnknownCommand => .unknown_command,
+            error.UnknownFlag => .unknown_flag,
+            error.InvalidFlagUnion => .invalid_format,
+            else => unreachable,
+        };
+    }
 };
-
-pub fn writeCode(writer: *std.Io.Writer, code: Code) std.Io.Writer.Error!void {
-    return writer.writeByte(@intFromEnum(code));
-}
-
-pub fn fromCommandError(err: CommandError) Code {
-    return switch (err) {
-        error.KeyNotFound => .CommandKeyNotFound,
-        error.InvalidKey => .CommandInvalidKey,
-        error.InvalidFormat => .CommandInvalidFormat,
-        error.MissingTokens => .CommandMissingTokens,
-        error.MismatchType => .CommandMismatchType,
-        error.UnknownType => .CommandUnknownType,
-        error.MismatchFlag => .CommandMismatchFlag,
-        error.MathOverflow => .CommandMathOverflow,
-        error.RangeOverflow => .CommandRangeOverflow,
-        error.MapKeyNotFound => .CommandMapKeyNotFound,
-        error.DuplicatedKey => .CommandDuplicatedKey,
-    };
-}
-
-pub fn fromParseError(err: ParseError) Code {
-    return switch (err) {
-        error.UnknownCommand => .ParseUnknownCommand,
-        error.UnknownFlag => .ParseUnknownFlag,
-        error.InvalidFormat => .ParseInvalidFormat,
-        error.InvalidFlagUnion => .ParseInvalidFlagUnion,
-    };
-}

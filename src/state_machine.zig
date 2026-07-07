@@ -6,322 +6,892 @@
 //! It contains the implementation of query executor.
 
 const std = @import("std");
-const code = @import("code.zig");
 const frames = @import("frames.zig");
 const object = Memory.object;
-const assert = std.debug.assert;
+const glob = @import("glob.zig");
 
+const Code = @import("code.zig").Code;
 const Memory = @import("Memory.zig");
 const Query = @import("Query.zig");
 const Flags = Query.Flags;
 
+const ScalarValue = object.value.ScalarValue;
+const List = object.value.List;
+const Map = object.value.Map;
+
+const assert = std.debug.assert;
+const valueToWriter = object.value.serializeToWriter;
+const errorToWriter = object.value.errorToWriter;
+const splitSerialized = object.value.splitSerialized;
+
+/// The only errors that can be returned to execute function.
+/// Others errors must be written on frames.
+pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error;
 pub const FatalError = error{
     // When command received from execute is DOWN
     Shutdown,
-} || std.mem.Allocator.Error || std.Io.Writer.Error;
+} || Error;
 
-/// Union of all errors can be returned from any
-/// functions of commands. Fatal errors as Shutdown
-/// or OutOfMemory (as WriteFailed assuming writer
-/// is from Allocating) are excluded.
-pub const CommandError = error{
-    KeyNotFound,
-    InvalidKey,
-    InvalidFormat,
-    MissingTokens,
-    MismatchType,
-    UnknownType,
-    MismatchFlag,
-    MathOverflow,
-    RangeOverflow,
-    MapKeyNotFound,
-    DuplicatedKey,
+pub const Quota = struct {
+    count: u64 = 0,
+    quota: ?u64,
+
+    pub fn init(quota: ?u64) Quota {
+        return .{ .quota = quota };
+    }
+
+    pub fn exceeded(self: Quota) bool {
+        return self.quota != null and self.count >= self.quota.?;
+    }
+
+    pub fn advance(self: *Quota) void {
+        // Emissions can never overflow up to 2^64.
+        @setRuntimeSafety(false);
+        if (self.quota != null) self.count += 1;
+    }
 };
 
 /// Executes query on this configuration. Fatal errors will be returned
-/// directly instead of Dispatch errors, these will be written on writer.
-/// If no error is occurred, the function writes OK code to output.
+/// directly, other errors will be written on frames directly.
 pub fn execute(
     allocator: std.mem.Allocator,
     memory: *Memory, // Storage of state
     writer: *std.Io.Writer, // Output: maybe Allocating
     query: *const Query, // Input
 ) FatalError!void {
-    const start_offset = writer.end;
-
-    // zig fmt: off
     const maybe_error = switch (query.command) {
-        .update => update(memory, query),
-        .insert => insert(allocator, memory, query),
-        .del    => del(allocator, memory, query),
-        .copy   => copy(allocator, memory, query),
-        .rename => rename(allocator, memory, query),
-        
+        .del => del(allocator, memory, writer, query),
+        .cdel => cdel(allocator, memory, writer, query),
+        .pop => pop(allocator, memory, writer, query),
+        .cpop => cpop(allocator, memory, writer, query),
+        .set => set(allocator, memory, writer, query),
+        .insert => insert(allocator, memory, writer, query),
+        .rename => rename(allocator, memory, writer, query),
+        .copy => copy(allocator, memory, writer, query),
+
         inline else => |read_command| err: {
-            if (query.flags.noreply.get()) return;
+            if (query.flags.limit.get() == 0) return;
 
             break :err switch (read_command) {
-                .ping  => ping(writer, query),
-                .get   => get(memory, writer, query),
-                .count => count(memory, writer, query),
-                .type  => @"type"(memory, writer, query),
-                .list  => list(memory, writer, query),
+                .ping => ping(writer, query),
+                .get => get(memory, writer, query),
+                .cget => cget(memory, writer, query),
+                .scount => scount(memory, writer, query),
+                .ccount => ccount(memory, writer, query),
+                .len => len(memory, writer, query),
+                .type => @"type"(memory, writer, query),
+                .ctype => ctype(memory, writer, query),
+                .keys => keys(memory, writer, query),
 
                 // Handled earlier.
-                else => unreachable,
+                else => comptime unreachable,
             };
         },
 
         .down => error.Shutdown,
     };
-    // zig fmt: on
 
-    var status_code: code.Code = .OK;
     maybe_error catch |err| {
         @branchHint(.cold);
-        switch (err) {
-            // Fatal errors are returned directly and handled outside.
-            error.OutOfMemory,
-            error.WriteFailed,
-            error.Shutdown,
-            => |e| return e,
-            else => {
-                status_code = code.fromCommandError(@errorCast(err));
-            },
-        }
+        return err;
     };
+}
 
-    // When response is written in buffer, it is an implicit OK.
-    // While, when noreply is enabled, response is not written.
-    if (writer.end == start_offset and !query.flags.noreply.get()) {
-        return code.writeCode(writer, status_code);
+fn ping(writer: *std.Io.Writer, query: *const Query) Error!void {
+    const limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    const integer: object.value.Integer = .fromValue(1);
+    try valueToWriter(writer, integer);
+}
+
+fn get(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = getOne(memory, writer, &limit, key);
+        try writeOrThrow(writer, result);
     }
 }
 
-fn ping(
-    writer: *std.Io.Writer,
-    query: *const Query,
-) !void {
-    assert(!query.flags.noreply.get());
+fn getOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, key: []const u8) !void {
+    const ref = memory.search(key) orelse return error.KeyNotFound;
 
-    const integer: object.value.Integer = .fromValue(1);
-    try object.value.Type.serializeToWriter(.integer, writer);
-    try integer.serializeContentToWriter(writer);
+    switch (ref.type()) {
+        .list => {
+            const list: List = ref.valueRef(.list);
+            try serializeList(writer, limit, list.get());
+        },
+        .map => {
+            const map: Map = ref.valueRef(.map);
+            try serializeMap(writer, limit, map.get());
+        },
+        inline else => |value_type| {
+            try valueToWriter(writer, ref.valueRef(value_type));
+        },
+    }
 }
 
-fn get(
+fn cget(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var args = query.args.iterator();
+
+    const result = cgetOne(memory, writer, &limit, &args);
+    return writeOrThrow(writer, result);
+}
+
+fn cgetOne(
     memory: *Memory,
     writer: *std.Io.Writer,
-    query: *const Query,
+    limit: *Quota,
+    args: *frames.Iterator,
 ) !void {
-    assert(!query.flags.noreply.get());
-
-    var args = query.argsIterator();
-
     const key = args.next() orelse return error.MissingTokens;
     const ref = memory.search(key) orelse return error.KeyNotFound;
 
-    return switch (query.flags.by.get()) {
-        .any => ref.serializeToWriter(writer),
-        .index => |index| getByIndex(ref, writer, index),
-        .range => |range| getByRange(ref, writer, range),
-        .key => |flag_key| getByKey(ref, writer, flag_key),
-    };
-}
-
-fn getByIndex(ref: object.Ref, writer: *std.Io.Writer, index: Flags.Unsigned) !void {
-    return switch (ref.type()) {
+    switch (ref.type()) {
         .list => {
-            const item = try ref.valuePtr(.list).getByIndex(index.get());
-            try item.serializeToWriter(writer);
-        },
-        .point => {
-            const axis = ref.valuePtr(.point).get();
-            const decimal = switch (index.get()) {
-                0 => axis.x,
-                1 => axis.y,
-                2 => axis.z,
-                else => return error.RangeOverflow,
-            };
-            try object.value.Type.serializeToWriter(.decimal, writer);
-            try decimal.serializeContentToWriter(writer);
-        },
-        else => error.MismatchFlag,
-    };
-}
+            const list: List = ref.valueRef(.list);
+            const list_len = list.count();
 
-fn getByRange(ref: object.Ref, writer: *std.Io.Writer, range: Flags.Range) !void {
-    return switch (ref.type()) {
-        .list => {
-            try object.value.Type.serializeToWriter(.list, writer);
-            try ref.valuePtr(.list).serializeContentInRangeToWriter(
-                writer,
-                range.from().get(),
-                range.to().get(),
-            );
+            const from, const to = try nextRange(args, list_len);
+            const range = try list.getByRange(from, to);
+            try serializeList(writer, limit, range);
         },
-        else => error.MismatchFlag,
-    };
-}
-
-fn getByKey(ref: object.Ref, writer: *std.Io.Writer, key: Flags.String) !void {
-    return switch (ref.type()) {
         .map => {
-            const item = try ref.valuePtr(.map).getByKey(key.get());
-            try item.serializeToWriter(writer);
+            const map: Map = ref.valueRef(.map);
+
+            var serializer: List.Serializer = try .begin(writer);
+            defer serializer.end();
+
+            while (args.next()) |map_key| {
+                if (limit.exceeded()) return;
+
+                var frame = try serializer.beginFrame();
+                defer {
+                    frame.end();
+                    limit.advance();
+                }
+
+                if (map.getByKey(map_key)) |sv| {
+                    try sv.serializeToWriter(writer);
+                } else |_| {}
+            }
         },
-        .point => {
-            const axis = ref.valuePtr(.point).get();
-            if (key.get().len != 1) return error.MismatchFlag;
-            const decimal = switch (key.get()[0]) {
-                'x' => axis.x,
-                'y' => axis.y,
-                'z' => axis.z,
-                else => return error.RangeOverflow,
-            };
-            try object.value.Type.serializeToWriter(.decimal, writer);
-            try decimal.serializeContentToWriter(writer);
+        else => return error.MismatchType,
+    }
+}
+
+fn del(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+
+    var args = query.args.iterator();
+
+    var total_deleted: i64 = 0;
+    while (args.next()) |str| {
+        switch (glob.classify(str)) {
+            .any => {
+                total_deleted = @intCast(memory.free(allocator));
+                break;
+            },
+            .literal => {
+                const exist = memory.remove(allocator, str) != error.KeyNotFound;
+                total_deleted += @intFromBool(exist);
+            },
+            .pattern => {
+                var deleted: i64 = 0;
+                var iterator = memory.iterator();
+                while (iterator.next()) |ref| {
+                    const key = ref.key();
+                    if (glob.match(str, key)) {
+                        memory.remove(allocator, key) catch continue;
+                        deleted += 1;
+                    }
+                }
+                total_deleted += deleted;
+            },
+        }
+    }
+
+    if (!limit.exceeded()) {
+        const integer: object.value.Integer = .fromValue(total_deleted);
+        try valueToWriter(writer, integer);
+    }
+}
+
+fn cdel(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = cdelOne(allocator, memory, writer, &args, key);
+        try writeOrThrow(writer, result);
+    }
+}
+
+fn cdelOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    args: *frames.Iterator,
+    key: []const u8,
+) !void {
+    const ref = memory.search(key) orelse return error.KeyNotFound;
+
+    const updated_len = switch (ref.type()) {
+        .list => blk: {
+            const list: List = ref.valueRef(.list);
+            const list_len = list.count();
+
+            const from, const to = try nextRange(args, list_len);
+            try list.removeByRange(allocator, from, to);
+
+            break :blk list.count();
         },
-        else => error.MismatchFlag,
+        .map => blk: {
+            const map: Map = ref.valueRef(.map);
+
+            var iterator = map.getKeys();
+            while (iterator.next()) |map_key| {
+                map.removeByKey(allocator, map_key.*) catch continue;
+            }
+
+            break :blk map.count();
+        },
+        else => return error.MismatchType,
     };
+
+    const integer: object.value.Integer = .fromValue(@intCast(updated_len));
+    try valueToWriter(writer, integer);
+}
+
+fn pop(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = popOne(allocator, memory, writer, &limit, key);
+        try writeOrThrow(writer, result);
+    }
+}
+
+fn popOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    limit: *Quota,
+    key: []const u8,
+) !void {
+    const ref = memory.search(key) orelse return error.KeyNotFound;
+
+    switch (ref.type()) {
+        .list => {
+            const list: List = ref.valueRef(.list);
+            try serializeList(writer, limit, list.get());
+        },
+        .map => {
+            const map: Map = ref.valueRef(.map);
+            try serializeMap(writer, limit, map.get());
+        },
+        inline else => |value_type| {
+            try valueToWriter(writer, ref.valueRef(value_type));
+        },
+    }
+
+    memory.remove(allocator, key) catch |err| switch (err) {
+        error.KeyNotFound => unreachable,
+    };
+}
+
+fn cpop(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var args = query.args.iterator();
+
+    const result = cpopOne(allocator, memory, writer, &limit, &args);
+    return writeOrThrow(writer, result);
+}
+
+fn cpopOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    limit: *Quota,
+    args: *frames.Iterator,
+) !void {
+    const key = args.next() orelse return error.MissingTokens;
+    const ref = memory.search(key) orelse return error.KeyNotFound;
+
+    switch (ref.type()) {
+        .list => {
+            const list: List = ref.valueRef(.list);
+
+            const list_len = list.count();
+            const from, const to = try nextRange(args, list_len);
+            const range = try list.getByRange(from, to);
+
+            var serializer: List.Serializer = try .begin(writer);
+            defer serializer.end();
+
+            for (range, from..to + 1) |sv, i| {
+                if (limit.exceeded()) {
+                    return list.removeByRange(allocator, i, to) catch |err| switch (err) {
+                        error.RangeOverflow => unreachable,
+                    };
+                }
+
+                var frame = try serializer.beginFrame();
+                defer {
+                    frame.end();
+                    limit.advance();
+                }
+
+                try sv.serializeToWriter(writer);
+                list.removeByIndex(allocator, from) catch |err| switch (err) {
+                    error.RangeOverflow => unreachable,
+                };
+            }
+        },
+        .map => {
+            const map: Map = ref.valueRef(.map);
+
+            var serializer: List.Serializer = try .begin(writer);
+            defer serializer.end();
+
+            while (args.next()) |map_key| {
+                if (limit.exceeded()) {
+                    map.removeByKey(allocator, map_key) catch |err| {
+                        try errorToWriter(writer, Code.from(err));
+                    };
+                    continue;
+                }
+
+                var frame = try serializer.beginFrame();
+                defer {
+                    frame.end();
+                    limit.advance();
+                }
+
+                if (map.getByKey(map_key)) |sv| {
+                    try sv.serializeToWriter(writer);
+                    map.removeByKey(allocator, map_key) catch |err| switch (err) {
+                        error.MapKeyNotFound => unreachable,
+                    };
+                } else |_| {}
+            }
+        },
+        else => return error.MismatchType,
+    }
+}
+
+fn scount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var args = query.args.iterator();
+    const str = args.next() orelse {
+        return errorToWriter(writer, Code.missing_tokens);
+    };
+
+    const key_count: i64 = switch (glob.classify(str)) {
+        .any => @intCast(memory.count()),
+        .literal => @intFromBool(memory.search(str) != null),
+        .pattern => blk: {
+            var counted: i64 = 0;
+
+            var iterator = memory.iterator();
+            while (iterator.next()) |ref| {
+                if (limit.exceeded()) break;
+                defer limit.advance();
+
+                if (glob.match(str, ref.key())) counted += 1;
+            }
+            break :blk counted;
+        },
+    };
+
+    const integer: object.value.Integer = .fromValue(key_count);
+    try valueToWriter(writer, integer);
+}
+
+fn ccount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        if (limit.exceeded()) return;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = ccountOne(memory, writer, key);
+        try writeOrThrow(writer, result);
+    }
+}
+
+fn ccountOne(memory: *Memory, writer: *std.Io.Writer, key: []const u8) !void {
+    const ref = memory.search(key) orelse return;
+
+    const count: i64 = switch (ref.type()) {
+        .list => @intCast(ref.valueRef(.list).count()),
+        .map => @intCast(ref.valueRef(.map).count()),
+        else => return error.MismatchType,
+    };
+
+    const integer: object.value.Integer = .fromValue(count);
+    try valueToWriter(writer, integer);
+}
+
+fn len(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        if (limit.exceeded()) return;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = lenOne(writer, &args, memory, key);
+        try writeOrThrow(writer, result);
+    }
+}
+
+fn lenOne(
+    writer: *std.Io.Writer,
+    args: *frames.Iterator,
+    memory: *Memory,
+    key: []const u8,
+) !void {
+    const ref = memory.search(key) orelse return;
+
+    const string_len: i64 = switch (ref.type()) {
+        .string => @intCast(ref.valueRef(.string).len()),
+        .list => blk: {
+            const list: List = ref.valueRef(.list);
+            const list_len = list.count();
+
+            const index = try nextIndex(args, list_len);
+            const sv = list.getByIndex(index) catch unreachable;
+
+            if (sv.type() != .string) return error.MismatchType;
+            break :blk @intCast(sv.string.len());
+        },
+        .map => blk: {
+            const map: Map = ref.valueRef(.map);
+
+            const map_key = args.next() orelse return error.MissingTokens;
+            const sv = try map.getByKey(map_key);
+
+            if (sv.type() != .string) return error.MismatchType;
+            break :blk @intCast(sv.string.len());
+        },
+        else => return error.MismatchType,
+    };
+
+    const integer: object.value.Integer = .fromValue(string_len);
+    try valueToWriter(writer, integer);
+}
+
+fn set(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var args = query.args.iterator();
+
+    while (args.next()) |key| {
+        const result = setOne(allocator, memory, &args, key);
+        try writeOrThrow(writer, result);
+    }
+}
+
+fn setOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    args: *frames.Iterator,
+    key: []const u8,
+) !void {
+    const serialized = args.next() orelse return error.MissingTokens;
+
+    const value_type, const content = try splitSerialized(serialized);
+    _ = try memory.put(allocator, key, value_type, content);
 }
 
 fn insert(
     allocator: std.mem.Allocator,
     memory: *Memory,
+    writer: *std.Io.Writer,
     query: *const Query,
-) !void {
-    var args = query.argsIterator();
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
 
-    const key = args.next() orelse return error.MissingTokens;
-    const serialized_value = args.next() orelse return error.MissingTokens;
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
 
-    const value_type, const content = try object.value.splitSerialized(serialized_value);
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        if (limit.exceeded()) return;
 
-    _ = try memory.put(allocator, key, value_type, content);
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = insertOne(allocator, memory, &args, key);
+        const updated_len: u64 = try valueOrThrow(writer, result) orelse continue;
+
+        const integer: object.value.Integer = .fromValue(@intCast(updated_len));
+        try valueToWriter(writer, integer);
+    }
 }
 
-fn update(
+fn insertOne(
+    allocator: std.mem.Allocator,
     memory: *Memory,
-    query: *const Query,
-) !void {
-    var args = query.argsIterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const serialized = args.next() orelse return error.MissingTokens;
-
-    const value_type, const content = try object.value.splitSerialized(serialized);
+    args: *frames.Iterator,
+    key: []const u8,
+) !u64 {
     const ref = memory.search(key) orelse return error.KeyNotFound;
 
-    if (value_type != ref.type()) return error.MismatchType;
+    return switch (ref.type()) {
+        .list => blk: {
+            const list: List = ref.valueRef(.list);
 
-    switch (value_type) {
-        .integer => {
-            const v: object.value.Integer = try .fromContent(content);
-            try ref.valuePtr(.integer).add(v.get());
+            const list_len = list.count();
+            const index = try nextIndex(args, list_len);
+            const serialized = args.next() orelse return error.MissingTokens;
+
+            try list.setByIndex(allocator, index, serialized);
+            break :blk list.count();
         },
-        .decimal => {
-            const v: object.value.Decimal = try .fromContent(content);
-            try ref.valuePtr(.decimal).add(v.get());
+        .map => blk: {
+            const map: Map = ref.valueRef(.map);
+
+            const map_key = args.next() orelse return error.MissingTokens;
+            const serialized = args.next() orelse return error.MissingTokens;
+
+            try map.put(allocator, map_key, serialized);
+            break :blk map.count();
         },
-        .point => {
-            const v: object.value.Point.Axis = try .parse(content);
-            try ref.valuePtr(.point).translate(v);
-        },
-        .void, .string, .flag, .list, .map => return error.MismatchType,
-    }
+        else => return error.MismatchType,
+    };
 }
 
 fn rename(
     allocator: std.mem.Allocator,
     memory: *Memory,
+    writer: *std.Io.Writer,
     query: *const Query,
-) !void {
-    var args = query.argsIterator();
+) Error!void {
+    var args = query.args.iterator();
 
-    const current_key = args.next() orelse return error.MissingTokens;
+    const result = renameOne(allocator, memory, &args);
+    return writeOrThrow(writer, result);
+}
+
+fn renameOne(allocator: std.mem.Allocator, memory: *Memory, args: *frames.Iterator) !void {
+    const selected_key = args.next() orelse return error.MissingTokens;
     const new_key = args.next() orelse return error.MissingTokens;
 
-    if (std.mem.eql(u8, current_key, new_key)) return;
+    if (std.mem.eql(u8, selected_key, new_key)) return;
     if (memory.search(new_key) != null) return error.DuplicatedKey;
 
-    const ref = memory.search(current_key) orelse return error.KeyNotFound;
+    const ref = memory.search(selected_key) orelse return error.KeyNotFound;
     try ref.setKey(allocator, new_key);
 }
 
-fn count(
-    memory: *Memory,
-    writer: *std.Io.Writer,
-    query: *const Query,
-) !void {
-    assert(!query.flags.noreply.get());
+fn @"type"(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
 
-    // Keys will never be a number larger than the maximum range of i64.
-    const key_count: i64 = @intCast(memory.count());
-    const integer: object.value.Integer = .fromValue(key_count);
-    try object.value.Type.serializeToWriter(.integer, writer);
-    try integer.serializeContentToWriter(writer);
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        if (limit.exceeded()) return;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = typeOne(writer, memory, key);
+        try writeOrThrow(writer, result);
+    }
 }
 
-fn @"type"(
-    memory: *Memory,
-    writer: *std.Io.Writer,
-    query: *const Query,
-) !void {
-    assert(!query.flags.noreply.get());
+fn typeOne(writer: *std.Io.Writer, memory: *Memory, key: []const u8) !void {
+    const ref = memory.search(key) orelse return error.KeyNotFound;
+    try ref.type().serializeToWriter(writer);
+}
 
-    var args = query.argsIterator();
+fn ctype(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
 
+    var args = query.args.iterator();
+
+    const result = ctypeOne(memory, writer, &limit, &args);
+    return writeOrThrow(writer, result);
+}
+
+fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frames.Iterator) !void {
     const key = args.next() orelse return error.MissingTokens;
     const ref = memory.search(key) orelse return error.KeyNotFound;
 
-    return ref.type().serializeToWriter(writer);
+    switch (ref.type()) {
+        .list => {
+            const list: List = ref.valueRef(.list);
+
+            const list_len = list.count();
+            const from, const to = try nextRange(args, list_len);
+            const range = try list.getByRange(from, to);
+
+            var serializer: List.Serializer = try .begin(writer);
+            defer serializer.end();
+
+            for (range) |sv| {
+                var frame = try serializer.beginFrame();
+                defer {
+                    frame.end();
+                    limit.advance();
+                }
+                try sv.type().serializeToWriter(writer);
+            }
+        },
+        .map => {
+            const map: Map = ref.valueRef(.map);
+
+            var serializer: List.Serializer = try .begin(writer);
+            defer serializer.end();
+
+            while (args.next()) |map_key| {
+                var frame = try serializer.beginFrame();
+                defer {
+                    frame.end();
+                    limit.advance();
+                }
+
+                if (map.getByKey(map_key)) |sv| {
+                    try sv.type().serializeToWriter(writer);
+                } else |_| {}
+            }
+        },
+        else => return error.MismatchType,
+    }
 }
 
-fn list(
-    memory: *Memory,
-    writer: *std.Io.Writer,
-    query: *const Query,
-) !void {
-    assert(!query.flags.noreply.get());
+fn keys(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var args = query.args.iterator();
+
+    const result = keysOne(memory, writer, &limit, &args);
+    return writeOrThrow(writer, result);
+}
+
+fn keysOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frames.Iterator) !void {
+    const pattern = args.next() orelse return error.MissingTokens;
+
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
 
     var iterator = memory.iterator();
     while (iterator.next()) |ref| {
-        var builder: frames.Builder = try .begin(writer);
-        defer builder.end();
-        try writer.writeAll(ref.key());
+        if (limit.exceeded()) return;
+
+        const key = ref.key();
+        if (!glob.match(pattern, key)) continue;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        try writer.writeAll(key);
     }
 }
 
 fn copy(
     allocator: std.mem.Allocator,
     memory: *Memory,
+    writer: *std.Io.Writer,
     query: *const Query,
-) !void {
-    var args = query.argsIterator();
+) Error!void {
+    var args = query.args.iterator();
 
+    const result = copyOne(allocator, memory, &args);
+    return writeOrThrow(writer, result);
+}
+
+fn copyOne(allocator: std.mem.Allocator, memory: *Memory, args: *frames.Iterator) !void {
     const src_key = args.next() orelse return error.MissingTokens;
     const dst_key = args.next() orelse return error.MissingTokens;
 
-    const ref = memory.search(src_key) orelse return error.KeyNotFound;
-    const value_type = ref.type();
-
-    var content_allocating: std.Io.Writer.Allocating = .init(allocator);
-    defer content_allocating.deinit();
-    try ref.serializeContentToWriter(&content_allocating.writer);
-
-    const content = content_allocating.written();
-
-    _ = try memory.put(allocator, dst_key, value_type, content);
+    return memory.copy(allocator, src_key, dst_key);
 }
 
-fn del(
-    allocator: std.mem.Allocator,
-    memory: *Memory,
-    query: *const Query,
-) !void {
-    var args = query.argsIterator();
+fn valueOrThrow(
+    writer: *std.Io.Writer,
+    result: anytype,
+) Error!?@typeInfo(@TypeOf(result)).error_union.payload {
+    assert(@typeInfo(@TypeOf(result)) == .error_union);
 
-    const key = args.next() orelse return error.MissingTokens;
-    return memory.remove(allocator, key);
+    return result catch |err| if (err == error.OutOfMemory or err == error.WriteFailed)
+        @errorCast(err)
+    else {
+        try errorToWriter(writer, Code.from(err));
+        return null;
+    };
+}
+
+fn writeOrThrow(writer: *std.Io.Writer, result: anytype) Error!void {
+    assert(@typeInfo(@TypeOf(result)) == .error_union);
+
+    return result catch |err| if (err == error.OutOfMemory or err == error.WriteFailed)
+        @errorCast(err)
+    else
+        errorToWriter(writer, Code.from(err));
+}
+
+fn serializeMap(
+    writer: *std.Io.Writer,
+    limit: *Quota,
+    map_iterator: Map.Iterator,
+) Error!void {
+    var map_serializer: Map.Serializer = try .begin(writer);
+    defer map_serializer.end();
+
+    var iterator = map_iterator;
+    while (iterator.next()) |pair| {
+        if (limit.exceeded()) break;
+
+        defer limit.advance();
+        try map_serializer.append(pair);
+    }
+}
+
+fn serializeList(
+    writer: *std.Io.Writer,
+    limit: *Quota,
+    items: []const ScalarValue,
+) Error!void {
+    var serializer: List.Serializer = try .begin(writer);
+    defer serializer.end();
+
+    for (items) |sv| {
+        if (limit.exceeded()) return;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        try sv.serializeToWriter(writer);
+    }
+}
+
+fn nextRange(
+    iterator: *frames.Iterator,
+    length: u64,
+) error{ MissingTokens, MismatchType }!struct { u64, u64 } {
+    const from = try nextIndex(iterator, length);
+    const to = try nextIndex(iterator, length);
+    return .{ from, to };
+}
+
+fn nextIndex(iterator: *frames.Iterator, length: u64) error{ MissingTokens, MismatchType }!u64 {
+    const relative_index = try nextNumeric(iterator, i64);
+    return resolveIndex(relative_index, length);
+}
+
+fn nextNumeric(iterator: *frames.Iterator, comptime T: type) error{ MissingTokens, MismatchType }!T {
+    const content = iterator.next() orelse return error.MissingTokens;
+    return std.fmt.parseInt(T, content, 10) catch return error.MismatchType;
+}
+
+fn resolveIndex(index: i64, length: u64) u64 {
+    if (index >= 0) {
+        const u_index: u64 = @intCast(index);
+        return @min(u_index, length -| 1);
+    }
+    const signed_len: i64 = @intCast(length);
+    const resolved: u64 = @intCast(signed_len + index);
+    return @max(0, resolved);
 }
