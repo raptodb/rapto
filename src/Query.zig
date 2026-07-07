@@ -16,27 +16,30 @@ pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFlagUnion, InvalidF
 
 command: Command,
 flags: Flags,
-/// Best accessed via `.argsIterator()`.
-/// Format is equivalent to Frames.
-args: []const u8,
+args: Args,
 
 pub const Command = enum(u8) {
     ping = 0,
 
-    // CRUD operations
-    insert = 1,
-    get = 2,
-    update = 3,
-    del = 4,
-
     // ordered by insertion, do not reorder
     // or change fields to maintain
     // compatibility across versions
+    set,
+    insert,
+    get,
+    cget,
+    len,
+    scount,
+    ccount,
+    del,
+    cdel,
+    pop,
+    cpop,
     copy,
     rename,
-    count,
     type,
-    list,
+    ctype,
+    keys,
     down = std.math.maxInt(u8),
 
     fn parse(int: u8) error{UnknownCommand}!Command {
@@ -45,14 +48,23 @@ pub const Command = enum(u8) {
 
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
-            .insert, .update, .del, .copy, .rename => .write,
-            .ping, .get, .count, .type, .list => .read,
+            .set, .insert, .del, .cdel, .pop, .cpop, .copy, .rename => .write,
+            // Commands that do not modify memory.
+            .ping, .get, .cget, .len, .scount, .ccount, .type, .ctype, .keys => .read,
             .down => .control,
         };
     }
 
     fn serializeToWriter(self: Command, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeByte(@intFromEnum(self));
+    }
+};
+
+pub const Args = struct {
+    content: []const u8,
+
+    pub fn iterator(self: Args) frames.Iterator {
+        return .init(self.content);
     }
 };
 
@@ -98,12 +110,8 @@ pub fn parse(serialized: []const u8) Error!Query {
     return .{
         .command = command,
         .flags = flags,
-        .args = serialized[reader.seek..],
+        .args = .{ .content = serialized[reader.seek..] },
     };
-}
-
-pub fn argsIterator(self: *const Query) frames.Iterator {
-    return .init(self.args);
 }
 
 pub fn isEqualTo(self: *const Query, query: *const Query) bool {
@@ -169,6 +177,11 @@ test "Query" {
             .args = &.{"key"},
         },
         .{
+            .command = .cget,
+            .flags = .{},
+            .args = &.{ "collection", "key" },
+        },
+        .{
             .command = .insert,
             .flags = .{},
             .args = &.{ "key", "value" },
@@ -184,122 +197,30 @@ test "Query" {
             .args = &.{ "", "" },
         },
         .{
-            .command = .get,
-            .flags = .{
-                .noreply = .init(true),
-            },
-            .args = &.{"user"},
-        },
-        .{
-            .flags = .{
-                .free = .init(true),
-            },
-            .args = &.{"some flags"},
-            .command = .list,
-        },
-        .{
-            .command = .list,
-            .flags = .{
-                .filter_by = .init(.index, Query.Flags.Unsigned.init(0)),
-            },
-            .args = &.{"user*"},
-        },
-        .{
-            .command = .list,
-            .flags = .{
-                .filter_by = .init(.index, Query.Flags.Unsigned.init(64)),
-            },
-            .args = &.{"*user"},
-        },
-        .{
-            .command = .list,
-            .flags = .{
-                .filter_by = .init(.index, Query.Flags.Unsigned.init(std.math.maxInt(u32))),
-            },
-            .args = &.{"*user"},
-        },
-        .{
-            .command = .list,
-            .flags = .{
-                .filter_by = .init(
-                    .range,
-                    Query.Flags.Range.init(
-                        .init(0),
-                        .init(10),
-                    ),
-                ),
-            },
-            .args = &.{"users"},
-        },
-        .{
-            .command = .list,
-            .flags = .{
-                .filter_by = .init(
-                    .range,
-                    Query.Flags.Range.init(
-                        .init(1),
-                        .init(std.math.maxInt(u32)),
-                    ),
-                ),
-            },
-            .args = &.{"users"},
-        },
-        .{
-            .command = .list,
-            .flags = .{
-                .filter_by = .init(
-                    .key,
-                    Query.Flags.String.init("user:123"),
-                ),
-            },
+            .command = .keys,
+            .flags = .{},
             .args = &.{},
         },
         .{
-            .command = .list,
+            .command = .keys,
             .flags = .{
-                .filter_by = .init(
-                    .key,
-                    Query.Flags.String.init(""),
-                ),
+                .limit = .init(1000),
             },
             .args = &.{},
         },
         .{
             .command = .rename,
-            .flags = .{
-                .noreply = .init(true),
-                .free = .init(true),
-                .filter_by = .init(
-                    .index,
-                    Query.Flags.Unsigned.init(7),
-                ),
-            },
+            .flags = .{},
             .args = &.{ "old", "new" },
         },
         .{
             .command = .del,
-            .flags = .{
-                .noreply = .init(true),
-                .free = .init(true),
-                .filter_by = .init(
-                    .range,
-                    Query.Flags.Range.init(
-                        .init(5),
-                        .init(20),
-                    ),
-                ),
-            },
+            .flags = .{},
             .args = &.{},
         },
         .{
-            .command = .count,
-            .flags = .{
-                .noreply = .init(true),
-                .filter_by = .init(
-                    .key,
-                    Query.Flags.String.init("active"),
-                ),
-            },
+            .command = .scount,
+            .flags = .{},
             .args = &.{"sessions"},
         },
         .{
@@ -321,7 +242,7 @@ test "Query" {
             .args = &.{ "ciao", "你好", "🚀" },
         },
         .{
-            .command = .update,
+            .command = .set,
             .flags = .{},
             .args = &.{
                 &@as([128]u8, @splat('a')),
@@ -343,6 +264,6 @@ test "Query" {
 
         try std.testing.expect(parsed.command == expected.command);
         try std.testing.expect(parsed.flags.isEqualTo(expected.flags));
-        try std.testing.expect(testIsEqualTo(parsed.args, expected.args));
+        try std.testing.expect(testIsEqualTo(parsed.args.content, expected.args));
     }
 }
