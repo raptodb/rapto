@@ -11,6 +11,7 @@ comptime {
     _ = @import("cli/Server.zig");
     _ = @import("code.zig");
     _ = @import("frames.zig");
+    _ = @import("glob.zig");
     _ = @import("main.zig");
     _ = @import("Memory.zig");
     _ = @import("Memory/object.zig");
