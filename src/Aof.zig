@@ -75,10 +75,6 @@ pub const Builder = struct {
     }
 };
 
-pub fn begin(self: *Aof, timestamp: std.Io.Timestamp) std.mem.Allocator.Error!Builder {
-    return .begin(self, timestamp);
-}
-
 const Iterator = struct {
     reader: std.Io.Reader,
 
