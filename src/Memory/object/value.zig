@@ -6,6 +6,7 @@
 //! It contains the implementation of values API and types.
 
 const std = @import("std");
+const frames = @import("../../frames.zig");
 const assert = std.debug.assert;
 
 pub const ScalarValue = @import("value/scalar.zig").ScalarValue;
@@ -20,7 +21,7 @@ pub const Point = @import("value/scalar.zig").Point;
 pub const List = @import("value/collection.zig").List;
 pub const Map = @import("value/collection.zig").Map;
 
-// A Rapto's [serialized] (RS) is representation of [value_type][content].
+// A Rapto's [serialized] (RS) is representation of [len][value_type][content].
 // Content is the raw bytes of the value. Value is the representation of
 // content with the return type of get().
 //
@@ -43,14 +44,24 @@ pub fn splitSerialized(
     return .{ value_type, content };
 }
 
-/// Serializes value type and content to writer as [serialized].
+/// Serializes value to writer as [serialized].
+/// Only scalars can be serialized.
 pub fn serializeToWriter(
     writer: *std.Io.Writer,
-    value_type: Type,
-    content: []const u8,
+    value: anytype,
 ) std.Io.Writer.Error!void {
+    const value_type: Type = .of(value);
+    assert(value_type != .list and value_type != .map);
     try value_type.serializeToWriter(writer);
-    try writer.writeAll(content);
+    return value.serializeContentToWriter(writer);
+}
+
+/// Hardcoded method to serialize error as serializing
+/// with `serializeToWriter`. `err` MUST have a method
+/// called `writeError`.
+pub fn errorToWriter(writer: *std.Io.Writer, err: anytype) std.Io.Writer.Error!void {
+    try writer.writeInt(u8, std.math.maxInt(u8), .little);
+    try err.writeError(writer);
 }
 
 /// Enumeration of all value types. The quantity of value types
@@ -71,6 +82,23 @@ pub const Type = enum(u3) {
 
     pub fn fromInt(int: anytype) error{UnknownType}!Type {
         return std.enums.fromInt(Type, int) orelse error.UnknownType;
+    }
+
+    pub fn of(value: anytype) Type {
+        const ValueType = @TypeOf(value);
+        inline for (std.meta.fields(Value)) |field| {
+            if (field.type == ValueType) {
+                return std.meta.stringToEnum(Type, field.name) orelse unreachable;
+            }
+        }
+        unreachable;
+    }
+
+    pub fn group(self: Type) enum { scalar, collection } {
+        return switch (self) {
+            .list, .map => .collection,
+            else => .scalar,
+        };
     }
 
     pub fn serializeToWriter(self: Type, writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -106,6 +134,7 @@ pub const Value = union {
     }
 
     pub fn UnionType(comptime value_type: Type) type {
+        @setEvalBranchQuota(2000);
         const tag = comptime std.meta.stringToEnum(std.meta.FieldEnum(Value), @tagName(value_type));
         return std.meta.fieldInfo(Value, tag orelse unreachable).type;
     }
@@ -114,7 +143,7 @@ pub const Value = union {
         allocator: std.mem.Allocator,
         value_type: Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!Value {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType, InvalidKey })!Value {
         return switch (value_type) {
             .void => .{ .void = .fromContent() },
             .integer => .{ .integer = try .fromContent(content) },
@@ -127,12 +156,23 @@ pub const Value = union {
         };
     }
 
+    pub fn dupe(
+        self: Value,
+        allocator: std.mem.Allocator,
+        comptime value_type: Type,
+    ) std.mem.Allocator.Error!UnionType(value_type) {
+        return switch (value_type) {
+            inline .point, .string, .list, .map => |t| @field(self, @tagName(t)).dupe(allocator),
+            inline else => |t| @field(self, @tagName(t)).dupe(),
+        };
+    }
+
     pub fn set(
         self: *Value,
         allocator: std.mem.Allocator,
         value_type: Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType, InvalidKey })!void {
         switch (value_type) {
             .void => self.void.set(),
             inline .integer, .decimal, .flag, .point => |ft| {
@@ -150,17 +190,13 @@ pub const Value = union {
         };
     }
 
-    pub inline fn ptr(self: *Value, value_type: Type) *UnionType(value_type) {
-        return switch (value_type) {
-            inline else => |ft| &@field(self, @tagName(ft)),
-        };
-    }
-
-    pub fn serializeContentToWriter(
+    pub fn serializeContentToWriterAssertsScalar(
         self: Value,
         writer: *std.Io.Writer,
         value_type: Type,
     ) std.Io.Writer.Error!void {
+        assert(value_type.group() != .collection);
+
         switch (value_type) {
             .void => self.void.serializeContentToWriter(writer),
             inline else => |ft| {
@@ -214,13 +250,5 @@ test "Type" {
 
     try Type.serializeToWriter(.point, &allocating.writer);
     try std.testing.expect(5 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Type.serializeToWriter(.list, &allocating.writer);
-    try std.testing.expect(6 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Type.serializeToWriter(.map, &allocating.writer);
-    try std.testing.expect(7 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 }

@@ -6,7 +6,6 @@
 //! It contains the implementation of scalars.
 
 const std = @import("std");
-
 const value = @import("../value.zig");
 
 pub const Void = @import("scalar/Void.zig");
@@ -67,6 +66,21 @@ pub const ScalarValue = union(enum) {
         }
     }
 
+    pub fn dupe(self: ScalarValue, allocator: std.mem.Allocator) std.mem.Allocator.Error!ScalarValue {
+        return switch (self) {
+            inline .string, .point => |_, t| @unionInit(
+                ScalarValue,
+                @tagName(t),
+                try @field(self, @tagName(t)).dupe(allocator),
+            ),
+            inline else => |_, t| @unionInit(
+                ScalarValue,
+                @tagName(t),
+                @field(self, @tagName(t)).dupe(),
+            ),
+        };
+    }
+
     pub fn compare(self: ScalarValue, item: ScalarValue) bool {
         if (std.meta.activeTag(self) != std.meta.activeTag(item)) return false;
 
@@ -102,8 +116,8 @@ pub const ScalarValue = union(enum) {
 
     pub fn @"type"(self: ScalarValue) value.Type {
         const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
-        // this enum is always a subset with less quantity of Type,
-        // so the conversion is always possible
+        // This enum is always a subset with less quantity of Type,
+        // so the conversion is always possible.
         return value.Type.fromInt(self_int_enum) catch unreachable;
     }
 };

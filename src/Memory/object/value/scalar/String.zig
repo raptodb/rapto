@@ -58,6 +58,14 @@ pub fn set(
     @memcpy(self.ptr[@sizeOf(Header) .. @sizeOf(Header) + content_length], content);
 }
 
+pub fn dupe(
+    self: String,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!String {
+    const buf = try allocator.dupe(u8, self.ptr[0 .. @sizeOf(Header) + self.len()]);
+    return .{ .ptr = buf.ptr };
+}
+
 pub fn get(self: String) []const u8 {
     return self.ptr[@sizeOf(Header) .. @sizeOf(Header) + self.len()];
 }

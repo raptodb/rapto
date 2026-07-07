@@ -11,24 +11,28 @@ const Decimal = @This();
 
 const std = @import("std");
 
-raw: [8]u8 = undefined,
+content: [8]u8 = undefined,
 
 pub fn fromContent(content: []const u8) error{MismatchType}!Decimal {
     if (content.len != 8) return error.MismatchType;
-    return .{ .raw = content[0..8].* };
+    return .{ .content = content[0..8].* };
 }
 
 pub fn fromValue(value: f64) Decimal {
-    return .{ .raw = @bitCast(value) };
+    return .{ .content = @bitCast(value) };
 }
 
 pub fn set(self: *Decimal, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
-    self.raw = content[0..8].*;
+    self.content = content[0..8].*;
+}
+
+pub fn dupe(self: Decimal) Decimal {
+    return self;
 }
 
 pub fn get(self: Decimal) f64 {
-    return @bitCast(self.raw);
+    return @bitCast(self.content);
 }
 
 pub fn len(_: Decimal) u64 {
@@ -40,7 +44,7 @@ pub fn add(self: *Decimal, value: f64) error{MathOverflow}!void {
     if (!std.math.isFinite(updated_value))
         return error.MathOverflow;
 
-    self.raw = @bitCast(updated_value);
+    self.content = @bitCast(updated_value);
 }
 
 pub fn isApproxEqualTo(self: Decimal, value: f64) bool {
@@ -48,7 +52,7 @@ pub fn isApproxEqualTo(self: Decimal, value: f64) bool {
 }
 
 pub fn serializeContentToWriter(self: Decimal, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    try writer.writeAll(self.raw[0..]);
+    try writer.writeAll(self.content[0..]);
 }
 
 test "Decimal" {

@@ -9,6 +9,7 @@ const Key = @This();
 
 const std = @import("std");
 const value = @import("value.zig");
+const glob = @import("../../glob.zig");
 const assert = std.debug.assert;
 
 const TaggedPointer = @import("tagged_pointer.zig").TaggedPointer;
@@ -33,8 +34,7 @@ pub fn init(
     key: []const u8,
     value_type: value.Type,
 ) (std.mem.Allocator.Error || error{InvalidKey})!Key {
-    if (key.len > std.math.maxInt(u8) or
-        key.len == 0) return error.InvalidKey;
+    if (!isValidKey(key)) return error.InvalidKey;
 
     const buf = try allocator.alignedAlloc(u8, pointer_alignment, 1 + key.len);
     errdefer allocator.free(buf);
@@ -45,6 +45,12 @@ pub fn init(
     return .{ .ptr = .init(buf.ptr, @intFromEnum(value_type)) };
 }
 
+/// Deallocates key string with included sentinel.
+pub fn deinit(self: Key, allocator: std.mem.Allocator) void {
+    const ptr = self.ptr.getPointer();
+    allocator.free(ptr[0 .. 1 + self.len()]);
+}
+
 /// Sets a new key. Reallocates if length is different.
 /// Checks if length of key is within 2^8-1.
 pub fn set(
@@ -52,8 +58,7 @@ pub fn set(
     allocator: std.mem.Allocator,
     key: []const u8,
 ) (std.mem.Allocator.Error || error{InvalidKey})!void {
-    if (key.len > std.math.maxInt(u8) or
-        key.len == 0) return error.InvalidKey;
+    if (!isValidKey(key)) return error.InvalidKey;
 
     const key_length: u8 = @truncate(key.len);
     const length = self.len();
@@ -95,8 +100,7 @@ pub fn setValueType(self: *Key, value_type: value.Type) void {
     self.ptr.setTag(@intFromEnum(value_type));
 }
 
-/// Deallocates key string with included sentinel.
-pub fn deinit(self: Key, allocator: std.mem.Allocator) void {
-    const ptr = self.ptr.getPointer();
-    allocator.free(ptr[0 .. 1 + self.len()]);
+pub fn isValidKey(key: []const u8) bool {
+    return key.len > 0 and key.len <= std.math.maxInt(u8) and
+        glob.classify(key) == .literal;
 }

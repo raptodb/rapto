@@ -43,6 +43,10 @@ pub fn set(self: *Flag, content: []const u8) error{MismatchType}!void {
     self.value = .fromContent(content[0..8].*);
 }
 
+pub fn dupe(self: Flag) Flag {
+    return self;
+}
+
 pub fn get(self: Flag) Status {
     return self.value;
 }

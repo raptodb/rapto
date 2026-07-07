@@ -46,6 +46,13 @@ pub fn set(self: Point, content: []const u8) error{ InvalidFormat, MismatchType 
     self.value.* = try .parse(content);
 }
 
+pub fn dupe(self: Point, allocator: std.mem.Allocator) std.mem.Allocator.Error!Point {
+    const axis_ptr = try allocator.create(Axis);
+    errdefer allocator.destroy(axis_ptr);
+    axis_ptr.* = self.value.*;
+    return .{ .value = axis_ptr };
+}
+
 pub fn get(self: Point) Axis {
     return self.value.*;
 }

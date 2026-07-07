@@ -11,6 +11,7 @@
 const Memory = @This();
 
 const std = @import("std");
+const glob = @import("glob.zig");
 
 pub const object = @import("Memory/object.zig");
 
@@ -21,7 +22,7 @@ map: Map,
 pub const init: Memory = .{ .map = .empty };
 
 pub fn deinit(self: *Memory, allocator: std.mem.Allocator) void {
-    self.clear(allocator);
+    _ = self.clear(allocator);
     self.map.deinit(allocator);
 }
 
@@ -63,6 +64,39 @@ pub fn put(
     return ref;
 }
 
+pub fn copy(
+    self: *Memory,
+    allocator: std.mem.Allocator,
+    src_key: []const u8,
+    dst_key: []const u8,
+) error{ KeyNotFound, InvalidKey, OutOfMemory }!void {
+    const src_entry = self.map.getEntryAdapted(src_key, SearchContext{}) orelse
+        return error.KeyNotFound;
+    const src_ref: object.Ref = .wrap(src_entry.key_ptr, src_entry.value_ptr);
+    const src_type = src_ref.type();
+
+    const dst_entry = try self.map.getOrPutAdapted(
+        allocator,
+        dst_key,
+        SearchContext{},
+    );
+
+    if (dst_entry.found_existing) {
+        dst_entry.key_ptr.setValueType(src_type);
+        dst_entry.value_ptr.deinit(allocator, src_type);
+    } else {
+        dst_entry.key_ptr.* = try .init(allocator, dst_key, src_ref.type());
+    }
+
+    dst_entry.value_ptr.* = switch (src_ref.type()) {
+        inline else => |t| @unionInit(
+            object.Value,
+            @tagName(t),
+            try src_ref.dupeValue(allocator, t),
+        ),
+    };
+}
+
 pub fn search(self: *Memory, key: []const u8) ?object.Ref {
     const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse return null;
     return .wrap(entry.key_ptr, entry.value_ptr);
@@ -83,16 +117,23 @@ pub fn count(self: *const Memory) u64 {
     return self.map.count();
 }
 
-pub fn clear(self: *Memory, allocator: std.mem.Allocator) void {
+pub fn clear(self: *Memory, allocator: std.mem.Allocator) u64 {
     var iter = self.iterator();
-    while (iter.next()) |ref|
+    while (iter.next()) |ref| {
         deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
+    }
     self.map.clearRetainingCapacity();
+    return self.count();
 }
 
-pub fn free(self: *Memory, allocator: std.mem.Allocator) void {
-    self.clear(allocator);
+pub fn free(self: *Memory, allocator: std.mem.Allocator) u64 {
+    const i = self.clear(allocator);
     self.map.clearAndFree(allocator);
+    return i;
+}
+
+pub fn iterator(self: *Memory) Iterator {
+    return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
 }
 
 pub const Iterator = struct {
@@ -109,9 +150,22 @@ pub const Iterator = struct {
     }
 };
 
-pub fn iterator(self: *Memory) Iterator {
-    return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
-}
+pub const FilteredIterator = struct {
+    wrapped_iterator: Map.Iterator,
+    pattern: []const u8,
+
+    pub fn from(wrapped_iterator: Map.Iterator, pattern: []const u8) FilteredIterator {
+        return .{ .wrapped_iterator = wrapped_iterator, .pattern = pattern };
+    }
+
+    pub fn next(self: *FilteredIterator) ?object.Ref {
+        while (true) {
+            const entry = self.wrapped_iterator.next() orelse return null;
+            if (!glob.match(self.pattern, entry.key_ptr.get())) continue;
+            return .wrap(entry.key_ptr, entry.value_ptr);
+        }
+    }
+};
 
 const SearchContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {

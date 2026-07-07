@@ -6,8 +6,10 @@
 //! It contains the implementation of object.
 
 const std = @import("std");
-pub const value = @import("object/value.zig");
+const frames = @import("../frames.zig");
 const assert = std.debug.assert;
+
+pub const value = @import("object/value.zig");
 
 pub const Key = @import("object/Key.zig");
 pub const Value = value.Value;
@@ -49,14 +51,21 @@ pub const Ref = struct {
         return self.value_ptr.get(value_type);
     }
 
-    /// Returns pointer to the value value. Used
-    /// to access directly in the value without
-    /// copying and for in-place and SPECIFIC operations.
-    pub inline fn valuePtr(
+    pub fn dupeValue(
+        self: Ref,
+        allocator: std.mem.Allocator,
+        comptime value_type: value.Type,
+    ) std.mem.Allocator.Error!Value.UnionType(value_type) {
+        assert(self.type() == value_type);
+        return self.value_ptr.dupe(allocator, value_type);
+    }
+
+    /// Returns the reference of value_ptr.{value_type}.
+    pub fn valueRef(
         self: Ref,
         comptime value_type: value.Type,
-    ) *Value.UnionType(value_type) {
-        return self.value_ptr.ptr(value_type);
+    ) Value.UnionType(value_type) {
+        return @field(self.value_ptr, @tagName(value_type));
     }
 
     pub fn setKey(
@@ -75,7 +84,7 @@ pub const Ref = struct {
         allocator: std.mem.Allocator,
         value_type: value.Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
+    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType, InvalidKey })!void {
         const current_value_type = self.type();
 
         if (value_type != current_value_type) {
@@ -90,24 +99,6 @@ pub const Ref = struct {
         }
 
         return self.value_ptr.set(allocator, value_type, content);
-    }
-
-    pub fn serializeToWriter(
-        self: Ref,
-        writer: *std.Io.Writer,
-    ) std.Io.Writer.Error!void {
-        const value_type = self.type();
-        try value_type.serializeToWriter(writer);
-        try self.value_ptr.serializeContentToWriter(writer, value_type);
-    }
-
-    /// Serialized content of value to writer.
-    pub fn serializeContentToWriter(
-        self: Ref,
-        writer: *std.Io.Writer,
-    ) std.Io.Writer.Error!void {
-        const value_type = self.type();
-        try self.value_ptr.serializeContentToWriter(writer, value_type);
     }
 
     /// Returns type of value exploiting tag of pointer to key.

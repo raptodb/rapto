@@ -29,6 +29,12 @@ pub fn initFromContent(
     return .{ .ptr = list_ptr };
 }
 
+pub fn deinit(self: List, allocator: std.mem.Allocator) void {
+    self.removeAll(allocator);
+    self.ptr.deinit(allocator);
+    allocator.destroy(self.ptr);
+}
+
 /// Inserts or appends a serialized scalar type or a List.
 pub fn insert(
     self: *List,
@@ -71,6 +77,23 @@ fn insertItem(
         self.ptr.insert(allocator, index, item);
 }
 
+pub fn dupe(
+    self: List,
+    allocator: std.mem.Allocator,
+) std.mem.Allocator.Error!List {
+    const list_ptr = try allocator.create(std.ArrayList(ScalarValue));
+    errdefer allocator.destroy(list_ptr);
+
+    list_ptr.* = try .initCapacity(allocator, self.count());
+    errdefer list_ptr.deinit(allocator);
+
+    for (self.ptr.items) |item| {
+        try list_ptr.append(allocator, try item.dupe(allocator));
+    }
+
+    return .{ .ptr = list_ptr };
+}
+
 /// Replaces List with a new serialized list.
 pub fn set(
     self: *List,
@@ -94,6 +117,24 @@ pub fn setByIndex(
     self.ptr.items[index].deinit(allocator);
     self.ptr.items[index] = try .initFromContent(allocator, value_type, content);
 }
+
+pub const Serializer = struct {
+    writer: *std.Io.Writer,
+
+    pub fn begin(writer: *std.Io.Writer) std.Io.Writer.Error!Serializer {
+        try value.Type.serializeToWriter(.list, writer);
+        return .{ .writer = writer };
+    }
+
+    pub fn beginFrame(self: Serializer) std.Io.Writer.Error!frames.Builder {
+        return .begin(self.writer);
+    }
+
+    /// For conventional purpose; this is no-op.
+    pub fn end(self: Serializer) void {
+        _ = self;
+    }
+};
 
 pub fn get(self: List) []const ScalarValue {
     if (self.count() == 0) return &.{};
@@ -150,7 +191,7 @@ pub fn indexOfItem(
         0,
         self.count() - 1,
     ) catch |err| switch (err) {
-        else => |e| e,
+        inline else => |e| e,
         error.RangeOverflow => unreachable,
     };
 }
@@ -161,7 +202,6 @@ pub fn removeByRange(
     from_index: u64,
     to_index: u64,
 ) error{RangeOverflow}!void {
-    if (self.count() == 0) return;
     if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
     for (self.ptr.items[from_index .. to_index + 1]) |item| item.deinit(allocator);
     self.ptr.replaceRangeAssumeCapacity(from_index, to_index - from_index + 1, &.{});
@@ -174,38 +214,12 @@ pub fn removeAll(self: List, allocator: std.mem.Allocator) void {
     };
 }
 
+pub fn removeByIndex(self: List, allocator: std.mem.Allocator, index: u64) error{RangeOverflow}!void {
+    return self.removeByRange(allocator, index, index);
+}
+
 pub fn count(self: List) u64 {
     return self.ptr.items.len;
-}
-
-pub fn serializeContentInRangeToWriter(
-    self: List,
-    writer: *std.Io.Writer,
-    from_index: u64,
-    to_index: u64,
-) error{ WriteFailed, RangeOverflow }!void {
-    if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
-
-    for (self.ptr.items[from_index .. to_index + 1]) |item| {
-        var builder: frames.Builder = try .begin(writer);
-        defer builder.end();
-        try item.serializeToWriter(writer);
-    }
-}
-
-pub fn serializeContentToWriter(self: List, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    const length = self.count();
-    if (length == 0) return;
-    return self.serializeContentInRangeToWriter(writer, 0, length - 1) catch |err| switch (err) {
-        error.WriteFailed => |e| e,
-        error.RangeOverflow => unreachable,
-    };
-}
-
-pub fn deinit(self: List, allocator: std.mem.Allocator) void {
-    self.removeAll(allocator);
-    self.ptr.deinit(allocator);
-    allocator.destroy(self.ptr);
 }
 
 fn appendSerializedList(
@@ -230,6 +244,24 @@ fn serializedItemsIterator(
     const value_type, const content = try value.splitSerialized(serialized);
     if (value_type != .list) return error.MismatchType;
     return .init(content);
+}
+
+fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarValue) ![]u8 {
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    errdefer allocating.deinit();
+    const writer = &allocating.writer;
+
+    {
+        var serializer: Serializer = try .begin(writer);
+        defer serializer.end();
+        for (items) |item| {
+            const frame = try serializer.beginFrame();
+            defer frame.end();
+            try item.serializeToWriter(writer);
+        }
+    }
+
+    return allocating.toOwnedSlice();
 }
 
 test "List" {
@@ -331,7 +363,6 @@ test "List" {
     _ = pw.consumeAll();
     try err_flag.serializeToWriter(pw);
     try std.testing.expect(try s.indexOfItem(allocator, pw.buffered()) == 0);
-
     try std.testing.expectError(error.MismatchType, s.indexOfItem(allocator, serialized));
 
     var dec_item2: ScalarValue = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
@@ -350,27 +381,12 @@ test "List" {
     try std.testing.expect(s.count() > 0);
 
     s.removeAll(allocator);
-    _ = pw.consumeAll();
+    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 0, 0));
+    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 0, 3));
+    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 10, 0));
+
     try std.testing.expect(s.get().len == 0);
-    try std.testing.expectError(error.RangeOverflow, s.serializeContentInRangeToWriter(pw, 0, 0));
-    try s.serializeContentToWriter(pw);
-    try std.testing.expect(pw.buffered().len == 0);
 
     try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .map, &.{}));
     try std.testing.expectError(error.MismatchType, ScalarValue.initFromContent(allocator, .list, &.{}));
-}
-
-fn serializeItems(allocator: std.mem.Allocator, items: []const ScalarValue) ![]u8 {
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    errdefer allocating.deinit();
-    const writer = &allocating.writer;
-
-    try value.Type.serializeToWriter(.list, writer);
-    for (items) |item| {
-        var builder: frames.Builder = try .begin(writer);
-        defer builder.end();
-        try item.serializeToWriter(writer);
-    }
-
-    return allocating.toOwnedSlice();
 }

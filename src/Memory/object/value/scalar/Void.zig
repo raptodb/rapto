@@ -22,6 +22,10 @@ pub fn get(_: Void) void {
     // nothing
 }
 
+pub fn dupe(_: Void) Void {
+    return .{};
+}
+
 pub fn len(_: Void) u64 {
     return 0;
 }

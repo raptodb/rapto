@@ -12,26 +12,30 @@ const Integer = @This();
 
 const std = @import("std");
 
-raw: [8]u8 = undefined,
+content: [8]u8 = undefined,
 
 pub fn fromContent(content: []const u8) error{MismatchType}!Integer {
     if (content.len != 8) return error.MismatchType;
-    return .{ .raw = content[0..8].* };
+    return .{ .content = content[0..8].* };
 }
 
 pub fn fromValue(value: i64) Integer {
-    var raw: [8]u8 = undefined;
-    std.mem.writeInt(i64, &raw, value, .little);
-    return .{ .raw = raw };
+    var content: [8]u8 = undefined;
+    std.mem.writeInt(i64, &content, value, .little);
+    return .{ .content = content };
+}
+
+pub fn dupe(self: Integer) Integer {
+    return self;
 }
 
 pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
     if (content.len != 8) return error.MismatchType;
-    self.raw = content[0..8].*;
+    self.content = content[0..8].*;
 }
 
 pub fn get(self: Integer) i64 {
-    return std.mem.readInt(i64, &self.raw, .little);
+    return std.mem.readInt(i64, &self.content, .little);
 }
 
 pub fn len(_: Integer) u64 {
@@ -40,11 +44,11 @@ pub fn len(_: Integer) u64 {
 
 pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
     const updated_value = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
-    std.mem.writeInt(i64, &self.raw, updated_value, .little);
+    std.mem.writeInt(i64, &self.content, updated_value, .little);
 }
 
 pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    try writer.writeAll(&self.raw);
+    try writer.writeAll(&self.content);
 }
 
 test "Integer" {
