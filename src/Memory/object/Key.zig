@@ -12,83 +12,78 @@ const value = @import("value.zig");
 const glob = @import("../../glob.zig");
 const assert = std.debug.assert;
 
-const TaggedPointer = @import("tagged_pointer.zig").TaggedPointer;
+const TaggedPtr = @import("tagged_ptr.zig").TaggedPtr;
+pub const Error = std.mem.Allocator.Error || error{InvalidKey};
 
 /// Pointer alignment of current architecture.
 /// Defined for clarity and conventional purposes.
-const pointer_alignment: std.mem.Alignment = .of(usize);
-/// Number of LSB bits used for length encoding. LSB bits are calculated
-/// from log2 of pointer alignment, for example, in 64-bit architectures,
-/// alignment of pointer is 8 bytes, so 3 LSB bits are used.
-/// This instruction is only for clarity and conventional purposes.
-const Lsb: type = std.meta.Int(.unsigned, @intFromEnum(pointer_alignment));
+const ptr_alignment: std.mem.Alignment = .of(usize);
 
-/// Tagged pointer to key. Tag encodes value type.
-/// The maximum length is 2^8-1, for performance purposes.
-ptr: TaggedPointer([*]align(pointer_alignment.toByteUnits()) u8) = undefined,
+/// Tagged pointer to a length-prefixed key. The length is stored in the
+/// first byte, limiting keys to 255 bytes. Like Memcached, this limit
+/// works for most use cases and provides better performance.
+/// The tag stores the value type in the 3 least significant bits.
+ptr: TaggedPtr([*]align(ptr_alignment.toByteUnits()) u8) = undefined,
 
-/// Initializes key by duplicating it.
-/// Checks if length of key is within 2^8-1.
-pub fn init(
-    allocator: std.mem.Allocator,
-    key: []const u8,
-    value_type: value.Type,
-) (std.mem.Allocator.Error || error{InvalidKey})!Key {
+/// Initializes key by duplicating it
+pub fn init(allocator: std.mem.Allocator, key: []const u8, value_type: value.Type) Error!Key {
     if (!isValidKey(key)) return error.InvalidKey;
 
-    const buf = try allocator.alignedAlloc(u8, pointer_alignment, 1 + key.len);
-    errdefer allocator.free(buf);
+    const slice = try allocator.alignedAlloc(u8, ptr_alignment, 1 + key.len);
+    // Truncation is allowed by checking key firstly.
+    slice[0] = @truncate(key.len);
 
-    buf[0] = @truncate(key.len);
-    @memcpy(buf[1..], key);
+    @memcpy(slice[1..], key);
 
-    return .{ .ptr = .init(buf.ptr, @intFromEnum(value_type)) };
+    return .{ .ptr = .init(slice.ptr, @intFromEnum(value_type)) };
 }
 
-/// Deallocates key string with included sentinel.
+/// Deallocates key string with included length.
 pub fn deinit(self: Key, allocator: std.mem.Allocator) void {
-    const ptr = self.ptr.getPointer();
-    allocator.free(ptr[0 .. 1 + self.len()]);
+    allocator.free(self.content());
 }
 
-/// Sets a new key. Reallocates if length is different.
-/// Checks if length of key is within 2^8-1.
-pub fn set(
-    self: *Key,
-    allocator: std.mem.Allocator,
-    key: []const u8,
-) (std.mem.Allocator.Error || error{InvalidKey})!void {
-    if (!isValidKey(key)) return error.InvalidKey;
+/// Efficiently replaces current key with a new key. Reallocates if necessary.
+pub fn set(self: *Key, allocator: std.mem.Allocator, new_key: []const u8) Error!void {
+    if (!isValidKey(new_key)) return error.InvalidKey;
 
-    const key_length: u8 = @truncate(key.len);
-    const length = self.len();
+    const length_new_key: u8 = @truncate(new_key.len);
+    const length_old_key = self.len();
 
     var ptr = self.ptr.getPointer();
 
-    if (length != key_length) {
+    if (length_old_key != length_new_key) {
         const slice = try allocator.realloc(
-            ptr[0 .. 1 + length],
-            1 + key_length,
+            ptr[0 .. 1 + length_old_key],
+            1 + length_new_key,
         );
 
-        ptr = @ptrCast(slice);
+        ptr = slice.ptr;
         self.ptr.setPointer(ptr);
-
-        ptr[0] = key_length;
+        // Update string length.
+        ptr[0] = length_new_key;
     }
 
-    @memcpy(ptr[1 .. 1 + key_length], key);
+    @memcpy(ptr[1 .. 1 + length_new_key], new_key);
 }
 
 pub fn get(self: Key) []const u8 {
-    const key_ptr = self.ptr.getPointer()[1..];
-    return key_ptr[0..self.len()];
+    return self.content()[1..];
 }
 
+/// Returns entire buffer with length and key.
+fn content(self: Key) []align(ptr_alignment.toByteUnits()) const u8 {
+    const ptr = self.ptr.getPointer();
+    return ptr[0 .. 1 + self.len()];
+}
+
+/// Length of key retrieved by first byte.
 pub fn len(self: Key) u8 {
     const ptr = self.ptr.getPointer();
     // Length is stored in the first byte.
-    return ptr[0];
+    const key_len = ptr[0];
+    assert(key_len != 0);
+    return key_len;
 }
 
 pub fn getValueType(self: Key) value.Type {
@@ -101,6 +96,9 @@ pub fn setValueType(self: *Key, value_type: value.Type) void {
 }
 
 pub fn isValidKey(key: []const u8) bool {
-    return key.len > 0 and key.len <= std.math.maxInt(u8) and
-        glob.classify(key) == .literal;
+    return hasValidLength(key) and glob.classify(key) == .literal;
+}
+
+pub fn hasValidLength(key: []const u8) bool {
+    return key.len != 0 and key.len <= std.math.maxInt(u8);
 }

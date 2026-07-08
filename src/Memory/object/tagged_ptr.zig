@@ -6,7 +6,7 @@
 
 const std = @import("std");
 
-pub fn TaggedPointer(comptime T: type) type {
+pub fn TaggedPtr(comptime T: type) type {
     std.debug.assert(@typeInfo(T) == .pointer);
 
     const tag_bits: u64 = std.math.log2(@alignOf(T));
