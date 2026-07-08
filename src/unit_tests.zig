@@ -17,7 +17,7 @@ comptime {
     _ = @import("Memory/object.zig");
     _ = @import("Memory/object/Key.zig");
     _ = @import("Memory/object/value.zig");
-    _ = @import("Memory/object/tagged_pointer.zig");
+    _ = @import("Memory/object/tagged_ptr.zig");
     _ = @import("Memory/object/value/collection.zig");
     _ = @import("Memory/object/value/collection/List.zig");
     _ = @import("Memory/object/value/collection/Map.zig");
