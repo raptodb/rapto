@@ -150,23 +150,6 @@ pub const Iterator = struct {
     }
 };
 
-pub const FilteredIterator = struct {
-    wrapped_iterator: Map.Iterator,
-    pattern: []const u8,
-
-    pub fn from(wrapped_iterator: Map.Iterator, pattern: []const u8) FilteredIterator {
-        return .{ .wrapped_iterator = wrapped_iterator, .pattern = pattern };
-    }
-
-    pub fn next(self: *FilteredIterator) ?object.Ref {
-        while (true) {
-            const entry = self.wrapped_iterator.next() orelse return null;
-            if (!glob.match(self.pattern, entry.key_ptr.get())) continue;
-            return .wrap(entry.key_ptr, entry.value_ptr);
-        }
-    }
-};
-
 const SearchContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {
         return std.hash.Wyhash.hash(0, s);

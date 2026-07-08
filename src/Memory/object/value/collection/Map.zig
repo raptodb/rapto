@@ -154,23 +154,6 @@ pub const Pair = struct {
     }
 };
 
-pub const FilteredIterator = struct {
-    wrapped_iterator: Iterator,
-    pattern: []const u8,
-
-    pub fn from(wrapped_iterator: Map.Iterator, pattern: []const u8) FilteredIterator {
-        return .{ .wrapped_iterator = wrapped_iterator, .pattern = pattern };
-    }
-
-    pub fn next(self: *FilteredIterator) ?Pair {
-        while (true) {
-            const pair = self.wrapped_iterator.next() orelse return null;
-            if (!glob.match(self.pattern, pair.entry.key_ptr.get())) continue;
-            return pair;
-        }
-    }
-};
-
 pub const Iterator = struct {
     wrapped_iterator: HashMap.Iterator,
 
