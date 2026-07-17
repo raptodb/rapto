@@ -29,10 +29,7 @@ start_segment_index: u64 = 0,
 allocating: std.Io.Writer.Allocating,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Pipeline {
-    var self: Pipeline = undefined;
-    self.config = config;
-    self.allocating = try .initCapacity(allocator, config.preserved_size);
-    return self;
+    return .{ .config = config, .allocating = try .initCapacity(allocator, config.preserved_size) };
 }
 
 pub fn deinit(self: *Pipeline) void {
@@ -40,6 +37,7 @@ pub fn deinit(self: *Pipeline) void {
 }
 
 pub fn reset(self: *Pipeline) void {
+    self.start_segment_index = 0;
     resizeAllocating(&self.allocating, self.config.preserved_size);
 }
 
@@ -69,4 +67,36 @@ fn shrinkAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) 
     defer allocating.* = .fromArrayList(allocating.allocator, &list);
 
     list.shrinkAndFree(allocating.allocator, preserved_size);
+}
+
+test "Pipeline" {
+    const allocator = std.testing.allocator;
+
+    var pipeline: Pipeline = try .init(allocator, .{ .preserved_size = 16 });
+    defer pipeline.deinit();
+    var w = pipeline.writer();
+
+    try w.writeAll("abc");
+    try std.testing.expectEqualStrings("abc", pipeline.take());
+
+    try w.writeAll("def");
+    try std.testing.expectEqualStrings("def", pipeline.take());
+
+    try std.testing.expect(pipeline.take().len == 0);
+
+    const capacity_before = pipeline.allocating.writer.buffer.len;
+    pipeline.reset();
+    try std.testing.expectEqual(capacity_before, pipeline.allocating.writer.buffer.len);
+    try std.testing.expect(w.end == 0);
+    try std.testing.expect(pipeline.start_segment_index == 0);
+
+    const big_chunk = [_]u8{'a'} ** 256;
+    try w.writeAll(&big_chunk);
+    try std.testing.expect(pipeline.allocating.writer.buffer.len > 16);
+
+    pipeline.reset();
+    try std.testing.expectEqual(@as(usize, 16), pipeline.allocating.writer.buffer.len);
+
+    try w.writeAll("new");
+    try std.testing.expectEqualStrings("new", pipeline.take());
 }
