@@ -8,7 +8,7 @@
 const std = @import("std");
 
 const CommandError = @import("state_machine.zig").CommandError;
-const ParseError = @import("Query.zig").Error;
+const ParseError = @import("Pipeline/Query.zig").Error;
 
 pub const Code = enum(u8) {
     // Success (0-99)
@@ -26,7 +26,6 @@ pub const Code = enum(u8) {
     map_key_not_found,
     duplicated_key,
     unknown_command,
-    unknown_flag,
 
     pub fn writeError(code: Code, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeInt(u8, @intFromEnum(code), .little);
@@ -45,8 +44,6 @@ pub const Code = enum(u8) {
             error.MapKeyNotFound => .map_key_not_found,
             error.DuplicatedKey => .duplicated_key,
             error.UnknownCommand => .unknown_command,
-            error.UnknownFlag => .unknown_flag,
-            error.InvalidFlagUnion => .invalid_format,
             else => unreachable,
         };
     }

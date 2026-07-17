@@ -8,11 +8,11 @@
 const Query = @This();
 
 const std = @import("std");
-const frames = @import("frames.zig");
+const frames = @import("../frames.zig");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
-pub const Error = error{ UnknownCommand, UnknownFlag, InvalidFlagUnion, InvalidFormat };
+pub const Error = error{ UnknownCommand, InvalidFormat };
 
 command: Command,
 flags: Flags,
@@ -118,6 +118,18 @@ pub fn isEqualTo(self: *const Query, query: *const Query) bool {
     if (self.command != query.command) return false;
     if (!self.flags.isEqualTo(query.flags)) return false;
     return std.mem.eql(u8, self.args, query.args);
+}
+
+pub fn serializeToWriter(self: *const Query, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try self.command.serializeToWriter(writer);
+
+    {
+        var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
+        try self.flags.serializeToWriter(writer);
+    }
+
+    try writer.writeAll(self.args.content);
 }
 
 pub fn testIsEqualTo(actual: []const u8, expected: []const []const u8) bool {

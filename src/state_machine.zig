@@ -12,7 +12,7 @@ const glob = @import("glob.zig");
 
 const Code = @import("code.zig").Code;
 const Memory = @import("Memory.zig");
-const Query = @import("Query.zig");
+const Query = @import("Pipeline/Query.zig");
 const Flags = Query.Flags;
 
 const ScalarValue = object.value.ScalarValue;

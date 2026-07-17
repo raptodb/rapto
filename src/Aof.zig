@@ -13,7 +13,7 @@ const frames = @import("frames.zig");
 const state_machine = @import("state_machine.zig");
 const assert = std.debug.assert;
 
-const Query = @import("Query.zig");
+const Query = @import("Pipeline/Query.zig");
 const Memory = @import("Memory.zig");
 
 file: std.Io.File,
