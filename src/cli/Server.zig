@@ -13,29 +13,28 @@ const eql = std.mem.eql;
 
 /// Name of Server instance.
 name: []const u8,
-/// Maximum database capacity in bytes.
-/// This capacity will be allocated at disk.
+/// Maximum database capacity in bytes over init.
 memory_size: u64,
 /// When this parameter is enabled, writes in AOF
 /// in name.raptodb file.
-aof: ?bool,
+aof: bool = false,
 /// When this parameter is enabled, reads the AOF
 /// file. When both `aof` and `aof_file` are enabled
 /// writes on file as the same name of `aof_file`.
 aof_file: ?[]const u8,
 /// Writes every `aof_sync_seconds` to aof file.
 /// When is 0, writes always after any query.
-aof_sync_seconds: ?i32,
+aof_sync_seconds: i32 = 1,
 /// IP address of Server instance, default Rapto port is 7286.
-address: ?std.Io.net.IpAddress,
+address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) },
 
 pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
     var name: ?[]const u8 = null;
     var memory_size: ?u64 = null;
-    var aof: ?bool = null;
+    var aof: bool = false;
     var aof_file: ?[]const u8 = null;
-    var aof_sync_seconds: ?i32 = null;
-    var address: ?std.Io.net.IpAddress = null;
+    var aof_sync_seconds: i32 = 1;
+    var address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) };
 
     while (args.next()) |flag| {
         if (eql(u8, flag, "--name")) {
