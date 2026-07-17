@@ -49,6 +49,7 @@ pub fn IteratorType(comptime HeaderType: type) type {
         }
 
         fn remaining(self: Self) usize {
+            assert(self.seek <= self.frames.len);
             return self.frames.len - self.seek;
         }
     };
