@@ -55,13 +55,13 @@ pub const Command = union(enum) {
         \\      *Required
         \\
         \\  --memory-size <size>
-        \\      Sets the maximum database capacity in bytes.
-        \\      This capacity will be allocated at disk.
+        \\      Sets the maximum database capacity in bytes over init.
         \\      *Required
         \\  
         \\  --aof
         \\      When this parameter is enabled, writes in AOF
-        \\\     in <database name>.raptodb file.
+        \\      in <database name>.raptodb file.
+        \\      Default: false.
         \\  
         \\  --aof-file <path>
         \\      Specifies the path for persistent storage file.

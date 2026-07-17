@@ -16,32 +16,62 @@ const assert = std.debug.assert;
 const Query = @import("Pipeline/Query.zig");
 const Memory = @import("Memory.zig");
 
-file: std.Io.File,
+pub const Config = struct {
+    /// Name of Server instance.
+    name: []const u8,
+    /// When this parameter is enabled, writes in AOF
+    /// in name.raptodb file.
+    aof: bool = false,
+    /// When this parameter is enabled, reads the AOF
+    /// file. When both `aof` and `aof_file` are enabled
+    /// writes on file as the same name of `aof_file`.
+    aof_file: ?[]const u8,
+    /// Minimum size of Allocating. This optimizes the
+    /// allocation/deallocation overhead.
+    /// The preserved size is allocated at initialization time
+    /// and is never deallocated until the `.deinit()` method.
+    preserved_size: u32 = 16 * 1024,
+};
 
+config: Config,
+
+file: std.Io.File,
 allocating: std.Io.Writer.Allocating,
-preserved_size: u64,
 
 pub fn init(
     allocator: std.mem.Allocator,
     io: std.Io,
-    path: []const u8,
-    preserved_size: u64,
-) (std.mem.Allocator.Error || std.Io.File.OpenError)!Aof {
-    var self: Aof = undefined;
+    config: Config,
+) (std.mem.Allocator.Error || std.Io.File.OpenError)!?Aof {
+    if (!config.aof and config.aof_file == null)
+        return null;
+
+    const owned_path = if (config.aof_file == null)
+        try std.fmt.allocPrint(allocator, "{s}.raptodb", .{config.name})
+    else
+        null;
+    defer if (owned_path) |path|
+        allocator.free(path);
+
+    const path = config.aof_file orelse owned_path.?;
 
     const options: std.Io.Dir.CreateFileOptions = .{
         .truncate = false,
         .read = true,
     };
-    self.file = try std.Io.Dir.createFileAbsolute(io, path, options);
 
-    self.preserved_size = preserved_size;
-    self.allocating = try .initCapacity(
-        allocator,
-        preserved_size,
-    );
-
-    return self;
+    return .{
+        .file = try std.Io.Dir.createFileAbsolute(
+            io,
+            path,
+            options,
+        ),
+        .allocating = try .initCapacity(
+            allocator,
+            config.preserved_size,
+        ),
+        .config = config,
+    };
 }
 
 pub fn deinit(self: *Aof, io: std.Io) void {
@@ -114,7 +144,7 @@ pub fn flush(self: *Aof, io: std.Io) std.Io.File.Writer.Error!void {
     aof_writer.interface.writeAll(aof_buffer_writer.buffered()) catch return aof_writer.err.?;
     aof_writer.interface.flush() catch return aof_writer.err.?;
 
-    resizeAllocating(&self.allocating, self.preserved_size);
+    resizeAllocating(&self.allocating, self.config.preserved_size);
 }
 
 pub fn load(
@@ -139,10 +169,7 @@ pub fn load(
     }
 }
 
-fn resizeAllocating(
-    allocating: *std.Io.Writer.Allocating,
-    preserved_size: u64,
-) void {
+fn resizeAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) void {
     if (allocating.writer.buffer.len > preserved_size) {
         @branchHint(.unlikely);
         shrinkAllocating(allocating, preserved_size);
@@ -150,10 +177,7 @@ fn resizeAllocating(
     return allocating.clearRetainingCapacity();
 }
 
-fn shrinkAllocating(
-    allocating: *std.Io.Writer.Allocating,
-    preserved_size: u64,
-) void {
+fn shrinkAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) void {
     assert(allocating.writer.buffer.len > preserved_size);
 
     var list = allocating.toArrayList();
