@@ -76,7 +76,7 @@ pub fn execute(
                 .ping => ping(writer, query),
                 .get => get(memory, writer, query),
                 .cget => cget(memory, writer, query),
-                .scount => scount(memory, writer, query),
+                .count => count(memory, writer, query),
                 .ccount => ccount(memory, writer, query),
                 .len => len(memory, writer, query),
                 .type => @"type"(memory, writer, query),
@@ -437,7 +437,7 @@ fn cpopOne(
     }
 }
 
-fn scount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
+fn count(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 

@@ -29,7 +29,7 @@ pub const Command = enum(u8) {
     get,
     cget,
     len,
-    scount,
+    count,
     ccount,
     del,
     cdel,
@@ -50,7 +50,7 @@ pub const Command = enum(u8) {
         return switch (self) {
             .set, .insert, .del, .cdel, .pop, .cpop, .copy, .rename => .write,
             // Commands that do not modify memory.
-            .ping, .get, .cget, .len, .scount, .ccount, .type, .ctype, .keys => .read,
+            .ping, .get, .cget, .len, .count, .ccount, .type, .ctype, .keys => .read,
             .down => .control,
         };
     }
@@ -231,7 +231,7 @@ test "Query" {
             .args = &.{},
         },
         .{
-            .command = .scount,
+            .command = .count,
             .flags = .{},
             .args = &.{"sessions"},
         },
