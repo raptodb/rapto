@@ -492,14 +492,14 @@ fn ccount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!vo
 fn ccountOne(memory: *Memory, writer: *std.Io.Writer, key: []const u8) !void {
     const ref = memory.search(key) orelse return;
 
-    const count: i64 = switch (ref.type()) {
+    const c: i64 = switch (ref.type()) {
         .list => @intCast(ref.valueRef(.list).count()),
         .map => @intCast(ref.valueRef(.map).count()),
         else => return error.MismatchType,
     };
 
-    const integer: object.value.Integer = .fromValue(count);
     try valueToWriter(writer, integer);
+    const integer: object.value.Integer = .fromValue(c);
 }
 
 fn len(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
