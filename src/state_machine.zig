@@ -498,8 +498,8 @@ fn ccountOne(memory: *Memory, writer: *std.Io.Writer, key: []const u8) !void {
         else => return error.MismatchType,
     };
 
-    try valueToWriter(writer, integer);
     const integer: object.value.Integer = .fromValue(c);
+    try valueToWriter(writer, integer);
 }
 
 fn len(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
