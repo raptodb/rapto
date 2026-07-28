@@ -109,8 +109,8 @@ pub fn remove(
     key: []const u8,
 ) error{KeyNotFound}!void {
     const ref = self.search(key) orelse return error.KeyNotFound;
-    self.map.removeByPtr(ref.key_ptr);
     deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
+    self.map.removeByPtr(ref.key_ptr);
 }
 
 pub fn count(self: *const Memory) u64 {
