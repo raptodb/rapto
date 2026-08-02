@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
         .name = "raptodb",
         .root_module = exe_mod,
     });
+    exe.use_llvm = true;
     exe.root_module.link_libc = true;
 
     const lib_unit_tests = b.addTest(.{
