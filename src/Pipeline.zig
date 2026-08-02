@@ -11,10 +11,6 @@ const std = @import("std");
 const frames = @import("frames.zig");
 const assert = std.debug.assert;
 
-pub const Query = @import("Pipeline/Query.zig");
-/// Convetional definition as string.
-pub const Reply = []const u8;
-
 pub const Config = struct {
     /// Minimum size for Query and Reply. This optimizes the
     /// allocation/deallocation overhead.

@@ -8,15 +8,10 @@
 const Query = @This();
 
 const std = @import("std");
-const frames = @import("../frames.zig");
+const frames = @import("frames.zig");
 const assert = std.debug.assert;
 
 pub const Flags = @import("Query/Flags.zig");
-pub const Error = error{ UnknownCommand, InvalidFormat };
-
-command: Command,
-flags: Flags,
-args: Args,
 
 pub const Command = enum(u8) {
     ping = 0,
@@ -25,7 +20,9 @@ pub const Command = enum(u8) {
     // or change fields to maintain
     // compatibility across versions
     set,
+    append,
     insert,
+    put,
     get,
     cget,
     len,
@@ -42,20 +39,24 @@ pub const Command = enum(u8) {
     keys,
     down = std.math.maxInt(u8),
 
-    fn parse(int: u8) error{UnknownCommand}!Command {
+    pub fn deserialize(int: u8) error{UnknownCommand}!Command {
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
+    }
+
+    pub fn parse(human_readable_cmd: []const u8) error{UnknownCommand}!Command {
+        return std.meta.stringToEnum(Command, human_readable_cmd) orelse error.UnknownCommand;
     }
 
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
-            .set, .insert, .del, .cdel, .pop, .cpop, .copy, .rename => .write,
-            // Commands that do not modify memory.
+            .set, .append, .insert, .put, .del, .cdel, .pop, .cpop, .copy, .rename => .write,
+            // Commands that does not modify memory.
             .ping, .get, .cget, .len, .count, .ccount, .type, .ctype, .keys => .read,
             .down => .control,
         };
     }
 
-    fn serializeToWriter(self: Command, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn serializeToWriter(self: Command, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeByte(@intFromEnum(self));
     }
 };
@@ -63,12 +64,48 @@ pub const Command = enum(u8) {
 pub const Args = struct {
     content: []const u8,
 
+    pub fn serializeToWriter(self: Args, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return writer.writeAll(self.content);
+    }
+
     pub fn iterator(self: Args) frames.Iterator {
         return .init(self.content);
     }
 };
 
-/// Parses a Query from a serialized input.
+pub const Serializer = struct {
+    /// Assuming writer is derived from std.Io.Writer.Allocating.
+    pub fn serialize(
+        writer: *std.Io.Writer,
+        command: Command,
+        flags: Flags,
+    ) std.mem.Allocator.Error!void {
+        command.serializeToWriter(writer) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+        };
+        flags.serializeToWriter(writer) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+        };
+    }
+
+    /// Assuming writer is derived from std.Io.Writer.Allocating.
+    pub fn append(writer: *std.Io.Writer, arg: []const []const u8) std.mem.Allocator.Error!void {
+        var builder: frames.Builder = try .begin(writer);
+        defer builder.end();
+        _ = writer.writeVec(arg) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+        };
+    }
+};
+
+pub const DeserializeError = error{ UnknownCommand, InvalidFormat };
+pub const ParseError = std.mem.Allocator.Error || error{ UnknownCommand, InvalidFormat };
+
+command: Command,
+flags: Flags,
+args: Args,
+
+/// Deserializes a Query from a serialized input.
 /// The input must follow this layout:
 ///
 /// COMMAND
@@ -76,6 +113,7 @@ pub const Args = struct {
 ///   A fixed-size command identifier (u8).
 ///
 /// FLAGS
+///   [has-default-flags:bool][flags]
 ///   Each flag is encoded as:
 ///     [tag bitmask][value][value]...
 ///   where:
@@ -90,28 +128,19 @@ pub const Args = struct {
 ///     [arg][arg]...
 ///
 /// FULL QUERY LAYOUT
-///   [COMMAND][len(FLAGS):u32][FLAGS][ARGS]
+///   [COMMAND][FLAGS][ARGS]
 ///
 /// All length-prefixed field are encoded through Frames.
-pub fn parse(serialized: []const u8) Error!Query {
+pub fn deserialize(serialized: []const u8) DeserializeError!Query {
     var reader: std.Io.Reader = .fixed(serialized);
 
-    const command: Command = try .parse(reader.takeByte() catch return error.InvalidFormat);
-
-    const length = reader.takeInt(u32, .little) catch
-        return error.InvalidFormat;
-    if (length > serialized.len - reader.seek)
-        return error.InvalidFormat;
-
-    const flags: Flags = try .parseFromReader(&reader);
+    const command: Command = try .deserialize(reader.takeByte() catch return error.InvalidFormat);
+    const flags: Flags = try .deserializeFromReader(&reader);
+    const args: Args = .{ .content = serialized[reader.seek..] };
 
     assert(reader.seek <= serialized.len);
 
-    return .{
-        .command = command,
-        .flags = flags,
-        .args = .{ .content = serialized[reader.seek..] },
-    };
+    return .{ .command = command, .flags = flags, .args = args };
 }
 
 pub fn isEqualTo(self: *const Query, query: *const Query) bool {
@@ -122,14 +151,8 @@ pub fn isEqualTo(self: *const Query, query: *const Query) bool {
 
 pub fn serializeToWriter(self: *const Query, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try self.command.serializeToWriter(writer);
-
-    {
-        var builder: frames.Builder = try .begin(writer);
-        defer builder.end();
-        try self.flags.serializeToWriter(writer);
-    }
-
-    try writer.writeAll(self.args.content);
+    try self.flags.serializeToWriter(writer);
+    try self.args.serializeToWriter(writer);
 }
 
 pub fn testIsEqualTo(actual: []const u8, expected: []const []const u8) bool {
@@ -145,28 +168,6 @@ pub fn testIsEqualTo(actual: []const u8, expected: []const []const u8) bool {
         }
 
         return false;
-    }
-}
-
-/// This function is used for tests.
-pub fn testSerializeToWriter(
-    writer: *std.Io.Writer,
-    command: Query.Command,
-    flags: Query.Flags,
-    args: []const []const u8,
-) std.Io.Writer.Error!void {
-    try command.serializeToWriter(writer);
-
-    {
-        var builder: frames.Builder = try .begin(writer);
-        defer builder.end();
-        try flags.serializeToWriter(writer);
-    }
-
-    for (args) |arg| {
-        var builder: frames.Builder = try .begin(writer);
-        defer builder.end();
-        try writer.writeAll(arg);
     }
 }
 
@@ -271,11 +272,18 @@ test "Query" {
         var buffer: [512]u8 = undefined;
         var writer: std.Io.Writer = .fixed(&buffer);
 
-        try testSerializeToWriter(&writer, expected.command, expected.flags, expected.args);
-        const parsed: Query = try .parse(writer.buffered());
+        try expected.command.serializeToWriter(&writer);
+        try expected.flags.serializeToWriter(&writer);
+        for (expected.args) |arg| {
+            var builder: frames.Builder = try .begin(&writer);
+            defer builder.end();
+            try writer.writeAll(arg);
+        }
 
-        try std.testing.expect(parsed.command == expected.command);
-        try std.testing.expect(parsed.flags.isEqualTo(expected.flags));
-        try std.testing.expect(testIsEqualTo(parsed.args.content, expected.args));
+        const deserialized: Query = try .deserialize(writer.buffered());
+
+        try std.testing.expect(deserialized.command == expected.command);
+        try std.testing.expect(deserialized.flags.isEqualTo(expected.flags));
+        try std.testing.expect(testIsEqualTo(deserialized.args.content, expected.args));
     }
 }
