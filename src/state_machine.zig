@@ -8,16 +8,12 @@
 const std = @import("std");
 const frames = @import("frames.zig");
 const glob = @import("glob.zig");
-
-const Code = @import("code.zig").Code;
-const Memory = @import("Memory.zig");
-const Query = @import("Pipeline/Query.zig");
-const Flags = Query.Flags;
-
+const reply = @import("reply.zig");
 const assert = std.debug.assert;
-const valueToWriter = object.value.serializeToWriter;
-const errorToWriter = object.value.errorToWriter;
-const splitSerialized = object.value.splitSerialized;
+
+const Memory = @import("Memory.zig");
+const Query = @import("Query.zig");
+const Flags = Query.Flags;
 const Value = @import("object.zig").Value;
 
 /// The only errors that can be returned to execute function.
@@ -61,7 +57,9 @@ pub fn execute(
         .pop => pop(allocator, memory, writer, query),
         .cpop => cpop(allocator, memory, writer, query),
         .set => set(allocator, memory, writer, query),
+        .append => append(allocator, memory, writer, query),
         .insert => insert(allocator, memory, writer, query),
+        .put => put(allocator, memory, writer, query),
         .rename => rename(allocator, memory, writer, query),
         .copy => copy(allocator, memory, writer, query),
 
@@ -97,15 +95,15 @@ fn ping(writer: *std.Io.Writer, query: *const Query) Error!void {
     const limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    try valueToWriter(writer, integer);
     const integer: Value.Integer = .fromValue(1);
+    try reply.writeValue(writer, integer);
 }
 
 fn get(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -122,7 +120,7 @@ fn get(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void 
 }
 
 fn getOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, key: []const u8) !void {
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
 
     switch (ref.type()) {
         .list => {
@@ -134,7 +132,7 @@ fn getOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, key: []const u
             try serializeMap(writer, limit, map.get());
         },
         inline else => |value_type| {
-            try valueToWriter(writer, ref.valueRef(value_type));
+            try reply.writeValue(writer, ref.value(value_type));
         },
     }
 }
@@ -156,9 +154,12 @@ fn cgetOne(
     args: *frames.Iterator,
 ) !void {
     const key = args.next() orelse return error.MissingTokens;
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
 
-    switch (ref.type()) {
+    const value_type = ref.type();
+    if (value_type.group() == .scalar) return error.MismatchType;
+
+    switch (value_type) {
         .list => {
             const list: Value.List = ref.value(.list);
             const list_len = list.count();
@@ -170,7 +171,7 @@ fn cgetOne(
         .map => {
             const map: Value.Map = ref.value(.map);
 
-            var serializer: List.Serializer = try .begin(writer);
+            var serializer: reply.ListSerializer = try .begin(writer);
             defer serializer.end();
 
             while (args.next()) |map_key| {
@@ -187,7 +188,8 @@ fn cgetOne(
                 } else |_| {}
             }
         },
-        else => return error.MismatchType,
+        // Handled earlier
+        else => unreachable,
     }
 }
 
@@ -205,7 +207,8 @@ fn del(
     while (args.next()) |str| {
         switch (glob.classify(str)) {
             .any => {
-                total_deleted = @intCast(memory.free(allocator));
+                total_deleted = @intCast(memory.count());
+                memory.free(allocator);
                 break;
             },
             .literal => {
@@ -228,8 +231,8 @@ fn del(
     }
 
     if (!limit.exceeded()) {
-        try valueToWriter(writer, integer);
         const integer: Value.Integer = .fromValue(total_deleted);
+        try reply.writeValue(writer, integer);
     }
 }
 
@@ -241,7 +244,7 @@ fn cdel(
 ) Error!void {
     var limit: Quota = .init(query.flags.limit.get());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -264,9 +267,11 @@ fn cdelOne(
     args: *frames.Iterator,
     key: []const u8,
 ) !void {
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
+    const value_type = ref.type();
+    if (value_type.group() != .collection) return error.MismatchType;
 
-    const updated_len = switch (ref.type()) {
+    const updated_len = switch (value_type) {
         .list => blk: {
             const list: Value.List = ref.value(.list);
             const list_len = list.count();
@@ -277,7 +282,7 @@ fn cdelOne(
             break :blk list.count();
         },
         .map => blk: {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
 
             var iterator = map.getKeys();
             while (iterator.next()) |map_key| {
@@ -286,11 +291,12 @@ fn cdelOne(
 
             break :blk map.count();
         },
-        else => return error.MismatchType,
+        // Handled earlier.
+        else => unreachable,
     };
 
-    try valueToWriter(writer, integer);
     const integer: Value.Integer = .fromValue(@intCast(updated_len));
+    try reply.writeValue(writer, integer);
 }
 
 fn pop(
@@ -302,7 +308,7 @@ fn pop(
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -325,19 +331,19 @@ fn popOne(
     limit: *Quota,
     key: []const u8,
 ) !void {
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
 
     switch (ref.type()) {
+        inline .void, .integer, .decimal, .flag, .string, .point => |value_type| {
+            try reply.writeValue(writer, ref.value(value_type));
+        },
         .list => {
             const list: Value.List = ref.value(.list);
             try serializeList(writer, limit, list.get());
         },
         .map => {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
             try serializeMap(writer, limit, map.get());
-        },
-        inline else => |value_type| {
-            try valueToWriter(writer, ref.valueRef(value_type));
         },
     }
 
@@ -357,7 +363,13 @@ fn cpop(
 
     var args = query.args.iterator();
 
-    const result = cpopOne(allocator, memory, writer, &limit, &args);
+    const result = cpopOne(
+        allocator,
+        memory,
+        writer,
+        &limit,
+        &args,
+    );
     return writeOrThrow(writer, result);
 }
 
@@ -369,9 +381,12 @@ fn cpopOne(
     args: *frames.Iterator,
 ) !void {
     const key = args.next() orelse return error.MissingTokens;
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
 
-    switch (ref.type()) {
+    const value_type = ref.type();
+    if (value_type.group() != .collection) return error.MismatchType;
+
+    switch (value_type) {
         .list => {
             const list: Value.List = ref.value(.list);
 
@@ -379,12 +394,16 @@ fn cpopOne(
             const from, const to = try nextRange(args, list_len);
             const range = try list.getByRange(from, to);
 
-            var serializer: List.Serializer = try .begin(writer);
+            var serializer: reply.ListSerializer = try .begin(writer);
             defer serializer.end();
 
-            for (range, from..to + 1) |sv, i| {
+            for (range, from..to + 1) |scalar, i| {
                 if (limit.exceeded()) {
-                    return list.removeByRange(allocator, i, to) catch |err| switch (err) {
+                    return list.removeByRange(
+                        allocator,
+                        i,
+                        to,
+                    ) catch |err| switch (err) {
                         error.RangeOverflow => unreachable,
                     };
                 }
@@ -395,8 +414,12 @@ fn cpopOne(
                     limit.advance();
                 }
 
-                try sv.serializeToWriter(writer);
-                list.removeByIndex(allocator, from) catch |err| switch (err) {
+                try scalar.serializeToWriter(writer);
+                list.removeByRange(
+                    allocator,
+                    from,
+                    from,
+                ) catch |err| switch (err) {
                     error.RangeOverflow => unreachable,
                 };
             }
@@ -404,13 +427,13 @@ fn cpopOne(
         .map => {
             const map: Value.Map = ref.value(.map);
 
-            var serializer: List.Serializer = try .begin(writer);
+            var serializer: reply.ListSerializer = try .begin(writer);
             defer serializer.end();
 
             while (args.next()) |map_key| {
                 if (limit.exceeded()) {
                     map.removeByKey(allocator, map_key) catch |err| {
-                        try errorToWriter(writer, Code.from(err));
+                        try reply.writeError(writer, .fromError(err));
                     };
                     continue;
                 }
@@ -429,7 +452,8 @@ fn cpopOne(
                 } else |_| {}
             }
         },
-        else => return error.MismatchType,
+        // Handled earlier.
+        else => unreachable,
     }
 }
 
@@ -439,12 +463,12 @@ fn count(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!voi
 
     var args = query.args.iterator();
     const str = args.next() orelse {
-        return errorToWriter(writer, Code.missing_tokens);
+        return reply.writeError(writer, .missing_tokens);
     };
 
     const key_count: i64 = switch (glob.classify(str)) {
         .any => @intCast(memory.count()),
-        .literal => @intFromBool(memory.search(str) != null),
+        .literal => @intFromBool(memory.get(str) != null),
         .pattern => blk: {
             var counted: i64 = 0;
 
@@ -459,15 +483,15 @@ fn count(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!voi
         },
     };
 
-    try valueToWriter(writer, integer);
     const integer: Value.Integer = .fromValue(key_count);
+    try reply.writeValue(writer, integer);
 }
 
 fn ccount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -486,23 +510,27 @@ fn ccount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!vo
 }
 
 fn ccountOne(memory: *Memory, writer: *std.Io.Writer, key: []const u8) !void {
-    const ref = memory.search(key) orelse return;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
 
-    const c: i64 = switch (ref.type()) {
-        .list => @intCast(ref.valueRef(.list).count()),
-        .map => @intCast(ref.valueRef(.map).count()),
-        else => return error.MismatchType,
+    const value_type = ref.type();
+    if (value_type.group() != .collection) return error.MismatchType;
+
+    const c: i64 = switch (value_type) {
+        .list => @intCast(ref.value(.list).count()),
+        .map => @intCast(ref.value(.map).count()),
+        // Handled earlier.
+        else => unreachable,
     };
 
-    try valueToWriter(writer, integer);
     const integer: Value.Integer = .fromValue(c);
+    try reply.writeValue(writer, integer);
 }
 
 fn len(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -526,7 +554,10 @@ fn lenOne(
     memory: *Memory,
     key: []const u8,
 ) !void {
-    const ref = memory.search(key) orelse return;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
+
+    const value_type = ref.type();
+    if (value_type.group() != .collection) return error.MismatchType;
 
     const string_len: i64 = switch (ref.type()) {
         .string => @intCast(ref.value(.string).len()),
@@ -550,11 +581,12 @@ fn lenOne(
             if (scalar.type() != .string) return error.MismatchType;
             break :blk @intCast(scalar.string.len());
         },
-        else => return error.MismatchType,
+        // Handled earlier.
+        else => unreachable,
     };
 
-    try valueToWriter(writer, integer);
     const integer: Value.Integer = .fromValue(string_len);
+    try reply.writeValue(writer, integer);
 }
 
 fn set(
@@ -566,7 +598,13 @@ fn set(
     var args = query.args.iterator();
 
     while (args.next()) |key| {
-        const result = setOne(allocator, memory, &args, key);
+        const result = setOne(
+            allocator,
+            memory,
+            &args,
+            key,
+            query.flags.if_not_exists.get(),
+        );
         try writeOrThrow(writer, result);
     }
 }
@@ -576,14 +614,21 @@ fn setOne(
     memory: *Memory,
     args: *frames.Iterator,
     key: []const u8,
+    if_not_exists: bool,
 ) !void {
     const serialized = args.next() orelse return error.MissingTokens;
 
-    const value_type, const content = try splitSerialized(serialized);
-    _ = try memory.put(allocator, key, value_type, content);
+    const value_type, const content = try Value.splitSerialized(serialized);
+    if (value_type.group() == .collection) return error.MismatchType;
+
+    if (if_not_exists) {
+        _ = try memory.ensure(allocator, key, value_type, content);
+    } else {
+        _ = try memory.put(allocator, key, value_type, content);
+    }
 }
 
-fn insert(
+fn append(
     allocator: std.mem.Allocator,
     memory: *Memory,
     writer: *std.Io.Writer,
@@ -592,7 +637,7 @@ fn insert(
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -605,11 +650,66 @@ fn insert(
             limit.advance();
         }
 
-        const result = insertOne(allocator, memory, &args, key);
+        const result = appendOne(allocator, memory, &args, key);
         const updated_len: u64 = try valueOrThrow(writer, result) orelse continue;
 
-        try valueToWriter(writer, integer);
         const integer: Value.Integer = .fromValue(@intCast(updated_len));
+        try reply.writeValue(writer, integer);
+    }
+}
+
+fn appendOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    args: *frames.Iterator,
+    key: []const u8,
+) !u64 {
+    const er = try memory.ensure(allocator, key, .list, &.{});
+    const ref = er.ref;
+    defer if (!er.found_existing) memory.removeByRef(allocator, ref);
+
+    if (ref.type() != .list) return error.MismatchType;
+
+    const serialized = args.next() orelse return error.MissingTokens;
+    const list: Value.List = ref.value(.list);
+    try list.insert(allocator, list.count(), serialized);
+
+    return list.count();
+}
+
+fn insert(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var serializer: reply.ListSerializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        if (limit.exceeded()) return;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = insertOne(
+            allocator,
+            memory,
+            &args,
+            key,
+            query.flags.replace.get(),
+        );
+        const updated_len: u64 = try valueOrThrow(writer, result) orelse continue;
+
+        const integer: Value.Integer = .fromValue(@intCast(updated_len));
+        try reply.writeValue(writer, integer);
     }
 }
 
@@ -618,31 +718,86 @@ fn insertOne(
     memory: *Memory,
     args: *frames.Iterator,
     key: []const u8,
+    replace: bool,
 ) !u64 {
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
+    if (ref.type() != .list) return error.MismatchType;
 
-    return switch (ref.type()) {
-        .list => blk: {
-            const list: List = ref.valueRef(.list);
+    const list: Value.List = ref.value(.list);
 
-            const list_len = list.count();
-            const index = try nextIndex(args, list_len);
-            const serialized = args.next() orelse return error.MissingTokens;
+    const list_len = list.count();
+    const index = try nextIndex(args, list_len);
+    const serialized = args.next() orelse return error.MissingTokens;
 
-            try list.setByIndex(allocator, index, serialized);
-            break :blk list.count();
-        },
-        .map => blk: {
-            const map: Map = ref.valueRef(.map);
+    if (replace) {
+        try list.setByIndex(allocator, index, serialized);
+    } else {
+        try list.insert(allocator, index, serialized);
+    }
 
-            const map_key = args.next() orelse return error.MissingTokens;
-            const serialized = args.next() orelse return error.MissingTokens;
+    return list.count();
+}
 
-            try map.put(allocator, map_key, serialized);
-            break :blk map.count();
-        },
-        else => return error.MismatchType,
-    };
+fn put(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    writer: *std.Io.Writer,
+    query: *const Query,
+) Error!void {
+    var limit: Quota = .init(query.flags.limit.get());
+    assert(!limit.exceeded());
+
+    var serializer: reply.ListSerializer = try .begin(writer);
+    defer serializer.end();
+
+    var args = query.args.iterator();
+    while (args.next()) |key| {
+        if (limit.exceeded()) return;
+
+        var frame = try serializer.beginFrame();
+        defer {
+            frame.end();
+            limit.advance();
+        }
+
+        const result = putOne(
+            allocator,
+            memory,
+            &args,
+            key,
+            query.flags.if_not_exists.get(),
+        );
+        const updated_len: u64 = try valueOrThrow(writer, result) orelse continue;
+
+        const integer: Value.Integer = .fromValue(@intCast(updated_len));
+        try reply.writeValue(writer, integer);
+    }
+}
+
+fn putOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    args: *frames.Iterator,
+    key: []const u8,
+    if_not_exists: bool,
+) !u64 {
+    const er = try memory.ensure(allocator, key, .map, &.{});
+    const ref = er.ref;
+    defer if (!er.found_existing) memory.removeByRef(allocator, ref);
+
+    if (ref.type() != .map) return error.MismatchType;
+
+    const map_key = args.next() orelse return error.MissingTokens;
+    const serialized = args.next() orelse return error.MissingTokens;
+
+    const map: Value.Map = ref.value(.map);
+    if (if_not_exists) {
+        try map.ensure(allocator, map_key, serialized);
+    } else {
+        try map.put(allocator, map_key, serialized);
+    }
+
+    return map.count();
 }
 
 fn rename(
@@ -653,26 +808,39 @@ fn rename(
 ) Error!void {
     var args = query.args.iterator();
 
-    const result = renameOne(allocator, memory, &args);
+    const result = renameOne(
+        allocator,
+        memory,
+        &args,
+        query.flags.if_not_exists.get(),
+    );
     return writeOrThrow(writer, result);
 }
 
-fn renameOne(allocator: std.mem.Allocator, memory: *Memory, args: *frames.Iterator) !void {
+fn renameOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    args: *frames.Iterator,
+    if_not_exists: bool,
+) !void {
     const selected_key = args.next() orelse return error.MissingTokens;
     const new_key = args.next() orelse return error.MissingTokens;
 
     if (std.mem.eql(u8, selected_key, new_key)) return;
-    if (memory.search(new_key) != null) return error.DuplicatedKey;
 
-    const ref = memory.search(selected_key) orelse return error.KeyNotFound;
-    try ref.setKey(allocator, new_key);
+    const new_ref = memory.get(new_key);
+    if (new_ref != null and if_not_exists) return error.DuplicatedKey;
+
+    if (new_ref != null) memory.removeByRef(allocator, new_ref.?);
+    const selected_ref = memory.get(selected_key) orelse return error.KeyNotFound;
+    try selected_ref.setKey(allocator, new_key);
 }
 
 fn @"type"(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
     var limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var args = query.args.iterator();
@@ -691,8 +859,8 @@ fn @"type"(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!v
 }
 
 fn typeOne(writer: *std.Io.Writer, memory: *Memory, key: []const u8) !void {
-    const ref = memory.search(key) orelse return error.KeyNotFound;
-    try ref.type().serializeToWriter(writer);
+    const ref = memory.get(key) orelse return error.KeyNotFound;
+    try reply.writeSerialized(writer, .string, @tagName(ref.type()));
 }
 
 fn ctype(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
@@ -707,7 +875,10 @@ fn ctype(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!voi
 
 fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frames.Iterator) !void {
     const key = args.next() orelse return error.MissingTokens;
-    const ref = memory.search(key) orelse return error.KeyNotFound;
+    const ref = memory.get(key) orelse return error.KeyNotFound;
+
+    const value_type = ref.type();
+    if (value_type.group() != .collection) return error.MismatchType;
 
     switch (ref.type()) {
         .list => {
@@ -717,7 +888,7 @@ fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frame
             const from, const to = try nextRange(args, list_len);
             const range = try list.getByRange(from, to);
 
-            var serializer: List.Serializer = try .begin(writer);
+            var serializer: reply.ListSerializer = try .begin(writer);
             defer serializer.end();
 
             for (range) |scalar| {
@@ -726,13 +897,13 @@ fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frame
                     frame.end();
                     limit.advance();
                 }
-                try sv.type().serializeToWriter(writer);
+                try reply.writeSerialized(writer, .string, @tagName(scalar.type()));
             }
         },
         .map => {
             const map: Value.Map = ref.value(.map);
 
-            var serializer: List.Serializer = try .begin(writer);
+            var serializer: reply.ListSerializer = try .begin(writer);
             defer serializer.end();
 
             while (args.next()) |map_key| {
@@ -742,12 +913,13 @@ fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frame
                     limit.advance();
                 }
 
-                if (map.getByKey(map_key)) |sv| {
-                    try sv.type().serializeToWriter(writer);
+                if (map.getByKey(map_key)) |scalar| {
+                    try reply.writeSerialized(writer, .string, @tagName(scalar.type()));
                 } else |_| {}
             }
         },
-        else => return error.MismatchType,
+        // Handled earlier.
+        else => unreachable,
     }
 }
 
@@ -764,7 +936,7 @@ fn keys(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void
 fn keysOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frames.Iterator) !void {
     const pattern = args.next() orelse return error.MissingTokens;
 
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     var iterator = memory.iterator();
@@ -780,7 +952,7 @@ fn keysOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frames
             limit.advance();
         }
 
-        try writer.writeAll(key);
+        try reply.writeSerialized(writer, .string, key);
     }
 }
 
@@ -792,15 +964,25 @@ fn copy(
 ) Error!void {
     var args = query.args.iterator();
 
-    const result = copyOne(allocator, memory, &args);
+    const result = copyOne(
+        allocator,
+        memory,
+        &args,
+        query.flags.if_not_exists.get(),
+    );
     return writeOrThrow(writer, result);
 }
 
-fn copyOne(allocator: std.mem.Allocator, memory: *Memory, args: *frames.Iterator) !void {
+fn copyOne(
+    allocator: std.mem.Allocator,
+    memory: *Memory,
+    args: *frames.Iterator,
+    if_not_exists: bool,
+) !void {
     const src_key = args.next() orelse return error.MissingTokens;
     const dst_key = args.next() orelse return error.MissingTokens;
 
-    return memory.copy(allocator, src_key, dst_key);
+    return memory.copy(allocator, src_key, dst_key, if_not_exists);
 }
 
 fn valueOrThrow(
@@ -812,7 +994,7 @@ fn valueOrThrow(
     return result catch |err| if (err == error.OutOfMemory or err == error.WriteFailed)
         @errorCast(err)
     else {
-        try errorToWriter(writer, Code.from(err));
+        try reply.writeError(writer, .fromError(err));
         return null;
     };
 }
@@ -823,7 +1005,7 @@ fn writeOrThrow(writer: *std.Io.Writer, result: anytype) Error!void {
     return result catch |err| if (err == error.OutOfMemory or err == error.WriteFailed)
         @errorCast(err)
     else
-        errorToWriter(writer, Code.from(err));
+        reply.writeError(writer, .fromError(err));
 }
 
 fn serializeMap(
@@ -831,7 +1013,7 @@ fn serializeMap(
     limit: *Quota,
     map_iterator: Value.Map.PairIterator,
 ) Error!void {
-    var map_serializer: Map.Serializer = try .begin(writer);
+    var map_serializer: reply.MapSerializer = try .begin(writer);
     defer map_serializer.end();
 
     var iterator = map_iterator;
@@ -848,7 +1030,7 @@ fn serializeList(
     limit: *Quota,
     items: []const Value.Scalar,
 ) Error!void {
-    var serializer: List.Serializer = try .begin(writer);
+    var serializer: reply.ListSerializer = try .begin(writer);
     defer serializer.end();
 
     for (items) |scalar| {
@@ -878,9 +1060,13 @@ fn nextIndex(iterator: *frames.Iterator, length: u64) error{ MissingTokens, Mism
     return resolveIndex(relative_index, length);
 }
 
-fn nextNumeric(iterator: *frames.Iterator, comptime T: type) error{ MissingTokens, MismatchType }!T {
+fn nextNumeric(
+    iterator: *frames.Iterator,
+    comptime T: type,
+) error{ MissingTokens, MismatchType }!T {
     const content = iterator.next() orelse return error.MissingTokens;
-    return std.fmt.parseInt(T, content, 10) catch return error.MismatchType;
+    if (content.len != @sizeOf(T)) return error.MismatchType;
+    return std.mem.bytesToValue(i64, content[0..@sizeOf(T)]);
 }
 
 fn resolveIndex(index: i64, length: u64) u64 {
