@@ -25,7 +25,10 @@ start_segment_index: u64 = 0,
 allocating: std.Io.Writer.Allocating,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Pipeline {
-    return .{ .config = config, .allocating = try .initCapacity(allocator, config.preserved_size) };
+    return .{
+        .config = config,
+        .allocating = try .initCapacity(allocator, config.preserved_size),
+    };
 }
 
 pub fn deinit(self: *Pipeline) void {
@@ -38,14 +41,32 @@ pub fn reset(self: *Pipeline) void {
 }
 
 pub fn take(self: *Pipeline) []const u8 {
-    const w = self.writer();
-    const content = w.buffer[self.start_segment_index..w.end];
-    self.start_segment_index = w.end;
+    const content = self.peek();
+    self.start_segment_index = self.writer().end;
     return content;
+}
+
+pub fn peek(self: *Pipeline) []const u8 {
+    const w = self.writer();
+    return w.buffer[self.start_segment_index..w.end];
+}
+
+pub fn addManyAsSlice(self: *Pipeline, n: u64) std.mem.Allocator.Error![]u8 {
+    const w = self.writer();
+    try self.allocating.ensureUnusedCapacity(n);
+    const start = w.end;
+    w.advance(n);
+    return w.buffer[start..w.end];
 }
 
 pub fn writer(self: *Pipeline) *std.Io.Writer {
     return &self.allocating.writer;
+}
+
+pub fn beginFrame(self: *Pipeline) std.mem.Allocator.Error!frames.Builder {
+    return frames.Builder.begin(self.writer()) catch |err| switch (err) {
+        error.WriteFailed => error.OutOfMemory,
+    };
 }
 
 fn resizeAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) void {
@@ -91,7 +112,7 @@ test "Pipeline" {
     try std.testing.expect(pipeline.allocating.writer.buffer.len > 16);
 
     pipeline.reset();
-    try std.testing.expectEqual(@as(usize, 16), pipeline.allocating.writer.buffer.len);
+    try std.testing.expectEqual(@as(u64, 16), pipeline.allocating.writer.buffer.len);
 
     try w.writeAll("new");
     try std.testing.expectEqualStrings("new", pipeline.take());
