@@ -60,8 +60,7 @@ pub fn writeValue(writer: *std.Io.Writer, value: anytype) std.Io.Writer.Error!vo
     return Value.serializeToWriter(writer, value);
 }
 
-/// Method to serialize error as serializing with `serializeToWriter`.
-/// `err` MUST have a method called `writeError`.
+/// Method to serialize error as serializing value with `serializeToWriter`.
 pub fn writeError(writer: *std.Io.Writer, err_code: ErrorCode) std.Io.Writer.Error!void {
     try writer.writeInt(u8, std.math.maxInt(u8), .little);
     try err_code.serializeToWriter(writer);

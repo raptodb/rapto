@@ -25,7 +25,7 @@ aof_file: ?[]const u8,
 /// Writes every `aof_sync_seconds` to aof file.
 /// When is 0, writes always after any query.
 aof_sync_seconds: i32 = 1,
-/// IP address of Server instance, default Rapto port is 7286.
+/// IP address of Server instance, default: 127.0.0.1:7286.
 address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) },
 
 pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {

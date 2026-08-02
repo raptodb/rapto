@@ -39,8 +39,8 @@ const Map = std.HashMapUnmanaged(
 );
 
 pub const Config = struct {
-    /// Preallocation of hashmap during initialization based
-    /// on quantity of expected keys with load factor of 100.
+    /// Preallocation of hashmap during initialization
+    /// based on quantity of expected keys.
     initial_keys: u32 = 4096,
 };
 
@@ -200,9 +200,5 @@ pub const Iterator = struct {
     pub fn next(self: *Iterator) ?object.Ref {
         const entry = self.wrapped_iterator.next() orelse return null;
         return .wrap(entry.key_ptr, entry.value_ptr);
-    }
-
-    pub fn skip(self: *Iterator) void {
-        _ = self.wrapped_iterator.next();
     }
 };

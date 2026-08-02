@@ -203,10 +203,8 @@ pub const Value = union {
 
         pub fn of(value: anytype) Type {
             const ValueType = @TypeOf(value);
-            inline for (std.meta.fields(Value)) |field| {
-                if (field.type == ValueType) {
-                    return std.meta.stringToEnum(Type, field.name) orelse unreachable;
-                }
+            inline for (std.meta.fields(Value), std.meta.fields(Type)) |field, t| {
+                if (field.type == ValueType) return @enumFromInt(t.value);
             }
             unreachable;
         }
@@ -423,6 +421,14 @@ test "Value.Type" {
 
     try Value.Type.serializeToWriter(.point, &allocating.writer);
     try std.testing.expect(5 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Value.Type.serializeToWriter(.list, &allocating.writer);
+    try std.testing.expect(6 == allocating.written()[0]);
+    allocating.clearRetainingCapacity();
+
+    try Value.Type.serializeToWriter(.map, &allocating.writer);
+    try std.testing.expect(7 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 }
 

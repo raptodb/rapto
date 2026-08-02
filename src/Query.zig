@@ -43,10 +43,6 @@ pub const Command = enum(u8) {
         return std.enums.fromInt(Command, int) orelse error.UnknownCommand;
     }
 
-    pub fn parse(human_readable_cmd: []const u8) error{UnknownCommand}!Command {
-        return std.meta.stringToEnum(Command, human_readable_cmd) orelse error.UnknownCommand;
-    }
-
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
             .set, .append, .insert, .put, .del, .cdel, .pop, .cpop, .copy, .rename => .write,
@@ -99,7 +95,6 @@ pub const Serializer = struct {
 };
 
 pub const DeserializeError = error{ UnknownCommand, InvalidFormat };
-pub const ParseError = std.mem.Allocator.Error || error{ UnknownCommand, InvalidFormat };
 
 command: Command,
 flags: Flags,
@@ -143,19 +138,13 @@ pub fn deserialize(serialized: []const u8) DeserializeError!Query {
     return .{ .command = command, .flags = flags, .args = args };
 }
 
-pub fn isEqualTo(self: *const Query, query: *const Query) bool {
-    if (self.command != query.command) return false;
-    if (!self.flags.isEqualTo(query.flags)) return false;
-    return std.mem.eql(u8, self.args.content, query.args.content);
-}
-
 pub fn serializeToWriter(self: *const Query, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try self.command.serializeToWriter(writer);
     try self.flags.serializeToWriter(writer);
     try self.args.serializeToWriter(writer);
 }
 
-pub fn testIsEqualTo(actual: []const u8, expected: []const []const u8) bool {
+fn testCompareArgs(actual: []const u8, expected: []const []const u8) bool {
     var i: u64 = 0;
     var actual_iter: frames.Iterator = .init(actual);
     while (true) : (i += 1) {
@@ -284,6 +273,6 @@ test "Query" {
 
         try std.testing.expect(deserialized.command == expected.command);
         try std.testing.expect(deserialized.flags.isEqualTo(expected.flags));
-        try std.testing.expect(testIsEqualTo(deserialized.args.content, expected.args));
+        try std.testing.expect(testCompareArgs(deserialized.args.content, expected.args));
     }
 }
