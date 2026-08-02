@@ -13,15 +13,52 @@ const Memory = @This();
 const std = @import("std");
 const object = @import("object.zig");
 
+const SearchContext = struct {
+    pub fn hash(_: @This(), s: []const u8) u64 {
+        return std.hash.Wyhash.hash(0, s);
+    }
+    pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
+        return std.mem.eql(u8, a, b.get());
+    }
+};
 
-/// Hashmap of items. Internal API
+const PutContext = struct {
+    pub fn hash(_: @This(), s: object.Key) u64 {
+        return (SearchContext{}).hash(s.get());
+    }
+    pub fn eql(_: @This(), a: object.Key, b: object.Key) bool {
+        return (SearchContext{}).eql(a.get(), b);
+    }
+};
+
+const Map = std.HashMapUnmanaged(
+    object.Key,
+    object.Value,
+    PutContext,
+    load_factor,
+);
+
+pub const Config = struct {
+    /// Preallocation of hashmap during initialization based
+    /// on quantity of expected keys with load factor of 100.
+    initial_keys: u32 = 4096,
+};
+
+const load_factor: u32 = 80;
+
+/// Hashmap of objects. Internal API
 /// should not be used directly.
 map: Map,
 
-pub const init: Memory = .{ .map = .empty };
+pub fn init(allocator: std.mem.Allocator, config: Config) error{OutOfMemory}!Memory {
+    var self: Memory = .{ .map = .empty };
+    const real_initial_keys: u32 = @divFloor(config.initial_keys * load_factor, 100);
+    try self.map.ensureTotalCapacity(allocator, real_initial_keys);
+    return self;
+}
 
 pub fn deinit(self: *Memory, allocator: std.mem.Allocator) void {
-    _ = self.clear(allocator);
+    self.clear(allocator);
     self.map.deinit(allocator);
 }
 
@@ -36,15 +73,10 @@ pub fn put(
     self: *Memory,
     allocator: std.mem.Allocator,
     key: []const u8,
-    value_type: object.value.Type,
+    value_type: object.Value.Type,
     content: []const u8,
 ) PutError!object.Ref {
-    const entry = try self.map.getOrPutAdapted(
-        allocator,
-        key,
-        SearchContext{},
-    );
-
+    const entry = try self.map.getOrPutAdapted(allocator, key, SearchContext{});
     const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
 
     if (entry.found_existing) {
@@ -62,21 +94,25 @@ pub fn copy(
     allocator: std.mem.Allocator,
     src_key: []const u8,
     dst_key: []const u8,
+    // Copy only if dst_key does not exist.
+    if_not_exists: bool,
 ) error{ KeyNotFound, InvalidKey, OutOfMemory }!void {
-    const src_entry = self.map.getEntryAdapted(src_key, SearchContext{}) orelse
-        return error.KeyNotFound;
-    const src_ref: object.Ref = .wrap(src_entry.key_ptr, src_entry.value_ptr);
-    const src_type = src_ref.type();
-
     const dst_entry = try self.map.getOrPutAdapted(
         allocator,
         dst_key,
         SearchContext{},
     );
+    if (dst_entry.found_existing and if_not_exists) return;
+
+    const src_entry = self.map.getEntryAdapted(src_key, SearchContext{}) orelse
+        return error.KeyNotFound;
+    const src_ref: object.Ref = .wrap(src_entry.key_ptr, src_entry.value_ptr);
+    const src_type = src_ref.type();
 
     if (dst_entry.found_existing) {
+        const old_type = dst_entry.key_ptr.getValueType();
         dst_entry.key_ptr.setValueType(src_type);
-        dst_entry.value_ptr.deinit(allocator, src_type);
+        dst_entry.value_ptr.deinit(allocator, old_type);
     } else {
         dst_entry.key_ptr.* = try .init(allocator, dst_key, src_ref.type());
     }
@@ -90,7 +126,30 @@ pub fn copy(
     };
 }
 
-pub fn search(self: *Memory, key: []const u8) ?object.Ref {
+pub const EnsureResult = struct {
+    ref: object.Ref,
+    found_existing: bool,
+};
+
+pub fn ensure(
+    self: *Memory,
+    allocator: std.mem.Allocator,
+    key: []const u8,
+    value_type: object.Value.Type,
+    content: []const u8,
+) PutError!EnsureResult {
+    const entry = try self.map.getOrPutAdapted(allocator, key, SearchContext{});
+    const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
+
+    if (!entry.found_existing) {
+        errdefer self.map.removeByPtr(entry.key_ptr);
+        entry.key_ptr.*, entry.value_ptr.* = try object.init(allocator, key, value_type, content);
+    }
+
+    return .{ .ref = ref, .found_existing = entry.found_existing };
+}
+
+pub fn get(self: *Memory, key: []const u8) ?object.Ref {
     const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse return null;
     return .wrap(entry.key_ptr, entry.value_ptr);
 }
@@ -117,19 +176,17 @@ pub fn count(self: *const Memory) u64 {
     return self.map.count();
 }
 
-pub fn clear(self: *Memory, allocator: std.mem.Allocator) u64 {
+pub fn clear(self: *Memory, allocator: std.mem.Allocator) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
-        deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
+        object.deinit(allocator, ref.key_ptr.*, ref.value_ptr.*);
     }
     self.map.clearRetainingCapacity();
-    return self.count();
 }
 
-pub fn free(self: *Memory, allocator: std.mem.Allocator) u64 {
-    const i = self.clear(allocator);
+pub fn free(self: *Memory, allocator: std.mem.Allocator) void {
+    self.clear(allocator);
     self.map.clearAndFree(allocator);
-    return i;
 }
 
 pub fn iterator(self: *Memory) Iterator {
@@ -149,29 +206,3 @@ pub const Iterator = struct {
         _ = self.wrapped_iterator.next();
     }
 };
-
-const SearchContext = struct {
-    pub fn hash(_: @This(), s: []const u8) u64 {
-        return std.hash.Wyhash.hash(0, s);
-    }
-    pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
-        return std.mem.eql(u8, a, b.get());
-    }
-};
-
-const PutContext = struct {
-    pub fn hash(_: @This(), s: object.Key) u64 {
-        return (SearchContext{}).hash(s.get());
-    }
-    pub fn eql(_: @This(), a: object.Key, b: object.Key) bool {
-        return (SearchContext{}).eql(a.get(), b);
-    }
-};
-
-const Map = std.HashMapUnmanaged(
-    object.Key,
-    object.Value,
-    PutContext,
-    65,
-);
-
