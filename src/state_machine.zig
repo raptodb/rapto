@@ -666,7 +666,7 @@ fn appendOne(
 ) !u64 {
     const er = try memory.ensure(allocator, key, .list, &.{});
     const ref = er.ref;
-    defer if (!er.found_existing) memory.removeByRef(allocator, ref);
+    errdefer if (!er.found_existing) memory.removeByRef(allocator, ref);
 
     if (ref.type() != .list) return error.MismatchType;
 
@@ -783,7 +783,7 @@ fn putOne(
 ) !u64 {
     const er = try memory.ensure(allocator, key, .map, &.{});
     const ref = er.ref;
-    defer if (!er.found_existing) memory.removeByRef(allocator, ref);
+    errdefer if (!er.found_existing) memory.removeByRef(allocator, ref);
 
     if (ref.type() != .map) return error.MismatchType;
 

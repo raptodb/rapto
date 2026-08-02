@@ -146,7 +146,7 @@ pub fn deserialize(serialized: []const u8) DeserializeError!Query {
 pub fn isEqualTo(self: *const Query, query: *const Query) bool {
     if (self.command != query.command) return false;
     if (!self.flags.isEqualTo(query.flags)) return false;
-    return std.mem.eql(u8, self.args, query.args);
+    return std.mem.eql(u8, self.args.content, query.args.content);
 }
 
 pub fn serializeToWriter(self: *const Query, writer: *std.Io.Writer) std.Io.Writer.Error!void {

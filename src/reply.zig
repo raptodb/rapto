@@ -21,7 +21,6 @@ pub const ErrorCode = enum(u8) {
     missing_tokens,
     mismatch_type,
     unknown_type,
-    missing_flag,
     math_overflow,
     range_overflow,
     map_key_not_found,
