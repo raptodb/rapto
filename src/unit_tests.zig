@@ -26,8 +26,8 @@ comptime {
     _ = @import("object/scalar/Void.zig");
     _ = @import("object/tagged_ptr.zig");
     _ = @import("Pipeline.zig");
-    _ = @import("Pipeline/Query.zig");
-    _ = @import("Pipeline/Query/Flags.zig");
+    _ = @import("Query.zig");
+    _ = @import("Query/Flags.zig");
     _ = @import("reply.zig");
     _ = @import("state_machine.zig");
     _ = @import("zprof.zig");
