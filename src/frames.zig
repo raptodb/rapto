@@ -24,7 +24,7 @@ pub fn IteratorType(comptime HeaderType: type) type {
         const Self = @This();
 
         frames: []const u8,
-        seek: usize,
+        seek: u64,
 
         pub fn init(frames: []const u8) Self {
             return .{ .frames = frames, .seek = 0 };
@@ -48,7 +48,11 @@ pub fn IteratorType(comptime HeaderType: type) type {
             return content;
         }
 
-        fn remaining(self: Self) usize {
+        pub fn skip(self: *Self, n_frames: u64) void {
+            for (n_frames) |_| _ = self.next() orelse return;
+        }
+
+        fn remaining(self: Self) u64 {
             assert(self.seek <= self.frames.len);
             return self.frames.len - self.seek;
         }
@@ -60,12 +64,18 @@ pub fn BuilderType(comptime HeaderType: type) type {
         const Self = @This();
 
         writer: *std.Io.Writer,
-        begin_offset: usize,
+        begin_offset: u64,
 
         /// Assumes writer is derived from `std.Io.Writer.Allocating`.
-        pub fn begin(writer: *std.Io.Writer) std.Io.Writer.Error!Self {
+        pub fn begin(writer: *std.Io.Writer) std.mem.Allocator.Error!Self {
             const header_offset = writer.end;
-            try writer.writeInt(HeaderType, 0, .little);
+            writer.writeInt(
+                HeaderType,
+                0,
+                .little,
+            ) catch |err| return switch (err) {
+                error.WriteFailed => error.OutOfMemory,
+            };
             return .{ .writer = writer, .begin_offset = header_offset };
         }
 
