@@ -9,7 +9,6 @@ comptime {
     _ = @import("Aof.zig");
     _ = @import("cli.zig");
     _ = @import("cli/Server.zig");
-    _ = @import("code.zig");
     _ = @import("frames.zig");
     _ = @import("glob.zig");
     _ = @import("main.zig");
@@ -29,6 +28,7 @@ comptime {
     _ = @import("Pipeline.zig");
     _ = @import("Pipeline/Query.zig");
     _ = @import("Pipeline/Query/Flags.zig");
+    _ = @import("reply.zig");
     _ = @import("state_machine.zig");
     _ = @import("zprof.zig");
 }
