@@ -5,9 +5,10 @@
 //! It contains the implementation of tagged pointer.
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub fn TaggedPtr(comptime T: type) type {
-    std.debug.assert(@typeInfo(T) == .pointer);
+    assert(@typeInfo(T) == .pointer);
 
     const tag_bits: u64 = std.math.log2(@alignOf(T));
     const Tag: type = std.meta.Int(.unsigned, tag_bits);

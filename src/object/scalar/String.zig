@@ -28,6 +28,10 @@ pub fn initFromContent(
     return .{ .ptr = str.ptr };
 }
 
+pub fn deinit(self: String, allocator: std.mem.Allocator) void {
+    allocator.free(self.ptr[0 .. @sizeOf(Header) + self.len()]);
+}
+
 pub fn set(
     self: *String,
     allocator: std.mem.Allocator,
@@ -73,10 +77,6 @@ pub fn get(self: String) []const u8 {
 /// Returns logical length of string content, excluding header.
 pub fn len(self: String) u32 {
     return std.mem.readInt(Header, self.ptr[0..@sizeOf(Header)], .little);
-}
-
-pub fn deinit(self: String, allocator: std.mem.Allocator) void {
-    allocator.free(self.ptr[0 .. @sizeOf(Header) + self.len()]);
 }
 
 pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) std.Io.Writer.Error!void {

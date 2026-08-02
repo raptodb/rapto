@@ -11,9 +11,8 @@
 const Memory = @This();
 
 const std = @import("std");
-const glob = @import("glob.zig");
+const object = @import("object.zig");
 
-pub const object = @import("Memory/object.zig");
 
 /// Hashmap of items. Internal API
 /// should not be used directly.
@@ -52,13 +51,7 @@ pub fn put(
         try ref.setValue(allocator, value_type, content);
     } else {
         errdefer self.map.removeByPtr(entry.key_ptr);
-
-        entry.key_ptr.*, entry.value_ptr.* = try initPair(
-            allocator,
-            key,
-            value_type,
-            content,
-        );
+        entry.key_ptr.*, entry.value_ptr.* = try object.init(allocator, key, value_type, content);
     }
 
     return ref;
@@ -102,14 +95,21 @@ pub fn search(self: *Memory, key: []const u8) ?object.Ref {
     return .wrap(entry.key_ptr, entry.value_ptr);
 }
 
-/// Removes key from memory. Associated object.Ref will be invalidated.
+/// Removes key from memory. Associated
+/// object.Ref will be invalidated.
 pub fn remove(
     self: *Memory,
     allocator: std.mem.Allocator,
     key: []const u8,
 ) error{KeyNotFound}!void {
-    const ref = self.search(key) orelse return error.KeyNotFound;
-    deinitPair(allocator, ref.key_ptr.*, ref.value_ptr.*);
+    const ref = self.get(key) orelse return error.KeyNotFound;
+    return self.removeByRef(allocator, ref);
+}
+
+/// Removes key from memory by ref.
+/// Associated object.Ref will be invalidated.
+pub fn removeByRef(self: *Memory, allocator: std.mem.Allocator, ref: object.Ref) void {
+    object.deinit(allocator, ref.key_ptr.*, ref.value_ptr.*);
     self.map.removeByPtr(ref.key_ptr);
 }
 
@@ -175,20 +175,3 @@ const Map = std.HashMapUnmanaged(
     65,
 );
 
-fn initPair(
-    allocator: std.mem.Allocator,
-    key: []const u8,
-    value_type: object.value.Type,
-    content: []const u8,
-) PutError!struct { object.Key, object.Value } {
-    const pair_key: object.Key = try .init(allocator, key, value_type);
-    errdefer pair_key.deinit(allocator);
-    const pair_value: object.Value = try .init(allocator, value_type, content);
-
-    return .{ pair_key, pair_value };
-}
-
-fn deinitPair(allocator: std.mem.Allocator, key: object.Key, value: object.Value) void {
-    key.deinit(allocator);
-    value.deinit(allocator, key.getValueType());
-}

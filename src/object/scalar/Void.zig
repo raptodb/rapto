@@ -30,7 +30,7 @@ pub fn len(_: Void) u64 {
     return 0;
 }
 
-pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) void {
+pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) std.Io.Writer.Error!void {
     // nothing
 }
 

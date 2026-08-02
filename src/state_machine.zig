@@ -7,7 +7,6 @@
 
 const std = @import("std");
 const frames = @import("frames.zig");
-const object = Memory.object;
 const glob = @import("glob.zig");
 
 const Code = @import("code.zig").Code;
@@ -15,14 +14,11 @@ const Memory = @import("Memory.zig");
 const Query = @import("Pipeline/Query.zig");
 const Flags = Query.Flags;
 
-const ScalarValue = object.value.ScalarValue;
-const List = object.value.List;
-const Map = object.value.Map;
-
 const assert = std.debug.assert;
 const valueToWriter = object.value.serializeToWriter;
 const errorToWriter = object.value.errorToWriter;
 const splitSerialized = object.value.splitSerialized;
+const Value = @import("object.zig").Value;
 
 /// The only errors that can be returned to execute function.
 /// Others errors must be written on frames.
@@ -101,8 +97,8 @@ fn ping(writer: *std.Io.Writer, query: *const Query) Error!void {
     const limit: Quota = .init(query.flags.limit.get());
     assert(!limit.exceeded());
 
-    const integer: object.value.Integer = .fromValue(1);
     try valueToWriter(writer, integer);
+    const integer: Value.Integer = .fromValue(1);
 }
 
 fn get(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
@@ -130,11 +126,11 @@ fn getOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, key: []const u
 
     switch (ref.type()) {
         .list => {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
             try serializeList(writer, limit, list.get());
         },
         .map => {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
             try serializeMap(writer, limit, map.get());
         },
         inline else => |value_type| {
@@ -164,7 +160,7 @@ fn cgetOne(
 
     switch (ref.type()) {
         .list => {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
             const list_len = list.count();
 
             const from, const to = try nextRange(args, list_len);
@@ -172,7 +168,7 @@ fn cgetOne(
             try serializeList(writer, limit, range);
         },
         .map => {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
 
             var serializer: List.Serializer = try .begin(writer);
             defer serializer.end();
@@ -186,8 +182,8 @@ fn cgetOne(
                     limit.advance();
                 }
 
-                if (map.getByKey(map_key)) |sv| {
-                    try sv.serializeToWriter(writer);
+                if (map.getByKey(map_key)) |scalar| {
+                    try scalar.serializeToWriter(writer);
                 } else |_| {}
             }
         },
@@ -232,8 +228,8 @@ fn del(
     }
 
     if (!limit.exceeded()) {
-        const integer: object.value.Integer = .fromValue(total_deleted);
         try valueToWriter(writer, integer);
+        const integer: Value.Integer = .fromValue(total_deleted);
     }
 }
 
@@ -272,7 +268,7 @@ fn cdelOne(
 
     const updated_len = switch (ref.type()) {
         .list => blk: {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
             const list_len = list.count();
 
             const from, const to = try nextRange(args, list_len);
@@ -293,8 +289,8 @@ fn cdelOne(
         else => return error.MismatchType,
     };
 
-    const integer: object.value.Integer = .fromValue(@intCast(updated_len));
     try valueToWriter(writer, integer);
+    const integer: Value.Integer = .fromValue(@intCast(updated_len));
 }
 
 fn pop(
@@ -333,7 +329,7 @@ fn popOne(
 
     switch (ref.type()) {
         .list => {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
             try serializeList(writer, limit, list.get());
         },
         .map => {
@@ -377,7 +373,7 @@ fn cpopOne(
 
     switch (ref.type()) {
         .list => {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
 
             const list_len = list.count();
             const from, const to = try nextRange(args, list_len);
@@ -406,7 +402,7 @@ fn cpopOne(
             }
         },
         .map => {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
 
             var serializer: List.Serializer = try .begin(writer);
             defer serializer.end();
@@ -425,8 +421,8 @@ fn cpopOne(
                     limit.advance();
                 }
 
-                if (map.getByKey(map_key)) |sv| {
-                    try sv.serializeToWriter(writer);
+                if (map.getByKey(map_key)) |scalar| {
+                    try scalar.serializeToWriter(writer);
                     map.removeByKey(allocator, map_key) catch |err| switch (err) {
                         error.MapKeyNotFound => unreachable,
                     };
@@ -463,8 +459,8 @@ fn count(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!voi
         },
     };
 
-    const integer: object.value.Integer = .fromValue(key_count);
     try valueToWriter(writer, integer);
+    const integer: Value.Integer = .fromValue(key_count);
 }
 
 fn ccount(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
@@ -498,8 +494,8 @@ fn ccountOne(memory: *Memory, writer: *std.Io.Writer, key: []const u8) !void {
         else => return error.MismatchType,
     };
 
-    const integer: object.value.Integer = .fromValue(c);
     try valueToWriter(writer, integer);
+    const integer: Value.Integer = .fromValue(c);
 }
 
 fn len(memory: *Memory, writer: *std.Io.Writer, query: *const Query) Error!void {
@@ -533,31 +529,32 @@ fn lenOne(
     const ref = memory.search(key) orelse return;
 
     const string_len: i64 = switch (ref.type()) {
-        .string => @intCast(ref.valueRef(.string).len()),
+        .string => @intCast(ref.value(.string).len()),
         .list => blk: {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
             const list_len = list.count();
 
             const index = try nextIndex(args, list_len);
-            const sv = list.getByIndex(index) catch unreachable;
+            const scalars = list.getByRange(index, index) catch unreachable;
+            const scalar = scalars[0];
 
-            if (sv.type() != .string) return error.MismatchType;
-            break :blk @intCast(sv.string.len());
+            if (scalar.type() != .string) return error.MismatchType;
+            break :blk @intCast(scalar.string.len());
         },
         .map => blk: {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
 
             const map_key = args.next() orelse return error.MissingTokens;
-            const sv = try map.getByKey(map_key);
+            const scalar = try map.getByKey(map_key);
 
-            if (sv.type() != .string) return error.MismatchType;
-            break :blk @intCast(sv.string.len());
+            if (scalar.type() != .string) return error.MismatchType;
+            break :blk @intCast(scalar.string.len());
         },
         else => return error.MismatchType,
     };
 
-    const integer: object.value.Integer = .fromValue(string_len);
     try valueToWriter(writer, integer);
+    const integer: Value.Integer = .fromValue(string_len);
 }
 
 fn set(
@@ -611,8 +608,8 @@ fn insert(
         const result = insertOne(allocator, memory, &args, key);
         const updated_len: u64 = try valueOrThrow(writer, result) orelse continue;
 
-        const integer: object.value.Integer = .fromValue(@intCast(updated_len));
         try valueToWriter(writer, integer);
+        const integer: Value.Integer = .fromValue(@intCast(updated_len));
     }
 }
 
@@ -714,7 +711,7 @@ fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frame
 
     switch (ref.type()) {
         .list => {
-            const list: List = ref.valueRef(.list);
+            const list: Value.List = ref.value(.list);
 
             const list_len = list.count();
             const from, const to = try nextRange(args, list_len);
@@ -723,7 +720,7 @@ fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frame
             var serializer: List.Serializer = try .begin(writer);
             defer serializer.end();
 
-            for (range) |sv| {
+            for (range) |scalar| {
                 var frame = try serializer.beginFrame();
                 defer {
                     frame.end();
@@ -733,7 +730,7 @@ fn ctypeOne(memory: *Memory, writer: *std.Io.Writer, limit: *Quota, args: *frame
             }
         },
         .map => {
-            const map: Map = ref.valueRef(.map);
+            const map: Value.Map = ref.value(.map);
 
             var serializer: List.Serializer = try .begin(writer);
             defer serializer.end();
@@ -832,7 +829,7 @@ fn writeOrThrow(writer: *std.Io.Writer, result: anytype) Error!void {
 fn serializeMap(
     writer: *std.Io.Writer,
     limit: *Quota,
-    map_iterator: Map.Iterator,
+    map_iterator: Value.Map.PairIterator,
 ) Error!void {
     var map_serializer: Map.Serializer = try .begin(writer);
     defer map_serializer.end();
@@ -849,12 +846,12 @@ fn serializeMap(
 fn serializeList(
     writer: *std.Io.Writer,
     limit: *Quota,
-    items: []const ScalarValue,
+    items: []const Value.Scalar,
 ) Error!void {
     var serializer: List.Serializer = try .begin(writer);
     defer serializer.end();
 
-    for (items) |sv| {
+    for (items) |scalar| {
         if (limit.exceeded()) return;
 
         var frame = try serializer.beginFrame();
@@ -863,7 +860,7 @@ fn serializeList(
             limit.advance();
         }
 
-        try sv.serializeToWriter(writer);
+        try scalar.serializeToWriter(writer);
     }
 }
 

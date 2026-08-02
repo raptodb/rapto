@@ -6,7 +6,9 @@
 //! It contains the implementation of scalars.
 
 const std = @import("std");
-const value = @import("../value.zig");
+const assert = std.debug.assert;
+
+const Value = @import("../object.zig").Value;
 
 pub const Void = @import("scalar/Void.zig");
 pub const Integer = @import("scalar/Integer.zig");
@@ -18,7 +20,7 @@ pub const Point = @import("scalar/Point.zig");
 /// Scalar value types used by List or Map as item.
 /// Item contains information about the value type,
 /// allowing the serializeToWriter method.
-pub const ScalarValue = union(enum) {
+pub const Scalar = union(enum) {
     void: Void,
     integer: Integer,
     decimal: Decimal,
@@ -26,39 +28,36 @@ pub const ScalarValue = union(enum) {
     string: String,
     point: Point,
 
-    pub fn from(value_type: value.Type, v: anytype) ScalarValue {
-        switch (value_type) {
-            inline else => |tag| @unionInit(
-                ScalarValue,
-                @tagName(tag),
-                v,
-            ),
-        }
-    }
-
     pub fn initFromContent(
         allocator: std.mem.Allocator,
-        value_type: value.Type,
+        value_type: Value.Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!ScalarValue {
-        return switch (value_type) {
-            .void => .{ .void = .fromContent() },
-            .integer => .{ .integer = try .fromContent(content) },
-            .decimal => .{ .decimal = try .fromContent(content) },
-            .flag => .{ .flag = try .fromContent(content) },
-            .string => .{ .string = try .initFromContent(allocator, content) },
-            .point => .{ .point = try .initFromContent(allocator, content) },
+    ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!Scalar {
+        if (value_type.group() == .collection) return error.MismatchType;
 
-            // Collection type is not supported.
-            else => {
-                @branchHint(.unlikely);
-                return error.MismatchType;
-            },
+        return switch (value_type) {
+            inline .void => |vt| @unionInit(
+                Scalar,
+                @tagName(vt),
+                .fromContent(),
+            ),
+            inline .integer, .decimal, .flag => |vt| @unionInit(
+                Scalar,
+                @tagName(vt),
+                try .fromContent(content),
+            ),
+            inline .string, .point => |vt| @unionInit(
+                Scalar,
+                @tagName(vt),
+                try .initFromContent(allocator, content),
+            ),
+            // Handled earlier.
+            .list, .map => unreachable,
         };
     }
 
     /// Deallocates value. Assuming value is initialized.
-    pub fn deinit(self: ScalarValue, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: Scalar, allocator: std.mem.Allocator) void {
         switch (self) {
             .void, .integer, .decimal, .flag => {},
             .string => self.string.deinit(allocator),
@@ -66,22 +65,22 @@ pub const ScalarValue = union(enum) {
         }
     }
 
-    pub fn dupe(self: ScalarValue, allocator: std.mem.Allocator) std.mem.Allocator.Error!ScalarValue {
+    pub fn dupe(self: Scalar, allocator: std.mem.Allocator) std.mem.Allocator.Error!Scalar {
         return switch (self) {
             inline .string, .point => |_, t| @unionInit(
-                ScalarValue,
+                Scalar,
                 @tagName(t),
                 try @field(self, @tagName(t)).dupe(allocator),
             ),
             inline else => |_, t| @unionInit(
-                ScalarValue,
+                Scalar,
                 @tagName(t),
                 @field(self, @tagName(t)).dupe(),
             ),
         };
     }
 
-    pub fn compare(self: ScalarValue, item: ScalarValue) bool {
+    pub fn compare(self: Scalar, item: Scalar) bool {
         if (std.meta.activeTag(self) != std.meta.activeTag(item)) return false;
 
         return switch (self) {
@@ -90,12 +89,12 @@ pub const ScalarValue = union(enum) {
             .decimal => |v| v.isApproxEqualTo(item.decimal.get()),
             .flag => |v| v.get() == item.flag.get(),
             .string => |v| std.mem.eql(u8, v.get(), item.string.get()),
-            .point => |v| std.meta.eql(v.get(), item.point.get()),
+            .point => |v| v.isApproxEqualTo(item.point.get()),
         };
     }
 
     pub fn serializeToWriter(
-        self: ScalarValue,
+        self: Scalar,
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
         try self.type().serializeToWriter(writer);
@@ -103,21 +102,28 @@ pub const ScalarValue = union(enum) {
     }
 
     pub fn serializeContentToWriter(
-        self: ScalarValue,
+        self: Scalar,
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
         return switch (self) {
-            .void => self.void.serializeContentToWriter(writer),
             inline else => |_, tag| {
                 try @field(self, @tagName(tag)).serializeContentToWriter(writer);
             },
         };
     }
 
-    pub fn @"type"(self: ScalarValue) value.Type {
+    pub fn print(self: Scalar, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return switch (self) {
+            inline else => |_, tag| {
+                try @field(self, @tagName(tag)).print(writer);
+            },
+        };
+    }
+
+    pub fn @"type"(self: Scalar) Value.Type {
         const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
         // This enum is always a subset with less quantity of Type,
         // so the conversion is always possible.
-        return value.Type.fromInt(self_int_enum) catch unreachable;
+        return Value.Type.fromInt(self_int_enum) catch unreachable;
     }
 };

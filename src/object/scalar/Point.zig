@@ -18,7 +18,7 @@ pub const Axis = struct {
     y: Decimal,
     z: Decimal,
 
-    pub fn parse(content: []const u8) error{ InvalidFormat, MismatchType }!Axis {
+    pub fn deserialize(content: []const u8) error{ InvalidFormat, MismatchType }!Axis {
         if (content.len != (Decimal{}).len() * 3) return error.InvalidFormat;
 
         return .{
@@ -38,12 +38,16 @@ pub fn initFromContent(
     const axis_ptr = try allocator.create(Axis);
     errdefer allocator.destroy(axis_ptr);
 
-    axis_ptr.* = try .parse(content);
+    axis_ptr.* = try .deserialize(content);
     return .{ .value = axis_ptr };
 }
 
+pub fn deinit(self: Point, allocator: std.mem.Allocator) void {
+    allocator.destroy(self.value);
+}
+
 pub fn set(self: Point, content: []const u8) error{ InvalidFormat, MismatchType }!void {
-    self.value.* = try .parse(content);
+    self.value.* = try .deserialize(content);
 }
 
 pub fn dupe(self: Point, allocator: std.mem.Allocator) std.mem.Allocator.Error!Point {
@@ -61,8 +65,11 @@ pub fn len(_: Point) u64 {
     return @sizeOf(Axis);
 }
 
-pub fn deinit(self: Point, allocator: std.mem.Allocator) void {
-    allocator.destroy(self.value);
+pub fn isApproxEqualTo(self: Point, axis: Axis) bool {
+    const actual = self.get();
+    return actual.x.isApproxEqualTo(axis.x.get()) and
+        actual.y.isApproxEqualTo(axis.y.get()) and
+        actual.z.isApproxEqualTo(axis.z.get());
 }
 
 pub fn translate(self: Point, delta: Axis) error{MathOverflow}!void {
