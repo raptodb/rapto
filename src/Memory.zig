@@ -76,9 +76,6 @@ pub fn put(
     value_type: object.Value.Type,
     content: []const u8,
 ) PutError!object.Ref {
-    // Verify if rehash if needed by putting one entry.
-    if (self.needRehash(self.map.size + 1)) self.map.rehash(PutContext);
-
     const entry = try self.map.getOrPutAdapted(allocator, key, SearchContext{});
     const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
 
@@ -147,10 +144,6 @@ pub fn ensure(
     if (!entry.found_existing) {
         errdefer self.map.removeByPtr(entry.key_ptr);
         entry.key_ptr.*, entry.value_ptr.* = try object.init(allocator, key, value_type, content);
-        // We can't rehashing if we don't know if `ensure`
-        // is only a read method. For this case we should
-        // rehash only if found_existing is true.
-        if (self.needRehash(self.map.size)) self.map.rehash(PutContext);
     }
 
     return .{ .ref = ref, .found_existing = entry.found_existing };
@@ -196,9 +189,6 @@ pub fn free(self: *Memory, allocator: std.mem.Allocator) void {
     self.map.clearAndFree(allocator);
 }
 
-fn needRehash(self: *Memory, size: u32) bool {
-    return size > self.map.capacity() * load_factor;
-}
 
 pub fn iterator(self: *Memory) Iterator {
     return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
