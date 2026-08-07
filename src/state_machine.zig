@@ -379,10 +379,6 @@ fn popMapOne(ctx: *const Context) !void {
 }
 
 fn count_patterns(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, countPatternsOne);
-}
-
-fn countPatternsOne(ctx: *const Context) !void {
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
     const key_count: i64 = blk: {
@@ -400,6 +396,8 @@ fn countPatternsOne(ctx: *const Context) !void {
 
         var counted: i64 = 0;
         var iterator = ctx.memory.iterator();
+        // Starts from last cursor.
+        iterator.skip(ctx.query.flags.cursor.get());
         while (iterator.next()) |ref| {
             if (limit.exceeded()) break;
             const key = ref.key();
@@ -474,6 +472,8 @@ fn countMapPatternsOne(ctx: *const Context) !void {
 
         var counted: i64 = 0;
         var iterator = map.getKeys();
+        // Starts from last cursor.
+        iterator.skip(ctx.query.flags.cursor.get());
         while (iterator.next()) |map_key| {
             if (limit.exceeded()) break;
 
@@ -762,6 +762,8 @@ fn keysPatternsOne(ctx: *const Context) !void {
     defer serializer.end();
 
     var iterator = ctx.memory.iterator();
+    // Starts from last cursor.
+    iterator.skip(ctx.query.flags.cursor.get());
     while (iterator.next()) |ref| {
         if (limit.exceeded()) return;
         const key = ref.key();
@@ -821,6 +823,8 @@ fn entriesPatternsOne(ctx: *const Context) !void {
     defer serializer.end();
 
     var iterator = map.getKeys();
+    // Starts from last cursor.
+    iterator.skip(ctx.query.flags.cursor.get());
     while (iterator.next()) |map_key| {
         if (limit.exceeded()) return;
 

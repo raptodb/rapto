@@ -176,6 +176,11 @@ pub const PairIterator = struct {
         const entry = self.wrapped_iterator.next() orelse return null;
         return .{ .entry = entry };
     }
+
+    pub fn skip(self: *PairIterator, n: u64) void {
+        const cap = self.wrapped_iterator.hm.capacity();
+        self.wrapped_iterator.index = @min(self.wrapped_iterator.index + n, cap);
+    }
 };
 
 pub const KeyIterator = struct {
@@ -185,30 +190,74 @@ pub const KeyIterator = struct {
         const key = self.wrapped_iterator.next() orelse return null;
         return key.*;
     }
+
+    pub fn skip(self: *KeyIterator, n: u64) void {
+        const min_skip = @min(n, self.wrapped_iterator.len);
+        self.wrapped_iterator.len -= min_skip;
+        self.wrapped_iterator.metadata += min_skip;
+        self.wrapped_iterator.items += min_skip;
+    }
 };
 
 pub const Serializer = struct {
     writer: *std.Io.Writer,
+    len_offset: u64 = 0,
+    len: u64 = 0,
 
     /// Assumes writer is derived from std.Io.Writer.Allocating.
     pub fn begin(writer: *std.Io.Writer) std.mem.Allocator.Error!Serializer {
-        Value.Type.serializeToWriter(
-            .map,
-            writer,
-        ) catch |err| return switch (err) {
+        Value.Type.serializeToWriter(.map, writer) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
-        return .{ .writer = writer };
+        const len_offset = writer.end;
+        writer.writeInt(u64, 0, .little) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+        };
+        return .{ .writer = writer, .len_offset = len_offset };
     }
 
     /// Assumes writer is derived from std.Io.Writer.Allocating.
-    pub fn append(self: Serializer, pair: Pair) std.mem.Allocator.Error!void {
+    pub fn append(self: *Serializer, pair: Pair) std.mem.Allocator.Error!void {
+        self.len += 1;
         try pair.serializeToWriter(self.writer);
     }
 
-    /// For conventional purpose; this is no-op.
     pub fn end(self: Serializer) void {
-        _ = self;
+        std.mem.writeInt(
+            u64,
+            self.writer.buffer[self.len_offset .. self.len_offset + @sizeOf(u64)][0..@sizeOf(u64)],
+            @intCast(self.len),
+            .little,
+        );
+    }
+};
+
+/// Iterator of serialized entries in a serialized Map.
+pub const Iterator = struct {
+    wrapped_iterator: frames.Iterator,
+    len: u64,
+
+    pub const Entry = struct {
+        key: []const u8,
+        serialized_value: []const u8,
+    };
+
+    pub fn init(content: []const u8) error{InvalidFormat}!Iterator {
+        var reader: std.Io.Reader = .fixed(content);
+        const len = reader.takeInt(u64, .little) catch return error.InvalidFormat;
+        return .{ .wrapped_iterator = .init(reader.buffered()), .len = len };
+    }
+
+    pub fn count(self: Iterator) u64 {
+        return self.len;
+    }
+
+    /// Iterates the next serialized entry in the Map.
+    pub fn next(self: *Iterator) error{InvalidFormat}!?Entry {
+        return .{
+            .key = self.wrapped_iterator.next() orelse return null,
+            .serialized_value = self.wrapped_iterator.next() orelse return error.InvalidFormat,
+        };
     }
 };
 
@@ -261,28 +310,6 @@ pub fn exists(self: Map, key: []const u8) bool {
 pub fn count(self: Map) u64 {
     return self.ptr.count();
 }
-
-/// Iterator of serialized entries in a serialized Map.
-pub const Iterator = struct {
-    wrapped_iterator: frames.Iterator,
-
-    const Entry = struct {
-        key: []const u8,
-        serialized_value: []const u8,
-    };
-
-    pub fn init(content: []const u8) Iterator {
-        return .{ .wrapped_iterator = .init(content) };
-    }
-
-    /// Iterates the next serialized entry in the Map.
-    pub fn next(self: *Iterator) error{InvalidFormat}!?Entry {
-        return .{
-            .key = self.wrapped_iterator.next() orelse return null,
-            .serialized_value = self.wrapped_iterator.next() orelse return error.InvalidFormat,
-        };
-    }
-};
 
 test "Map" {
     const allocator = std.testing.allocator;
@@ -411,7 +438,7 @@ test "Map" {
         var m2: Map = try .init(allocator);
         defer m2.deinit(allocator);
 
-        var frame_iter: Iterator = .init(content);
+        var frame_iter: Iterator = try .init(content);
         while (try frame_iter.next()) |entry| {
             try m2.put(allocator, entry.key, entry.serialized_value);
         }

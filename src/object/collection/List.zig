@@ -72,25 +72,52 @@ pub fn setByIndex(
 
 pub const Serializer = struct {
     writer: *std.Io.Writer,
+    len_offset: u64 = 0,
+    len: u64 = 0,
 
     /// Assumes writer is derived from std.Io.Writer.Allocating.
     pub fn begin(writer: *std.Io.Writer) std.mem.Allocator.Error!Serializer {
-        Value.Type.serializeToWriter(
-            .list,
-            writer,
-        ) catch |err| return switch (err) {
+        Value.Type.serializeToWriter(.list, writer) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
-        return .{ .writer = writer };
+        const len_offset = writer.end;
+        writer.writeInt(u64, 0, .little) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+        };
+        return .{ .writer = writer, .len_offset = len_offset };
     }
 
-    pub fn beginFrame(self: Serializer) std.mem.Allocator.Error!frames.Builder {
+    pub fn beginFrame(self: *Serializer) std.mem.Allocator.Error!frames.Builder {
+        self.len += 1;
         return .begin(self.writer);
     }
 
-    /// For conventional purpose; this is no-op.
-    pub fn end(self: Serializer) void {
-        _ = self;
+    pub fn end(self: *Serializer) void {
+        std.mem.writeInt(
+            u64,
+            self.writer.buffer[self.len_offset .. self.len_offset + @sizeOf(u64)][0..@sizeOf(u64)],
+            @intCast(self.len),
+            .little,
+        );
+    }
+};
+
+pub const Iterator = struct {
+    wrapped_iterator: frames.Iterator,
+    len: u64,
+
+    pub fn init(content: []const u8) error{InvalidFormat}!Iterator {
+        var reader: std.Io.Reader = .fixed(content);
+        const len = reader.takeInt(u64, .little) catch return error.InvalidFormat;
+        return .{ .wrapped_iterator = .init(reader.buffered()), .len = len };
+    }
+
+    pub fn count(self: Iterator) u64 {
+        return self.len;
+    }
+
+    pub fn next(self: *Iterator) ?[]const u8 {
+        return self.wrapped_iterator.next();
     }
 };
 
@@ -154,18 +181,6 @@ pub fn removeAll(self: List, allocator: std.mem.Allocator) void {
 pub fn count(self: List) u64 {
     return self.ptr.items.len;
 }
-
-pub const Iterator = struct {
-    wrapped_iterator: frames.Iterator,
-
-    pub fn init(content: []const u8) Iterator {
-        return .{ .wrapped_iterator = .init(content) };
-    }
-
-    pub fn next(self: *Iterator) ?[]const u8 {
-        return self.wrapped_iterator.next();
-    }
-};
 
 test "List" {
     const allocator = std.testing.allocator;

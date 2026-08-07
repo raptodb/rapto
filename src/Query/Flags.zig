@@ -14,6 +14,9 @@ pub const Error = error{InvalidFormat};
 /// Limit iteration to only operations whose size depends
 /// on undefined operations as patterns and ranges.
 limit: Quota = .default,
+/// Starting cursor for the operation.
+/// Used mostly for pattern matching commands.
+cursor: Unsigned = .default,
 /// Used for insert command.
 replace: Bool = .default,
 /// Used for put/set/copy/rename command.
@@ -34,7 +37,7 @@ pub const Quota = enum(u64) {
     }
 
     pub fn isDefault(self: Quota) bool {
-        return self == default;
+        return self.isEqualTo(default);
     }
 
     fn deserializeFromReader(reader: *std.Io.Reader) error{InvalidFormat}!Quota {
@@ -64,7 +67,7 @@ pub const Bool = struct {
     }
 
     pub fn isDefault(self: Bool) bool {
-        return self.get() == default.get();
+        return self.isEqualTo(default);
     }
 
     pub fn deserializeFromReader(reader: *std.Io.Reader) error{InvalidFormat}!Bool {
@@ -76,6 +79,36 @@ pub const Bool = struct {
     }
 
     pub fn isEqualTo(self: Bool, other: Bool) bool {
+        return self.get() == other.get();
+    }
+};
+
+pub const Unsigned = struct {
+    value: u64,
+
+    pub const default: Unsigned = .init(0);
+
+    pub fn init(value: u64) Unsigned {
+        return .{ .value = value };
+    }
+
+    pub fn get(self: Unsigned) u64 {
+        return self.value;
+    }
+
+    pub fn isDefault(self: Unsigned) bool {
+        return self.isEqualTo(default);
+    }
+
+    pub fn deserializeFromReader(reader: *std.Io.Reader) error{InvalidFormat}!Unsigned {
+        return .{ .value = try take(reader, u64) };
+    }
+
+    pub fn serializeContentToWriter(self: Unsigned, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return writer.writeInt(u64, self.get(), .little);
+    }
+
+    pub fn isEqualTo(self: Unsigned, other: Unsigned) bool {
         return self.get() == other.get();
     }
 };
@@ -174,6 +207,8 @@ test "Flags" {
         .{ .limit = .init(std.math.maxInt(u64)) },
         .{ .if_not_exists = .init(true) },
         .{ .replace = .init(false), .if_not_exists = .init(false) },
+        .{ .limit = .init(1), .cursor = .init(100) },
+        .{ .cursor = .init(350) },
     };
 
     for (cases) |c| {
