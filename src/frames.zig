@@ -49,7 +49,7 @@ pub fn IteratorType(comptime HeaderType: type) type {
         }
 
         pub fn skip(self: *Self, n_frames: u64) void {
-            for (n_frames) |_| _ = self.next() orelse return;
+            for (0..n_frames) |_| _ = self.next() orelse return;
         }
 
         fn remaining(self: Self) u64 {
