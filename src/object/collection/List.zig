@@ -40,6 +40,7 @@ pub fn insert(
 ) Error!void {
     const value_type, const content = try Value.splitSerialized(serialized);
     const item: Scalar = try .initFromContent(allocator, value_type, content);
+    errdefer item.deinit(allocator);
     return self.ptr.insert(allocator, @min(index, self.count()), item);
 }
 
@@ -52,10 +53,7 @@ pub fn dupe(
 
     list_ptr.* = try .initCapacity(allocator, self.count());
     errdefer list_ptr.deinit(allocator);
-
-    for (self.ptr.items) |item| {
-        try list_ptr.append(allocator, try item.dupe(allocator));
-    }
+    for (self.ptr.items) |item| list_ptr.appendAssumeCapacity(try item.dupe(allocator));
 
     return .{ .ptr = list_ptr };
 }
@@ -98,18 +96,14 @@ pub const Serializer = struct {
 
 pub fn get(self: List) []const Scalar {
     if (self.count() == 0) return &.{};
-    return self.getByRange(0, self.count() - 1) catch |err| switch (err) {
+    return self.getByRange(0, self.count()) catch |err| switch (err) {
         error.RangeOverflow => unreachable,
     };
 }
 
-pub fn getByRange(
-    self: List,
-    from_index: u64,
-    to_index: u64,
-) error{RangeOverflow}![]const Scalar {
-    if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
-    return self.ptr.items[from_index .. to_index + 1];
+pub fn getByRange(self: List, start: u64, len: u64) error{RangeOverflow}![]const Scalar {
+    if (start + len > self.count()) return error.RangeOverflow;
+    return self.ptr.items[start..][0..len];
 }
 
 pub fn indexOfItemInRange(
@@ -137,12 +131,13 @@ pub fn indexOfItemInRange(
 pub fn removeByRange(
     self: List,
     allocator: std.mem.Allocator,
-    from_index: u64,
-    to_index: u64,
+    start: u64,
+    len: u64,
 ) error{RangeOverflow}!void {
-    if (from_index > to_index or to_index >= self.count()) return error.RangeOverflow;
-    for (self.ptr.items[from_index .. to_index + 1]) |item| item.deinit(allocator);
-    self.ptr.replaceRangeAssumeCapacity(from_index, to_index - from_index + 1, &.{});
+    if (start + len > self.count()) return error.RangeOverflow;
+
+    for (self.ptr.items[start..][0..len]) |item| item.deinit(allocator);
+    self.ptr.replaceRangeAssumeCapacity(start, len, &.{});
 }
 
 pub fn removeAll(self: List, allocator: std.mem.Allocator) void {
@@ -150,7 +145,7 @@ pub fn removeAll(self: List, allocator: std.mem.Allocator) void {
     self.removeByRange(
         allocator,
         0,
-        self.count() - 1,
+        self.count(),
     ) catch |err| switch (err) {
         error.RangeOverflow => unreachable,
     };
@@ -233,24 +228,27 @@ test "List" {
     try s.insert(allocator, 1, pw.buffered());
 
     try std.testing.expect(s.count() == 6);
-    try std.testing.expect((try s.getByRange(0, 0))[0].flag.get() == .@"error");
+    try std.testing.expect((try s.getByRange(0, 1))[0].flag.get() == .@"error");
     try std.testing.expect((try s.getByRange(1, 1))[0].decimal.get() == 3.14);
     {
-        const ax = (try s.getByRange(2, 2))[0].point.get();
+        const ax = (try s.getByRange(2, 1))[0].point.get();
         try std.testing.expect(ax.x.get() == 1);
         try std.testing.expect(ax.y.get() == 2);
         try std.testing.expect(ax.z.get() == 3);
     }
-    try std.testing.expect((try s.getByRange(3, 3))[0].integer.get() == 10);
-    try std.testing.expect((try s.getByRange(4, 4))[0].flag.get() == .true);
-    try std.testing.expectEqualStrings("example, \"string\"", (try s.getByRange(5, 5))[0].string.get());
+    try std.testing.expect((try s.getByRange(3, 1))[0].integer.get() == 10);
+    try std.testing.expect((try s.getByRange(4, 1))[0].flag.get() == .true);
+    try std.testing.expectEqualStrings(
+        "example, \"string\"",
+        (try s.getByRange(5, 1))[0].string.get(),
+    );
 
     var str2: Scalar = try .initFromContent(allocator, .string, "example2");
     defer str2.deinit(allocator);
     _ = pw.consumeAll();
     try str2.serializeToWriter(pw);
     try s.setByIndex(allocator, 3, pw.buffered());
-    try std.testing.expectEqualStrings("example2", (try s.getByRange(3, 3))[0].string.get());
+    try std.testing.expectEqualStrings("example2", (try s.getByRange(3, 1))[0].string.get());
 
     var void_item: Scalar = try .initFromContent(allocator, .void, &.{});
     defer void_item.deinit(allocator);
@@ -261,8 +259,8 @@ test "List" {
 
     try std.testing.expectError(error.RangeOverflow, s.getByRange(99, 99));
 
-    try std.testing.expect((try s.getByRange(0, 2)).len == 3);
-    try std.testing.expectError(error.RangeOverflow, s.getByRange(3, 1));
+    try std.testing.expect((try s.getByRange(0, 3)).len == 3);
+    try std.testing.expectError(error.RangeOverflow, s.getByRange(99, 1));
     try std.testing.expectError(error.RangeOverflow, s.getByRange(0, 99));
 
     try std.testing.expect(s.get().len == s.count());
@@ -287,9 +285,9 @@ test "List" {
 
     s.removeAll(allocator);
     try std.testing.expect(s.count() == 0);
-    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 0, 0));
+    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 0, 1));
     try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 0, 3));
-    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 10, 0));
+    try std.testing.expectError(error.RangeOverflow, s.removeByRange(allocator, 10, 1));
 
     try std.testing.expect(s.get().len == 0);
 

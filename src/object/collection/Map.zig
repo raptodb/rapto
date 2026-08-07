@@ -178,6 +178,15 @@ pub const PairIterator = struct {
     }
 };
 
+pub const KeyIterator = struct {
+    wrapped_iterator: HashMap.KeyIterator,
+
+    pub fn next(self: *KeyIterator) ?[]const u8 {
+        const key = self.wrapped_iterator.next() orelse return null;
+        return key.*;
+    }
+};
+
 pub const Serializer = struct {
     writer: *std.Io.Writer,
 
@@ -207,12 +216,23 @@ pub fn get(self: Map) PairIterator {
     return .{ .wrapped_iterator = self.ptr.iterator() };
 }
 
-pub fn getKeys(self: Map) HashMap.KeyIterator {
-    return self.ptr.keyIterator();
+pub fn getKeys(self: Map) KeyIterator {
+    return .{ .wrapped_iterator = self.ptr.keyIterator() };
 }
 
-pub fn getByKey(self: Map, key: []const u8) error{MapKeyNotFound}!Scalar {
-    return self.ptr.get(key) orelse error.MapKeyNotFound;
+pub fn getByKey(self: Map, key: []const u8) ?Scalar {
+    return self.ptr.get(key);
+}
+
+/// Pop selected entry, scalar must be deinitialized by caller.
+pub fn popByKey(
+    self: Map,
+    allocator: std.mem.Allocator,
+    key: []const u8,
+) ?Scalar {
+    const entry = self.ptr.fetchRemove(key) orelse return null;
+    allocator.free(entry.key);
+    return entry.value;
 }
 
 pub fn removeByKey(
@@ -321,19 +341,19 @@ test "Map" {
 
     try std.testing.expect(m.count() == 6);
 
-    try std.testing.expect((try m.getByKey(k_count)).integer.get() == 42);
-    try std.testing.expect((try m.getByKey(k_pi)).decimal.isApproxEqualTo(3.14));
-    try std.testing.expect((try m.getByKey(k_active)).flag.get() == .true);
-    try std.testing.expectEqualStrings("hello", (try m.getByKey(k_name)).string.get());
-    _ = (try m.getByKey(k_empty)).void.get();
+    try std.testing.expect((m.getByKey(k_count).?).integer.get() == 42);
+    try std.testing.expect((m.getByKey(k_pi).?).decimal.isApproxEqualTo(3.14));
+    try std.testing.expect((m.getByKey(k_active).?).flag.get() == .true);
+    try std.testing.expectEqualStrings("hello", (m.getByKey(k_name).?).string.get());
+    _ = (m.getByKey(k_empty).?).void.get();
     {
-        const ax = (try m.getByKey(k_pos)).point.get();
+        const ax = (m.getByKey(k_pos).?).point.get();
         try std.testing.expect(ax.x.get() == 1.0);
         try std.testing.expect(ax.y.get() == 2.0);
         try std.testing.expect(ax.z.get() == 3.0);
     }
 
-    try std.testing.expectError(error.MapKeyNotFound, m.getByKey(k_missing));
+    try std.testing.expect(m.getByKey(k_missing) == null);
 
     try std.testing.expect(m.exists(k_count));
     try std.testing.expect(m.exists(k_pos));
@@ -346,15 +366,15 @@ test "Map" {
 
     try m.put(allocator, k_count, sv_int2);
     try std.testing.expect(m.count() == 6);
-    try std.testing.expect((try m.getByKey(k_count)).integer.get() == 99);
+    try std.testing.expect((m.getByKey(k_count).?).integer.get() == 99);
 
     try m.put(allocator, k_new, sv_flag);
     try std.testing.expect(m.count() == 7);
-    try std.testing.expect((try m.getByKey(k_new)).flag.get() == .true);
+    try std.testing.expect((m.getByKey(k_new).?).flag.get() == .true);
 
     try m.removeByKey(allocator, k_new);
     try std.testing.expect(m.count() == 6);
-    try std.testing.expectError(error.MapKeyNotFound, m.getByKey(k_new));
+    try std.testing.expect(m.getByKey(k_new) == null);
     try std.testing.expectError(error.MapKeyNotFound, m.removeByKey(allocator, k_ghost));
 
     {
@@ -366,7 +386,7 @@ test "Map" {
 
     m.removeAll(allocator);
     try std.testing.expect(m.count() == 0);
-    try std.testing.expectError(error.MapKeyNotFound, m.getByKey(k_pi));
+    try std.testing.expect(m.getByKey(k_pi) == null);
 
     try m.put(allocator, k_pi, sv_dec);
     try m.put(allocator, k_name, sv_str);
@@ -397,8 +417,8 @@ test "Map" {
         }
 
         try std.testing.expect(m2.count() == m.count());
-        try std.testing.expect((try m2.getByKey(k_pi)).decimal.isApproxEqualTo(3.14));
-        try std.testing.expectEqualStrings("hello", (try m2.getByKey(k_name)).string.get());
+        try std.testing.expect((m2.getByKey(k_pi).?).decimal.isApproxEqualTo(3.14));
+        try std.testing.expectEqualStrings("hello", (m2.getByKey(k_name).?).string.get());
     }
 }
 
