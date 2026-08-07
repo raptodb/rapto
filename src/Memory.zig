@@ -41,24 +41,28 @@ const Map = std.HashMapUnmanaged(
 pub const Config = struct {
     /// Preallocation of hashmap during initialization
     /// based on quantity of expected keys.
-    initial_keys: u32 = 4096,
+    initial_keys: u32 = 4 * 1024,
+
+    pub fn realInitialKeys(config: Config) u32 {
+        return @divFloor(config.initial_keys * load_factor, 100);
+    }
 };
 
 const load_factor: u32 = 80;
 
+config: Config,
 /// Hashmap of objects. Internal API
 /// should not be used directly.
 map: Map,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) error{OutOfMemory}!Memory {
-    var self: Memory = .{ .map = .empty };
-    const real_initial_keys: u32 = @divFloor(config.initial_keys * load_factor, 100);
-    try self.map.ensureTotalCapacity(allocator, real_initial_keys);
+    var self: Memory = .{ .config = config, .map = .empty };
+    try self.map.ensureTotalCapacity(allocator, config.realInitialKeys());
     return self;
 }
 
 pub fn deinit(self: *Memory, allocator: std.mem.Allocator) void {
-    self.clear(allocator);
+    self.removeAll(allocator);
     self.map.deinit(allocator);
 }
 
@@ -172,11 +176,7 @@ pub fn removeByRef(self: *Memory, allocator: std.mem.Allocator, ref: object.Ref)
     self.map.removeByPtr(ref.key_ptr);
 }
 
-pub fn count(self: *const Memory) u64 {
-    return self.map.count();
-}
-
-pub fn clear(self: *Memory, allocator: std.mem.Allocator) void {
+pub fn removeAll(self: *Memory, allocator: std.mem.Allocator) void {
     var iter = self.iterator();
     while (iter.next()) |ref| {
         object.deinit(allocator, ref.key_ptr.*, ref.value_ptr.*);
@@ -184,11 +184,17 @@ pub fn clear(self: *Memory, allocator: std.mem.Allocator) void {
     self.map.clearRetainingCapacity();
 }
 
-pub fn free(self: *Memory, allocator: std.mem.Allocator) void {
-    self.clear(allocator);
-    self.map.clearAndFree(allocator);
+pub fn count(self: *const Memory) u64 {
+    return self.map.count();
 }
 
+pub fn clear(self: *Memory, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
+    if (self.map.capacity() <= self.config.realInitialKeys()) {
+        return self.removeAll(allocator);
+    }
+    self.deinit(allocator);
+    self.* = try .init(allocator, self.config);
+}
 
 pub fn iterator(self: *Memory) Iterator {
     return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
