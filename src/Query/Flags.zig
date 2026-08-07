@@ -11,7 +11,8 @@ const std = @import("std");
 
 pub const Error = error{InvalidFormat};
 
-/// Maximum number of results emitted.
+/// Limit iteration to only operations whose size depends
+/// on undefined operations as patterns and ranges.
 limit: Quota = .default,
 /// Used for insert command.
 replace: Bool = .default,

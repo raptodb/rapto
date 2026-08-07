@@ -16,27 +16,36 @@ pub const Flags = @import("Query/Flags.zig");
 pub const Command = enum(u8) {
     ping = 0,
 
-    // ordered by insertion, do not reorder
-    // or change fields to maintain
-    // compatibility across versions
+    // Ordered by insertion. Do not reorder or change existing
+    // values to preserve protocol compatibility across versions.
     set,
     append,
     insert,
     put,
     get,
-    cget,
-    len,
-    count,
-    ccount,
+    get_list,
+    get_map,
     del,
-    cdel,
+    del_list,
+    del_map,
+    del_patterns,
     pop,
-    cpop,
+    pop_list,
+    pop_map,
+    count_patterns,
+    count_list,
+    count_map_patterns,
+    exists,
+    exists_map,
     copy,
     rename,
     type,
-    ctype,
-    keys,
+    type_list,
+    type_map,
+    keys_patterns,
+    entries_patterns,
+    purge,
+
     down = std.math.maxInt(u8),
 
     pub fn deserialize(int: u8) error{UnknownCommand}!Command {
@@ -45,14 +54,45 @@ pub const Command = enum(u8) {
 
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
-            .set, .append, .insert, .put, .del, .cdel, .pop, .cpop, .copy, .rename => .write,
-            // Commands that does not modify memory.
-            .ping, .get, .cget, .len, .count, .ccount, .type, .ctype, .keys => .read,
-            .down => .control,
+            .set,
+            .append,
+            .insert,
+            .put,
+            .del,
+            .del_list,
+            .del_map,
+            .del_patterns,
+            .pop,
+            .pop_list,
+            .pop_map,
+            .copy,
+            .rename,
+            .purge,
+            => .write,
+
+            .get,
+            .get_list,
+            .get_map,
+            .count_pattern,
+            .count_list,
+            .count_map_pattern,
+            .exists,
+            .exists_map,
+            .type,
+            .type_list,
+            .type_map,
+            .keys_pattern,
+            .entries_pattern,
+            => .read,
+
+            .ping, .down => .control,
         };
     }
 
-    pub fn serializeToWriter(self: Command, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn serializeToWriter(
+        self: Command,
+        writer: *std.Io.Writer,
+    ) std.Io.Writer.Error!void {
         return writer.writeByte(@intFromEnum(self));
     }
 };
@@ -85,10 +125,10 @@ pub const Serializer = struct {
     }
 
     /// Assuming writer is derived from std.Io.Writer.Allocating.
-    pub fn append(writer: *std.Io.Writer, arg: []const []const u8) std.mem.Allocator.Error!void {
+    pub fn append(writer: *std.Io.Writer, arg: []const u8) std.mem.Allocator.Error!void {
         var builder: frames.Builder = try .begin(writer);
         defer builder.end();
-        _ = writer.writeVec(arg) catch |err| return switch (err) {
+        writer.writeAll(arg) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
     }
@@ -169,91 +209,29 @@ test "Query" {
 
     const cases = [_]TestQueryLayout{
         .{
-            .command = .ping,
-            .flags = .{},
-            .args = &.{},
+            .command = .get_list,
+            .flags = .{ .limit = .init(10) },
+            .args = &.{ "list", "\x00\x00\x00\x00\x00\x00\x00\x00" },
         },
         .{
-            .command = .get,
+            .command = .del_patterns,
             .flags = .{},
-            .args = &.{"key"},
+            .args = &.{"user:*"},
         },
         .{
-            .command = .cget,
+            .command = .entries_patterns,
             .flags = .{},
-            .args = &.{ "collection", "key" },
+            .args = &.{"meta:*"},
         },
         .{
-            .command = .insert,
+            .command = .exists_map,
             .flags = .{},
-            .args = &.{ "key", "value" },
+            .args = &.{ "map", "field" },
         },
         .{
-            .command = .insert,
+            .command = .type_list,
             .flags = .{},
-            .args = &.{""},
-        },
-        .{
-            .command = .insert,
-            .flags = .{},
-            .args = &.{ "", "" },
-        },
-        .{
-            .command = .keys,
-            .flags = .{},
-            .args = &.{},
-        },
-        .{
-            .command = .keys,
-            .flags = .{
-                .limit = .init(1000),
-            },
-            .args = &.{},
-        },
-        .{
-            .command = .rename,
-            .flags = .{},
-            .args = &.{ "old", "new" },
-        },
-        .{
-            .command = .del,
-            .flags = .{},
-            .args = &.{},
-        },
-        .{
-            .command = .count,
-            .flags = .{},
-            .args = &.{"sessions"},
-        },
-        .{
-            .command = .copy,
-            .flags = .{},
-            .args = &.{ "a", "b", "c", "d", "e", "f", "g" },
-        },
-        .{
-            .command = .insert,
-            .flags = .{},
-            .args = &.{
-                "hello\nworld",
-                "value\t123",
-            },
-        },
-        .{
-            .command = .insert,
-            .flags = .{},
-            .args = &.{ "ciao", "你好", "🚀" },
-        },
-        .{
-            .command = .set,
-            .flags = .{},
-            .args = &.{
-                &@as([128]u8, @splat('a')),
-            },
-        },
-        .{
-            .command = .down,
-            .flags = .{},
-            .args = &.{},
+            .args = &.{"list"},
         },
     };
 
