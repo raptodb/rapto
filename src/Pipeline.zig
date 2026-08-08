@@ -83,6 +83,7 @@ fn shrinkAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) 
     var list = allocating.toArrayList();
     defer allocating.* = .fromArrayList(allocating.allocator, &list);
 
+    list.expandToCapacity();
     list.shrinkAndFree(allocating.allocator, preserved_size);
 }
 
