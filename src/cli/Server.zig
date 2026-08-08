@@ -27,6 +27,11 @@ aof_file: ?[]const u8,
 aof_sync_seconds: i32 = 1,
 /// IP address of Server instance, default: 127.0.0.1:7286.
 address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) },
+/// Number of expected keys to exploit Memory preallocation.
+expected_keys: u32 = 4 * 1024,
+/// Preserved size for IO serialization buffer.
+/// Maybe used when clients sends big queries or batches.
+io_preserved_size: u64 = 16 * 1024,
 
 pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
     var name: ?[]const u8 = null;
@@ -35,6 +40,8 @@ pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
     var aof_file: ?[]const u8 = null;
     var aof_sync_seconds: i32 = 1;
     var address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) };
+    var expected_keys: u32 = 4 * 1024;
+    var io_preserved_size: u64 = 16 * 1024;
 
     while (args.next()) |flag| {
         if (eql(u8, flag, "--name")) {
@@ -44,6 +51,16 @@ pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
                 fatal("expected argument after flag", .{});
             memory_size = std.fmt.parseUnsigned(u64, arg, 10) catch
                 fatal("specified argument for --memory-size has wrong conversion", .{});
+        } else if (eql(u8, flag, "--expected-keys")) {
+            const arg = args.next() orelse
+                fatal("expected argument after flag", .{});
+            expected_keys = std.fmt.parseUnsigned(u32, arg, 10) catch
+                fatal("specified argument for --expected-keys has wrong conversion", .{});
+        } else if (eql(u8, flag, "--io-preserved-size")) {
+            const arg = args.next() orelse
+                fatal("expected argument after flag", .{});
+            io_preserved_size = std.fmt.parseUnsigned(u64, arg, 10) catch
+                fatal("specified argument for --preserved-size has wrong conversion", .{});
         } else if (eql(u8, flag, "--aof")) {
             aof = true;
         } else if (eql(u8, flag, "--aof-sync-seconds")) {
@@ -77,6 +94,8 @@ pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
         .aof_file = aof_file,
         .aof_sync_seconds = aof_sync_seconds,
         .address = address,
+        .expected_keys = expected_keys,
+        .io_preserved_size = io_preserved_size,
     };
 }
 

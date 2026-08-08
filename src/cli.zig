@@ -57,6 +57,15 @@ pub const Command = union(enum) {
         \\  --memory-size <size>
         \\      Sets the maximum database capacity in bytes over init.
         \\      *Required
+        \\
+        \\  --expected-keys <quantity>
+        \\      Number of expected keys to exploit memory preallocation.
+        \\      Default: 4KB.
+        \\
+        \\  --io-preserved-size <size>
+        \\      Preserved size for IO serialization buffer.
+        \\      Maybe used when clients sends big queries or batches.
+        \\      Default: 32KB.
         \\  
         \\  --aof
         \\      When this parameter is enabled, writes in AOF

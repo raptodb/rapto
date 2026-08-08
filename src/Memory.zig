@@ -41,7 +41,7 @@ const Map = std.HashMapUnmanaged(
 pub const Config = struct {
     /// Preallocation of hashmap during initialization
     /// based on quantity of expected keys.
-    initial_keys: u32 = 4 * 1024,
+    initial_keys: u32,
 
     pub fn realInitialKeys(config: Config) u32 {
         return @divFloor(config.initial_keys * load_factor, 100);
