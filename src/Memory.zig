@@ -12,6 +12,7 @@ const Memory = @This();
 
 const std = @import("std");
 const object = @import("object.zig");
+const assert = std.debug.assert;
 
 const SearchContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {
@@ -188,12 +189,21 @@ pub fn count(self: *const Memory) u64 {
     return self.map.count();
 }
 
+/// Clears Memory maintaining the preallocation of initial keys.
 pub fn clear(self: *Memory, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
-    if (self.map.capacity() <= self.config.realInitialKeys()) {
-        return self.removeAll(allocator);
+    // Other functions never reduce capacity less than initial keys.
+    assert(self.map.capacity() >= self.config.realInitialKeys());
+
+    if (self.map.capacity() == self.config.realInitialKeys()) {
+        // We don't need Hashmap resizing to
+        // keep the initial keys preallocated.
+        self.removeAll(allocator);
+    } else {
+        self.deinit(allocator);
+        self.* = try .init(allocator, self.config);
     }
-    self.deinit(allocator);
-    self.* = try .init(allocator, self.config);
+
+    assert(self.map.capacity() == self.config.realInitialKeys());
 }
 
 pub fn iterator(self: *Memory) Iterator {
