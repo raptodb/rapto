@@ -101,6 +101,9 @@ pub fn copy(
     // Copy only if dst_key does not exist.
     if_not_exists: bool,
 ) error{ KeyNotFound, InvalidKey, OutOfMemory }!void {
+    const src_entry = self.map.getEntryAdapted(src_key, SearchContext{}) orelse
+        return error.KeyNotFound;
+
     const dst_entry = try self.map.getOrPutAdapted(
         allocator,
         dst_key,
@@ -108,8 +111,6 @@ pub fn copy(
     );
     if (dst_entry.found_existing and if_not_exists) return;
 
-    const src_entry = self.map.getEntryAdapted(src_key, SearchContext{}) orelse
-        return error.KeyNotFound;
     const src_ref: object.Ref = .wrap(src_entry.key_ptr, src_entry.value_ptr);
     const src_type = src_ref.type();
 

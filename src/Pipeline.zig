@@ -16,7 +16,7 @@ pub const Config = struct {
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
     /// and is never deallocated until the `.deinit()` method.
-    preserved_size: u32,
+    preserved_size: u64,
 };
 
 config: Config,

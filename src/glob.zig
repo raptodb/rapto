@@ -6,7 +6,6 @@
 //! It contains the implementation of glob matching.
 
 const std = @import("std");
-const assert = std.debug.assert;
 
 pub fn classify(string: []const u8) enum { any, literal, pattern } {
     if (string.len == 0) return .literal;

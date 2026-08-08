@@ -56,10 +56,8 @@ pub const ErrorCode = enum(u8) {
     }
 };
 
+/// Serialize to writer values that have `serializeContentToWriter` method.
 pub fn writeValue(writer: *std.Io.Writer, value: anytype) std.Io.Writer.Error!void {
-    if (std.meta.hasFn(@TypeOf(value), "serializeToWriter")) {
-        return value.serializeToWriter(writer);
-    }
     return Value.serializeToWriter(writer, value);
 }
 
