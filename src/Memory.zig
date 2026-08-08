@@ -45,8 +45,9 @@ pub const Config = struct {
     /// based on quantity of expected keys.
     initial_keys: u32,
 
-    pub fn realInitialKeys(config: Config) u32 {
-        return @divFloor(config.initial_keys * load_factor, 100);
+    fn initialCapacity(config: Config) u32 {
+        const cap: u32 = config.initial_keys * 100 / load_factor + 1;
+        return std.math.ceilPowerOfTwo(u32, cap) catch unreachable;
     }
 };
 
@@ -57,7 +58,7 @@ map: Map,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) error{OutOfMemory}!Memory {
     var self: Memory = .{ .config = config, .map = .empty };
-    try self.map.ensureTotalCapacity(allocator, config.realInitialKeys());
+    try self.map.ensureTotalCapacity(allocator, config.initial_keys);
     return self;
 }
 
@@ -192,9 +193,9 @@ pub fn count(self: *const Memory) u64 {
 /// Clears Memory maintaining the preallocation of initial keys.
 pub fn clear(self: *Memory, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
     // Other functions never reduce capacity less than initial keys.
-    assert(self.map.capacity() >= self.config.realInitialKeys());
+    assert(self.map.capacity() >= self.config.initialCapacity());
 
-    if (self.map.capacity() == self.config.realInitialKeys()) {
+    if (self.map.capacity() == self.config.initialCapacity()) {
         // We don't need Hashmap resizing to
         // keep the initial keys preallocated.
         self.removeAll(allocator);
@@ -203,7 +204,7 @@ pub fn clear(self: *Memory, allocator: std.mem.Allocator) std.mem.Allocator.Erro
         self.* = try .init(allocator, self.config);
     }
 
-    assert(self.map.capacity() == self.config.realInitialKeys());
+    assert(self.map.capacity() == self.config.initialCapacity());
 }
 
 pub fn iterator(self: *Memory) Iterator {
