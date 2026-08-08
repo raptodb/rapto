@@ -4,10 +4,10 @@
 //!
 //! This file is part of "Rapto".
 //! It contains the implementation of memory.
-
-/// Main data structure of Rapto that stores
-/// the key-value pairs of the database. It
-/// provides safe CRUD operations to access Ref.
+//!
+//! Main data structure of Rapto that stores
+//! the key-value pairs of the database. It
+//! provides safe CRUD operations to access Ref.
 const Memory = @This();
 
 const std = @import("std");
@@ -31,6 +31,7 @@ const PutContext = struct {
     }
 };
 
+const load_factor: u32 = 75;
 const Map = std.HashMapUnmanaged(
     object.Key,
     object.Value,
@@ -47,8 +48,6 @@ pub const Config = struct {
         return @divFloor(config.initial_keys * load_factor, 100);
     }
 };
-
-const load_factor: u32 = 80;
 
 config: Config,
 /// Hashmap of objects. Internal API
