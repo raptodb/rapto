@@ -60,7 +60,7 @@ pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
             const arg = args.next() orelse
                 fatal("expected argument after flag", .{});
             io_preserved_size = std.fmt.parseUnsigned(u64, arg, 10) catch
-                fatal("specified argument for --preserved-size has wrong conversion", .{});
+                fatal("specified argument for --io-preserved-size has wrong conversion", .{});
         } else if (eql(u8, flag, "--aof")) {
             aof = true;
         } else if (eql(u8, flag, "--aof-sync-seconds")) {

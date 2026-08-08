@@ -60,12 +60,12 @@ pub const Command = union(enum) {
         \\
         \\  --expected-keys <quantity>
         \\      Number of expected keys to exploit memory preallocation.
-        \\      Default: 4KB.
+        \\      Default: 4096.
         \\
-        \\  --io-preserved-size <size>
+        \\  --io-preserved-size <bytes>
         \\      Preserved size for IO serialization buffer.
         \\      Maybe used when clients sends big queries or batches.
-        \\      Default: 32KB.
+        \\      Default: 32768 (32KB).
         \\  
         \\  --aof
         \\      When this parameter is enabled, writes in AOF
