@@ -14,9 +14,11 @@ const std = @import("std");
 const object = @import("object.zig");
 const assert = std.debug.assert;
 
+extern fn rapidhashMicro(key: [*]const u8, len: u64) u64;
+
 const SearchContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {
-        return std.hash.Wyhash.hash(0, s);
+        return rapidhashMicro(s.ptr, s.len);
     }
     pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
         return std.mem.eql(u8, a, b.get());
@@ -207,10 +209,6 @@ pub fn clear(self: *Memory, allocator: std.mem.Allocator) std.mem.Allocator.Erro
     assert(self.map.capacity() == self.config.initialCapacity());
 }
 
-pub fn iterator(self: *Memory) Iterator {
-    return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
-}
-
 pub const Iterator = struct {
     memory: *Memory,
     wrapped_iterator: Map.Iterator,
@@ -225,3 +223,7 @@ pub const Iterator = struct {
         self.wrapped_iterator.index = @min(self.wrapped_iterator.index + n, cap);
     }
 };
+
+pub fn iterator(self: *Memory) Iterator {
+    return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
+}

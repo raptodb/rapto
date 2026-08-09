@@ -21,6 +21,11 @@ pub fn build(b: *std.Build) void {
         .name = "raptodb",
         .root_module = exe_mod,
     });
+
+    exe.root_module.addCSourceFile(.{
+        .file = b.path("include/rapidhash.c"),
+        .flags = &.{ "-std=c99", "-O3" },
+    });
     exe.use_llvm = true;
     exe.root_module.link_libc = true;
 
@@ -31,6 +36,10 @@ pub fn build(b: *std.Build) void {
             .optimize = .Debug,
             .single_threaded = false,
         }),
+    });
+    lib_unit_tests.root_module.addCSourceFile(.{
+        .file = b.path("include/rapidhash.c"),
+        .flags = &.{ "-std=c99", "-O3" },
     });
     lib_unit_tests.root_module.link_libc = true;
 
