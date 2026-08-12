@@ -54,10 +54,6 @@ pub const Command = union(enum) {
         \\      Specifies the name of the database.
         \\      *Required
         \\
-        \\  --memory-size <size>
-        \\      Sets the maximum database capacity in bytes over init.
-        \\      *Required
-        \\
         \\  --expected-keys <quantity>
         \\      Number of expected keys to exploit memory preallocation.
         \\      Default: 4096.

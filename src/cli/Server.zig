@@ -13,8 +13,6 @@ const eql = std.mem.eql;
 
 /// Name of Server instance.
 name: []const u8,
-/// Maximum database capacity in bytes over init.
-memory_size: u64,
 /// When this parameter is enabled, writes in AOF
 /// in name.raptodb file.
 aof: bool = false,
@@ -35,7 +33,6 @@ io_preserved_size: u64 = 16 * 1024,
 
 pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
     var name: ?[]const u8 = null;
-    var memory_size: ?u64 = null;
     var aof: bool = false;
     var aof_file: ?[]const u8 = null;
     var aof_sync_seconds: i32 = 1;
@@ -46,11 +43,6 @@ pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
     while (args.next()) |flag| {
         if (eql(u8, flag, "--name")) {
             name = args.next() orelse fatal("expected argument after flag", .{});
-        } else if (eql(u8, flag, "--memory-size")) {
-            const arg = args.next() orelse
-                fatal("expected argument after flag", .{});
-            memory_size = std.fmt.parseUnsigned(u64, arg, 10) catch
-                fatal("specified argument for --memory-size has wrong conversion", .{});
         } else if (eql(u8, flag, "--expected-keys")) {
             const arg = args.next() orelse
                 fatal("expected argument after flag", .{});
@@ -84,12 +76,9 @@ pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
 
     if (name == null)
         fatal("missing required --name flag", .{});
-    if (memory_size == null)
-        fatal("missing required --memory-size flag", .{});
 
     return .{
         .name = name.?,
-        .memory_size = memory_size.?,
         .aof = aof,
         .aof_file = aof_file,
         .aof_sync_seconds = aof_sync_seconds,
