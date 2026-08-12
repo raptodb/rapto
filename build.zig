@@ -35,11 +35,9 @@ pub fn build(b: *std.Build) void {
             .single_threaded = false,
         }),
     });
-    lib_unit_tests.root_module.addCSourceFile(.{
-        .file = b.path("include/rapidhash.c"),
-        .flags = &.{ "-std=c99", "-O3" },
-    });
+
     rapidhash(b, lib_unit_tests.root_module, target);
+
     lib_unit_tests.root_module.link_libc = true;
 
     const run_tests = b.addRunArtifact(lib_unit_tests);
