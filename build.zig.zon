@@ -1,0 +1,13 @@
+.{
+    .name = .rapto,
+    .version = "0.1.0-dev",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .rapidhash = .{
+            .url = "git+https://github.com/Nicoshev/rapidhash#5c62c4b3352c7d4c87ed3429d2329ddaf9b74df9",
+            .hash = "N-V-__8AAP5vBwAjkTabLmdrg_coCgJ9hykuqkIsBpbspUIW",
+        },
+    },
+    .paths = .{""},
+    .fingerprint = 0x4057cbf0f895226,
+}

@@ -12,13 +12,12 @@ const Memory = @This();
 
 const std = @import("std");
 const object = @import("object.zig");
+const rapidhash = .{ .micro = @import("rapidhash").rapidhashMicro };
 const assert = std.debug.assert;
-
-extern fn rapidhashMicro(key: [*]const u8, len: u64) u64;
 
 const SearchContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {
-        return rapidhashMicro(s.ptr, s.len);
+        return rapidhash.micro(s.ptr, s.len);
     }
     pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
         return std.mem.eql(u8, a, b.get());

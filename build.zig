@@ -22,10 +22,8 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
-    exe.root_module.addCSourceFile(.{
-        .file = b.path("include/rapidhash.c"),
-        .flags = &.{ "-std=c99", "-O3" },
-    });
+    rapidhash(b, exe.root_module, target);
+
     exe.use_llvm = true;
     exe.root_module.link_libc = true;
 
@@ -41,6 +39,7 @@ pub fn build(b: *std.Build) void {
         .file = b.path("include/rapidhash.c"),
         .flags = &.{ "-std=c99", "-O3" },
     });
+    rapidhash(b, lib_unit_tests.root_module, target);
     lib_unit_tests.root_module.link_libc = true;
 
     const run_tests = b.addRunArtifact(lib_unit_tests);
@@ -48,4 +47,14 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
 
     b.installArtifact(exe);
+}
+
+fn rapidhash(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    const rapidhash_dep = b.dependency("rapidhash", .{});
+    const translated = b.addTranslateC(.{
+        .root_source_file = rapidhash_dep.path("rapidhash.h"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    module.addImport("rapidhash", translated.createModule());
 }

@@ -13,17 +13,16 @@ const Map = @This();
 const std = @import("std");
 const frames = @import("../../frames.zig");
 const glob = @import("../../glob.zig");
+const rapidhash = .{ .micro = @import("rapidhash").rapidhashMicro };
 const assert = std.debug.assert;
 
 const Value = @import("../../object.zig").Value;
 const Scalar = @import("../scalar.zig").Scalar;
 const String = @import("../scalar.zig").String;
 
-extern fn rapidhashMicro(key: [*]const u8, len: u64) u64;
-
 pub const MapContext = struct {
     pub fn hash(_: @This(), s: []const u8) u64 {
-        return rapidhashMicro(s.ptr, s.len);
+        return rapidhash.micro(s.ptr, s.len);
     }
     pub fn eql(_: @This(), a: []const u8, b: []const u8) bool {
         return std.mem.eql(u8, a, b);
