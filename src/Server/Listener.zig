@@ -32,9 +32,7 @@ pub const Config = struct {
     timeout_ms: i32,
 };
 
-pub const Event = union(enum) {
-    /// Probably never returned.
-    none,
+pub const Notification = union(enum) {
     /// Stream of accepted stream.
     accepted: Stream,
     accept_error: Stream.AcceptError,
@@ -81,7 +79,7 @@ pub fn deinit(self: *Listener, allocator: std.mem.Allocator, io: std.Io) void {
 }
 
 pub const EventQueue = struct {
-    l: *Listener,
+    listener: *Listener,
     index: u64 = 0,
     events: []const linux.epoll_event,
 
@@ -89,16 +87,17 @@ pub const EventQueue = struct {
         self: *EventQueue,
         allocator: std.mem.Allocator,
         io: std.Io,
-    ) std.mem.Allocator.Error!?Event {
+    ) std.mem.Allocator.Error!?Notification {
         if (self.index >= self.events.len) return null;
 
         const epoll_event = self.events[self.index];
         const event_fd = epoll_event.data.fd;
-        const event_type = self.l.classify(event_fd, epoll_event.events);
+        const event_type = self.listener.type(event_fd, epoll_event.events);
 
         return switch (event_type) {
             .new_connection => blk: {
-                const client = Stream.nonBlockAccept(io, &self.l.server) catch |err| {
+                const server = &self.listener.server;
+                const client = Stream.nonBlockAccept(io, server) catch |err| {
                     self.index += 1;
                     break :blk switch (err) {
                         // Finally, we have accepted all incoming clients.
@@ -109,27 +108,27 @@ pub const EventQueue = struct {
                         else => .{ .accept_error = err },
                     };
                 };
-                try self.l.register(allocator, client);
+                try self.listener.register(allocator, client);
                 // After successful registration of client, we will not
                 // increment self.index to handle the same new_connection
                 // event and accept other clients.
                 break :blk .{ .accepted = client };
             },
-            .connection_closed => blk: {
-                const stream = self.l.unregister(event_fd);
+            .disconnection => blk: {
+                const stream = self.listener.unregister(event_fd);
                 stream.close(io);
                 self.index += 1;
                 break :blk .{ .closed = stream.address() };
             },
             .incoming_data => blk: {
-                const entry = self.l.stream_map.get(event_fd) orelse unreachable;
+                const entry = self.listener.stream_map.get(event_fd) orelse unreachable;
                 self.index += 1;
                 break :blk .{ .readable = entry.stream };
             },
             .unknown => blk: {
                 @branchHint(.cold);
                 self.index += 1;
-                break :blk .none;
+                break :blk self.next(allocator, io);
             },
         };
     }
@@ -139,14 +138,21 @@ pub fn collectEvents(
     self: *Listener,
     allocator: std.mem.Allocator,
 ) std.mem.Allocator.Error!EventQueue {
-    var events = self.events.allocatedSlice();
-
-    const len = linux.epoll_wait(
+    var events = self.events.items;
+    const rc = linux.epoll_wait(
         self.epoll_fd,
         events.ptr,
         @intCast(events.len),
         self.config.timeout_ms,
     );
+
+    const len: usize = switch (linux.errno(rc)) {
+        .SUCCESS => @intCast(rc),
+        .INTR => 0, // No events available.
+        else => |err| {
+            std.debug.panic("epoll_wait: occurred error={t}\n", .{err});
+        },
+    };
 
     assert(events.len >= len);
     // More events available than capacity?
@@ -160,7 +166,7 @@ pub fn collectEvents(
         self.events.expandToCapacity();
     }
 
-    return .{ .l = self, .events = events[0..len] };
+    return .{ .listener = self, .events = events[0..len] };
 }
 
 /// Registers a stream previously accepted.
@@ -177,31 +183,42 @@ pub fn register(
     } };
     try self.stream_map.putNoClobber(allocator, stream_fd, entry);
 
-    _ = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, stream_fd, &entry.event);
+    const op = linux.EPOLL.CTL_ADD;
+    const rc = linux.epoll_ctl(self.epoll_fd, op, stream_fd, &entry.event);
+    switch (linux.errno(rc)) {
+        .SUCCESS => {},
+        .EXIST => unreachable, // Never exist before registration.
+        else => |err| {
+            std.debug.panic("epoll_ctl: occurred error={t} with op=add\n", .{err});
+        },
+    }
 }
 
-/// Transfer ownership to caller. Stream must be closed.
+/// Transfer ownership to caller. The caller is responsible for closing the stream.
 pub fn unregister(self: *Listener, stream_fd: linux.fd_t) Stream {
     _ = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_DEL, stream_fd, null);
     const kv = self.stream_map.fetchRemove(stream_fd) orelse unreachable;
     return kv.value.stream;
 }
 
-/// Translate lower-level event to higher-level classification.
-fn classify(
-    self: Listener,
-    event_fd: linux.fd_t,
-    event: u32,
-) enum { new_connection, connection_closed, incoming_data, unknown } {
-    if (event_fd == self.server.socket.handle)
-        return .new_connection;
-    if (event & (linux.EPOLL.ERR | linux.EPOLL.HUP) != 0)
-        return .connection_closed;
-    if (event & linux.EPOLL.IN != 0)
-        return .incoming_data;
-    if (event & linux.EPOLL.RDHUP != 0)
-        return .connection_closed;
+const EventType = enum {
+    new_connection,
+    disconnection,
+    incoming_data,
+    unknown,
+};
 
+/// Translates lower-level event to higher-level classification.
+fn @"type"(self: Listener, event_fd: linux.fd_t, event: u32) EventType {
+    const EPOLL = linux.EPOLL;
+    const EPOLL_ERRHUP = EPOLL.ERR | EPOLL.HUP;
+    const listener_fd = self.server.socket.handle;
+    // zig fmt: off
+    if (event_fd == listener_fd)   return .new_connection;
+    if (event & EPOLL_ERRHUP != 0) return .disconnection;
+    if (event & EPOLL.IN != 0)     return .incoming_data;
+    if (event & EPOLL.RDHUP != 0)  return .disconnection;
+    // zig fmt: on
     return .unknown;
 }
 
