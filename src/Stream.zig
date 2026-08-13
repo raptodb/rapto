@@ -54,12 +54,7 @@ pub fn nonBlockAccept(io: std.Io, server: *std.Io.net.Server) AcceptError!Stream
         };
     };
 
-    const socket: std.Io.net.Socket = .{
-        .handle = socket_fd,
-        .address = std.Io.Threaded.addressFromPosix(&storage),
-    };
-
-    return .fromSocket(socket);
+    return .from(socket_fd, std.Io.Threaded.addressFromPosix(&storage));
 }
 
 pub fn connect(io: std.Io, addr: std.Io.net.IpAddress) ConnectError!Stream {
@@ -70,6 +65,14 @@ pub fn connect(io: std.Io, addr: std.Io.net.IpAddress) ConnectError!Stream {
 
 pub fn fromSocket(socket: std.Io.net.Socket) Stream {
     return .{ .stream = .{ .socket = socket } };
+}
+
+pub fn from(socket_fd: linux.fd_t, socket_addr: std.Io.net.IpAddress) Stream {
+    const socket: std.Io.net.Socket = .{
+        .address = socket_addr,
+        .handle = socket_fd,
+    };
+    return .fromSocket(socket);
 }
 
 pub fn close(s: Stream, io: std.Io) void {
