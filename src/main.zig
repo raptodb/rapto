@@ -7,7 +7,7 @@
 
 const std = @import("std");
 const cli = @import("cli.zig");
-const zprof = @import("zprof.zig");
+const zprof = @import("zprof");
 const log = std.log.scoped(.rapto);
 
 pub const version = "0.1.0";
