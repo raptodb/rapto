@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    zprof(b, exe.root_module, target);
     rapidhash(b, exe.root_module, target);
 
     exe.use_llvm = true;
@@ -45,6 +46,14 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
 
     b.installArtifact(exe);
+}
+
+fn zprof(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    const zprof_dep = b.dependency("zprof", .{
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    module.addImport("zprof", zprof_dep.module("zprof"));
 }
 
 fn rapidhash(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {

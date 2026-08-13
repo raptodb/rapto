@@ -7,6 +7,10 @@
             .url = "git+https://github.com/Nicoshev/rapidhash#5c62c4b3352c7d4c87ed3429d2329ddaf9b74df9",
             .hash = "N-V-__8AAP5vBwAjkTabLmdrg_coCgJ9hykuqkIsBpbspUIW",
         },
+        .zprof = .{
+            .url = "git+https://github.com/andrvv/zprof#e3ce60a09d46bf5b095ff01e220593a722df8167",
+            .hash = "zprof-4.1.1-Z3ILTZN4AACGyJ-IeV74hgT2l4eqXAUU5OodXH028iw_",
+        },
     },
     .paths = .{""},
     .fingerprint = 0x4057cbf0f895226,
