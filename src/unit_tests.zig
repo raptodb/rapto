@@ -24,5 +24,7 @@ comptime {
     _ = @import("Query.zig");
     _ = @import("Query/Flags.zig");
     _ = @import("reply.zig");
+    _ = @import("Server/Listener.zig");
     _ = @import("state_machine.zig");
+    _ = @import("Stream.zig");
 }
