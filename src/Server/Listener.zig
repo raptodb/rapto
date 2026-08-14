@@ -73,21 +73,29 @@ streams: struct {
     const Streams = @This();
 
     /// Maps file descriptors directly to their stream addresses.
-    /// When address is null, file descriptor is not registered.
-    table: std.ArrayList(?std.Io.net.IpAddress),
+    table: std.ArrayList(std.Io.net.IpAddress),
+    /// Tracks which file descriptors are currently registered,
+    /// optimizes also iterator and allows efficient shrink.
+    registered: std.DynamicBitSetUnmanaged,
 
-    const init: Streams = .{ .table = .empty };
+    const init: Streams = .{
+        .table = .empty,
+        .registered = .{},
+    };
 
     fn deinit(self: *Streams, allocator: std.mem.Allocator, io: std.Io) void {
         var iter = self.iterator();
         while (iter.next()) |stream| stream.close(io);
         self.table.deinit(allocator);
+        self.registered.deinit(allocator);
     }
 
     fn get(self: Streams, fd: linux.fd_t) ?Stream {
-        assert(fd >= 0);
-        if (fd >= self.table.items.len) return null;
-        const addr = self.table.items[@intCast(fd)] orelse return null;
+        const index: u64 = @intCast(fd);
+        if (index >= self.registered.capacity()) return null;
+        if (!self.registered.isSet(index)) return null;
+
+        const addr = self.table.items[index];
         return .from(fd, addr);
     }
 
@@ -97,15 +105,29 @@ streams: struct {
         stream: Stream,
     ) std.mem.Allocator.Error!void {
         const fd = stream.fd();
-        assert(fd >= 0);
+        const index: u64 = @intCast(fd);
+
         try self.ensure(allocator, fd);
-        self.table.items[@intCast(fd)] = stream.address();
+        self.table.items[index] = stream.address();
+        self.registered.set(index);
     }
 
-    fn pop(self: *Streams, fd: linux.fd_t) ?Stream {
-        assert(fd >= 0);
+    fn pop(
+        self: *Streams,
+        allocator: std.mem.Allocator,
+        fd: linux.fd_t,
+    ) std.mem.Allocator.Error!?Stream {
+        const index: u64 = @intCast(fd);
         const stream = self.get(fd) orelse return null;
-        self.table.items[@intCast(fd)] = null;
+        self.registered.unset(index);
+        // `ensure` grows the table precisely to `fd + 1`, so the last
+        // table slot is always occupied by the greatest registered fd.
+        if (index == self.table.items.len - 1) {
+            // Listener file descriptor is never removed before `.deinit()`.
+            // At least one valid file descriptor is present.
+            const max_fd: linux.fd_t = @intCast(self.registered.findLastSet() orelse unreachable);
+            try self.shrink(allocator, max_fd);
+        }
         return stream;
     }
 
@@ -118,30 +140,42 @@ streams: struct {
         fd: linux.fd_t,
     ) std.mem.Allocator.Error!void {
         if (fd >= self.table.items.len) {
-            @branchHint(.cold);
-            const new_cap: u64 = @intCast(fd + 1);
-            try self.table.ensureTotalCapacityPrecise(allocator, new_cap);
+            @branchHint(.unlikely);
+            const new_len: u64 = @intCast(fd + 1);
+            try self.table.ensureTotalCapacityPrecise(allocator, new_len);
             self.table.expandToCapacity();
+            try self.registered.resize(allocator, new_len, false);
+        }
+    }
+
+    fn shrink(
+        self: *Streams,
+        allocator: std.mem.Allocator,
+        max_fd: linux.fd_t,
+    ) std.mem.Allocator.Error!void {
+        if (self.table.items.len > max_fd) {
+            @branchHint(.unlikely);
+            const new_len: u64 = @intCast(max_fd + 1);
+            try self.table.shrinkAndFreePrecise(allocator, new_len);
+            try self.registered.resize(allocator, new_len, false);
         }
     }
 
     const Iterator = struct {
         s: Streams,
-        // Used as index.
-        fd: linux.fd_t = 0,
+        registered: std.DynamicBitSetUnmanaged.Iterator(.{}),
 
         fn next(self: *Iterator) ?Stream {
-            while (self.fd < self.s.table.items.len) {
-                const maybe_stream = self.s.get(self.fd);
-                self.fd += 1;
-                if (maybe_stream) |stream| return stream;
-            }
-            return null;
+            const fd = self.registered.next() orelse return null;
+            return self.s.get(@intCast(fd));
         }
     };
 
     fn iterator(self: Streams) Iterator {
-        return .{ .s = self };
+        return .{
+            .s = self,
+            .registered = self.registered.iterator(.{}),
+        };
     }
 },
 
@@ -206,7 +240,7 @@ pub const EventQueue = struct {
             },
             .disconnection => blk: {
                 self.index += 1;
-                const stream = self.listener.unregister(event_fd);
+                const stream = try self.listener.unregister(allocator, event_fd);
                 stream.close(io);
                 break :blk .{ .closed = stream.address() };
             },
@@ -283,9 +317,13 @@ pub fn register(
 }
 
 /// Transfer ownership to caller. The caller is responsible for closing the stream.
-pub fn unregister(self: *Listener, stream_fd: linux.fd_t) Stream {
+pub fn unregister(
+    self: *Listener,
+    allocator: std.mem.Allocator,
+    stream_fd: linux.fd_t,
+) std.mem.Allocator.Error!Stream {
     _ = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_DEL, stream_fd, null);
-    return self.streams.pop(stream_fd) orelse unreachable;
+    return try self.streams.pop(allocator, stream_fd) orelse unreachable;
 }
 
 const EventType = enum { new_connection, disconnection, incoming_data, unknown };
