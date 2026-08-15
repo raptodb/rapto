@@ -19,10 +19,7 @@ const Value = @import("object.zig").Value;
 /// The only errors that can be returned to execute function.
 /// Others errors must be written on frames.
 pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error;
-pub const FatalError = error{
-    // When command received from execute is DOWN
-    Shutdown,
-} || Error;
+pub const ExecuteError = std.mem.Allocator.Error || error{Shutdown};
 
 pub const Quota = struct {
     count: u64 = 0,
@@ -67,7 +64,7 @@ pub fn execute(
     memory: *Memory, // Storage of state
     writer: *std.Io.Writer,
     query: *const Query, // Input
-) FatalError!void {
+) ExecuteError!void {
     const HandlerType = *const fn (*const Context) Error!void;
     const handler: HandlerType = switch (query.command) {
         .down => return error.Shutdown,
@@ -83,7 +80,11 @@ pub fn execute(
 
     handler(&ctx) catch |err| {
         @branchHint(.cold);
-        return err;
+        return switch (err) {
+            error.OutOfMemory,
+            error.WriteFailed,
+            => error.OutOfMemory,
+        };
     };
 }
 
