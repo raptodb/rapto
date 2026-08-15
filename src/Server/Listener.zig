@@ -20,7 +20,7 @@ pub const Config = struct {
     timeout_ms: i32,
 };
 
-pub const Notification = union(enum) {
+pub const Event = union(enum) {
     /// Stream of accepted client.
     accepted: Stream,
     accept_error: Stream.AcceptError,
@@ -211,7 +211,7 @@ pub const EventQueue = struct {
         self: *EventQueue,
         allocator: std.mem.Allocator,
         io: std.Io,
-    ) std.mem.Allocator.Error!?Notification {
+    ) std.mem.Allocator.Error!?Event {
         if (self.index >= self.events.len) return null;
 
         const epoll_event = self.events[self.index];
@@ -221,17 +221,29 @@ pub const EventQueue = struct {
         return switch (event_type) {
             .new_connection => blk: {
                 const server = &self.listener.server;
-                const client = Stream.nonBlockAccept(io, server) catch |err| {
-                    self.index += 1;
-                    break :blk switch (err) {
-                        // Finally, we have accepted all incoming clients.
-                        // self.index has been increased to handle next event.
-                        error.WouldBlock => self.next(allocator, io),
-                        // In this case, self.index has been increased to avoid
-                        // loop of accept_error.
-                        else => .{ .accept_error = err },
-                    };
+                const client = Stream.nonBlockAccept(
+                    io,
+                    server,
+                ) catch |err| switch (err) {
+                    // Client disconnected during accept. We have to
+                    // check if another client is available. self.index
+                    // is not incremented to trigger new_connection
+                    // label for next call to `.next()`.
+                    error.ConnectionAborted => break :blk self.next(allocator, io),
+
+                    // Finally, we have accepted all incoming clients.
+                    // self.index has been increased to handle next event.
+                    error.WouldBlock => {
+                        self.index += 1;
+                        break :blk self.next(allocator, io);
+                    },
+                    else => {
+                        // self.index has been increased to avoid error loop.
+                        self.index += 1;
+                        break :blk .{ .accept_error = err };
+                    },
                 };
+
                 try self.listener.register(allocator, client);
                 // After successful registration of client, we will not
                 // increment self.index to handle the same new_connection
