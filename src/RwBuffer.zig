@@ -3,9 +3,9 @@
 //! http://www.apache.org/licenses/LICENSE-2.0
 //!
 //! This file is part of "Rapto".
-//! It contains the implementation of IO/serialization pipeline.
+//! It contains the implementation of read/write swapping buffers.
 
-const Pipeline = @This();
+const RwBuffer = @This();
 
 const std = @import("std");
 const frames = @import("frames.zig");
@@ -24,7 +24,7 @@ config: Config,
 write_buffer: std.Io.Writer.Allocating,
 read_buffer: std.Io.Writer.Allocating,
 
-pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Pipeline {
+pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!RwBuffer {
     const preserved_size = @divFloor(config.preserved_size, 2);
     return .{
         .config = config,
@@ -33,24 +33,28 @@ pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Erro
     };
 }
 
-pub fn deinit(self: *Pipeline) void {
+pub fn deinit(self: *RwBuffer) void {
     self.write_buffer.deinit();
     self.read_buffer.deinit();
 }
 
-pub fn reset(self: *Pipeline) void {
+pub fn reset(self: *RwBuffer) void {
     const preserved_size = @divFloor(self.config.preserved_size, 2);
+    // Shrinks when used buffer is a quarter of capacity.
     const threshold = 4;
     resizeAllocating(&self.write_buffer, preserved_size, threshold);
     resizeAllocating(&self.read_buffer, preserved_size, threshold);
 }
 
-pub fn take(self: *Pipeline) []const u8 {
+/// As `peek` followed by buffer swapping. Returned buffer
+/// is valid until next `take`.
+/// This function invalidates last taken/peeked buffer.
+pub fn take(self: *RwBuffer) []const u8 {
     const content = self.peek();
     if (content.len == 0) {
         // There is nothing to swap.
         @branchHint(.unlikely);
-        return &.{};
+        return content;
     }
     // Swapping from write buffer to read buffer
     // ensures that ptr of content is not invalidated
@@ -60,11 +64,11 @@ pub fn take(self: *Pipeline) []const u8 {
     return content;
 }
 
-pub fn peek(self: *Pipeline) []const u8 {
+pub fn peek(self: *RwBuffer) []const u8 {
     return self.write_buffer.writer.buffered();
 }
 
-pub fn addManyAsSlice(self: *Pipeline, n: u64) std.mem.Allocator.Error![]u8 {
+pub fn addManyAsSlice(self: *RwBuffer, n: u64) std.mem.Allocator.Error![]u8 {
     const w = self.writer();
     const start = w.end;
     const needed_size = start + n;
@@ -80,16 +84,8 @@ pub fn addManyAsSlice(self: *Pipeline, n: u64) std.mem.Allocator.Error![]u8 {
     return w.buffer[start..w.end];
 }
 
-pub fn writer(self: *Pipeline) *std.Io.Writer {
+pub fn writer(self: *RwBuffer) *std.Io.Writer {
     return &self.write_buffer.writer;
-}
-
-pub fn beginFrame(self: *Pipeline) std.mem.Allocator.Error!frames.Builder {
-    return frames.Builder.begin(self.writer()) catch |err| switch (err) {
-        // Assuming writer is derived from std.Io.Writer.Allocating,
-        // write fails are caused by OOM.
-        error.WriteFailed => error.OutOfMemory,
-    };
 }
 
 fn resizeAllocating(
@@ -115,39 +111,39 @@ fn shrinkAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) 
     list.shrinkAndFree(allocating.allocator, preserved_size);
 }
 
-test "Pipeline" {
+test "RwBuffer" {
     const allocator = std.testing.allocator;
 
-    var pipeline: Pipeline = try .init(allocator, .{ .preserved_size = 16 });
-    defer pipeline.deinit();
+    var rw_buffer: RwBuffer = try .init(allocator, .{ .preserved_size = 16 });
+    defer rw_buffer.deinit();
 
-    try pipeline.writer().writeAll("abc");
-    try std.testing.expectEqualStrings("abc", pipeline.take());
+    try rw_buffer.writer().writeAll("abc");
+    try std.testing.expectEqualStrings("abc", rw_buffer.take());
 
-    try pipeline.writer().writeAll("def");
-    try std.testing.expectEqualStrings("def", pipeline.take());
+    try rw_buffer.writer().writeAll("def");
+    try std.testing.expectEqualStrings("def", rw_buffer.take());
 
-    try std.testing.expect(pipeline.take().len == 0);
+    try std.testing.expect(rw_buffer.take().len == 0);
 
-    const cap_before = pipeline.write_buffer.writer.buffer.len;
-    pipeline.reset();
-    const cap_after = pipeline.write_buffer.writer.buffer.len;
+    const cap_before = rw_buffer.write_buffer.writer.buffer.len;
+    rw_buffer.reset();
+    const cap_after = rw_buffer.write_buffer.writer.buffer.len;
     try std.testing.expectEqual(cap_before, cap_after);
-    try std.testing.expect(pipeline.writer().end == 0);
+    try std.testing.expect(rw_buffer.writer().end == 0);
 
     const big_chunk = [_]u8{'a'} ** 256;
-    try pipeline.writer().writeAll(&big_chunk);
-    var cap = pipeline.write_buffer.writer.buffer.len;
+    try rw_buffer.writer().writeAll(&big_chunk);
+    var cap = rw_buffer.write_buffer.writer.buffer.len;
     try std.testing.expect(cap > 8);
 
-    pipeline.reset();
-    cap = pipeline.write_buffer.writer.buffer.len;
+    rw_buffer.reset();
+    cap = rw_buffer.write_buffer.writer.buffer.len;
     try std.testing.expect(cap > 8);
 
-    pipeline.reset();
-    cap = pipeline.write_buffer.writer.buffer.len;
+    rw_buffer.reset();
+    cap = rw_buffer.write_buffer.writer.buffer.len;
     try std.testing.expectEqual(@as(u64, 8), cap);
 
-    try pipeline.writer().writeAll("new");
-    try std.testing.expectEqualStrings("new", pipeline.take());
+    try rw_buffer.writer().writeAll("new");
+    try std.testing.expectEqualStrings("new", rw_buffer.take());
 }
