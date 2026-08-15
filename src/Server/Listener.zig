@@ -21,14 +21,14 @@ pub const Config = struct {
 };
 
 pub const Event = union(enum) {
-    /// Stream of accepted client.
-    accepted: Stream,
-    accept_error: Stream.AcceptError,
+    /// Incoming clients are available.
+    /// To accept clients, use Acceptor.
+    accept,
+    /// Client disconnected. Stream
+    /// must be closed by caller.
+    disconnect: Stream,
     /// Incoming data from stream is available.
     readable: Stream,
-    /// Only address of closed stream. Stream
-    /// is not returned because fd is closed.
-    closed: std.Io.net.IpAddress,
 };
 
 pub const Error = std.mem.Allocator.Error || std.Io.net.IpAddress.ListenError;
@@ -112,13 +112,12 @@ streams: struct {
         self.registered.set(index);
     }
 
-    fn pop(
+    fn remove(
         self: *Streams,
         allocator: std.mem.Allocator,
         fd: linux.fd_t,
-    ) std.mem.Allocator.Error!?Stream {
+    ) std.mem.Allocator.Error!void {
         const index: u64 = @intCast(fd);
-        const stream = self.get(fd) orelse return null;
         self.registered.unset(index);
         // `ensure` grows the table precisely to `fd + 1`, so the last
         // table slot is always occupied by the greatest registered fd.
@@ -128,7 +127,6 @@ streams: struct {
             const max_fd: linux.fd_t = @intCast(self.registered.findLastSet() orelse unreachable);
             try self.shrink(allocator, max_fd);
         }
-        return stream;
     }
 
     /// Ensures that table has an accessible slot for fd. If buffer is
@@ -202,69 +200,62 @@ pub fn deinit(self: *Listener, allocator: std.mem.Allocator, io: std.Io) void {
     self.events.deinit(allocator);
 }
 
-pub const EventQueue = struct {
-    listener: *Listener,
-    index: u64 = 0,
-    events: []const linux.epoll_event,
+pub const Acceptor = struct {
+    pub const Error = std.mem.Allocator.Error || Stream.AcceptError;
 
-    pub fn next(
-        self: *EventQueue,
+    listener: *Listener,
+
+    pub fn init(listener: *Listener) Acceptor {
+        return .{ .listener = listener };
+    }
+
+    pub fn acceptNext(
+        self: Acceptor,
         allocator: std.mem.Allocator,
         io: std.Io,
-    ) std.mem.Allocator.Error!?Event {
+    ) Acceptor.Error!?Stream {
+        const client = Stream.nonBlockAccept(
+            io,
+            &self.listener.server,
+        ) catch |err| return switch (err) {
+            // Client disconnected during accept.
+            // Maybe another available client?
+            error.ConnectionAborted => self.acceptNext(allocator, io),
+            // No other clients are available.
+            error.WouldBlock => null,
+            else => err,
+        };
+        try self.listener.register(allocator, client);
+        return client;
+    }
+};
+
+pub const EventQueue = struct {
+    listener: *Listener,
+    events: []const linux.epoll_event,
+    index: u64 = 0,
+
+    pub fn next(self: *EventQueue, allocator: std.mem.Allocator, io: std.Io) ?Event {
         if (self.index >= self.events.len) return null;
 
         const epoll_event = self.events[self.index];
-        const event_fd = epoll_event.data.fd;
-        const event_type = self.listener.type(event_fd, epoll_event.events);
+        const fd, const events = .{ epoll_event.data.fd, epoll_event.events };
+        const event_type = self.listener.type(fd, events);
+        self.index += 1;
 
         return switch (event_type) {
-            .new_connection => blk: {
-                const server = &self.listener.server;
-                const client = Stream.nonBlockAccept(
-                    io,
-                    server,
-                ) catch |err| switch (err) {
-                    // Client disconnected during accept. We have to
-                    // check if another client is available. self.index
-                    // is not incremented to trigger new_connection
-                    // label for next call to `.next()`.
-                    error.ConnectionAborted => break :blk self.next(allocator, io),
-
-                    // Finally, we have accepted all incoming clients.
-                    // self.index has been increased to handle next event.
-                    error.WouldBlock => {
-                        self.index += 1;
-                        break :blk self.next(allocator, io);
-                    },
-                    else => {
-                        // self.index has been increased to avoid error loop.
-                        self.index += 1;
-                        break :blk .{ .accept_error = err };
-                    },
-                };
-
-                try self.listener.register(allocator, client);
-                // After successful registration of client, we will not
-                // increment self.index to handle the same new_connection
-                // event and accept other clients.
-                break :blk .{ .accepted = client };
+            .new_connection => .accept,
+            .disconnection => ev: {
+                const stream = self.listener.streams.get(fd) orelse unreachable;
+                break :ev .{ .disconnect = stream };
             },
-            .disconnection => blk: {
-                self.index += 1;
-                const stream = try self.listener.unregister(allocator, event_fd);
-                stream.close(io);
-                break :blk .{ .closed = stream.address() };
+            .incoming_data => ev: {
+                const stream = self.listener.streams.get(fd) orelse unreachable;
+                break :ev .{ .readable = stream };
             },
-            .incoming_data => blk: {
-                self.index += 1;
-                const stream = self.listener.streams.get(event_fd) orelse unreachable;
-                break :blk .{ .readable = stream };
-            },
-            .unknown => blk: {
+            .unknown => ev: {
                 @branchHint(.cold);
-                self.index += 1;
-                break :blk self.next(allocator, io);
+                break :ev self.next(allocator, io);
             },
         };
     }
@@ -297,15 +288,25 @@ pub fn collectEvents(
         @branchHint(.unlikely);
         // More available events for next call to `collectEvents`.
         try self.events.grow(allocator);
-        // `grow` invalidates events. We can get slice again.
         events = self.events.buffered();
     }
 
     return .{ .listener = self, .events = events[0..len] };
 }
 
+pub fn disconnect(
+    self: *Listener,
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    stream: Stream,
+) std.mem.Allocator.Error!void {
+    defer stream.close(io);
+    return self.unregister(allocator, stream.fd());
+}
+
 /// Registers a stream previously accepted.
-pub fn register(
+/// Called by `Acceptor.acceptNext()`.
+fn register(
     self: *Listener,
     allocator: std.mem.Allocator,
     stream: Stream,
@@ -328,14 +329,14 @@ pub fn register(
     }
 }
 
-/// Transfer ownership to caller. The caller is responsible for closing the stream.
-pub fn unregister(
+/// Transfer ownership to caller, responsible for closing the stream.
+fn unregister(
     self: *Listener,
     allocator: std.mem.Allocator,
     stream_fd: linux.fd_t,
-) std.mem.Allocator.Error!Stream {
+) std.mem.Allocator.Error!void {
     _ = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_DEL, stream_fd, null);
-    return try self.streams.pop(allocator, stream_fd) orelse unreachable;
+    return self.streams.remove(allocator, stream_fd);
 }
 
 const EventType = enum { new_connection, disconnection, incoming_data, unknown };
