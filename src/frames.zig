@@ -6,9 +6,8 @@
 //! It contains the implementation of frames reader and writer.
 //!
 //! Frames are represented as chain of [length-prefix][content].
-//! This is a global format to read messages from client, as
-//! pipeline (with zero-copy `Iterator`) or write message to
-//! send (with `Builder`). It also used by values of pair.
+//! This is a global format to read and deserialize messages from client, or
+//! serialize and write message to client. It also used by values of Memory.
 
 const std = @import("std");
 const assert = std.debug.assert;
