@@ -18,7 +18,7 @@ pub const Axis = struct {
     y: Decimal,
     z: Decimal,
 
-    pub fn deserialize(content: []const u8) error{ InvalidFormat, MismatchType }!Axis {
+    pub fn deserialize(content: []const u8) error{InvalidFormat}!Axis {
         if (content.len != (Decimal{}).len() * 3) return error.InvalidFormat;
 
         return .{
@@ -34,7 +34,7 @@ value: *Axis,
 pub fn initFromContent(
     allocator: std.mem.Allocator,
     content: []const u8,
-) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType })!Point {
+) (std.mem.Allocator.Error || error{InvalidFormat})!Point {
     const axis_ptr = try allocator.create(Axis);
     errdefer allocator.destroy(axis_ptr);
 
@@ -46,7 +46,7 @@ pub fn deinit(self: Point, allocator: std.mem.Allocator) void {
     allocator.destroy(self.value);
 }
 
-pub fn set(self: Point, content: []const u8) error{ InvalidFormat, MismatchType }!void {
+pub fn set(self: Point, content: []const u8) error{InvalidFormat}!void {
     self.value.* = try .deserialize(content);
 }
 

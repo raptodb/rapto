@@ -13,8 +13,8 @@ const std = @import("std");
 
 content: [8]u8 = undefined,
 
-pub fn fromContent(content: []const u8) error{MismatchType}!Decimal {
-    if (content.len != 8) return error.MismatchType;
+pub fn fromContent(content: []const u8) error{InvalidFormat}!Decimal {
+    if (content.len != 8) return error.InvalidFormat;
     return .{ .content = content[0..8].* };
 }
 
@@ -22,9 +22,8 @@ pub fn fromValue(value: f64) Decimal {
     return .{ .content = @bitCast(value) };
 }
 
-pub fn set(self: *Decimal, content: []const u8) error{MismatchType}!void {
-    if (content.len != 8) return error.MismatchType;
-    self.content = content[0..8].*;
+pub fn set(self: *Decimal, content: []const u8) error{InvalidFormat}!void {
+    self.* = try .fromContent(content);
 }
 
 pub fn dupe(self: Decimal) Decimal {
@@ -43,7 +42,13 @@ pub fn add(self: *Decimal, value: f64) error{MathOverflow}!void {
     const updated_value = self.get() + value;
     if (!std.math.isFinite(updated_value))
         return error.MathOverflow;
+    self.content = @bitCast(updated_value);
+}
 
+pub fn sub(self: *Decimal, value: f64) error{MathOverflow}!void {
+    const updated_value = self.get() - value;
+    if (!std.math.isFinite(updated_value))
+        return error.MathOverflow;
     self.content = @bitCast(updated_value);
 }
 

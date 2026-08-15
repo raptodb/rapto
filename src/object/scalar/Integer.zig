@@ -14,8 +14,8 @@ const std = @import("std");
 
 content: [8]u8 = undefined,
 
-pub fn fromContent(content: []const u8) error{MismatchType}!Integer {
-    if (content.len != 8) return error.MismatchType;
+pub fn fromContent(content: []const u8) error{InvalidFormat}!Integer {
+    if (content.len != 8) return error.InvalidFormat;
     return .{ .content = content[0..8].* };
 }
 
@@ -29,9 +29,8 @@ pub fn dupe(self: Integer) Integer {
     return self;
 }
 
-pub fn set(self: *Integer, content: []const u8) error{MismatchType}!void {
-    if (content.len != 8) return error.MismatchType;
-    self.content = content[0..8].*;
+pub fn set(self: *Integer, content: []const u8) error{InvalidFormat}!void {
+    self.* = try .fromContent(content);
 }
 
 pub fn get(self: Integer) i64 {
@@ -43,8 +42,13 @@ pub fn len(_: Integer) u64 {
 }
 
 pub fn add(self: *Integer, value: i64) error{MathOverflow}!void {
-    const updated_value = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
-    std.mem.writeInt(i64, &self.content, updated_value, .little);
+    const result = std.math.add(i64, self.get(), value) catch return error.MathOverflow;
+    self.* = .fromValue(result);
+}
+
+pub fn sub(self: *Integer, value: i64) error{MathOverflow}!void {
+    const result = std.math.sub(i64, self.get(), value) catch return error.MathOverflow;
+    self.* = .fromValue(result);
 }
 
 pub fn serializeContentToWriter(self: Integer, writer: *std.Io.Writer) std.Io.Writer.Error!void {
