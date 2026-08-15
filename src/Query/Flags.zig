@@ -15,7 +15,7 @@ pub const Error = error{InvalidFormat};
 /// on undefined operations as patterns and ranges.
 limit: Quota = .default,
 /// Starting cursor for the operation.
-/// Used mostly for pattern matching commands.
+/// Mostly used for pattern matching commands.
 cursor: Unsigned = .default,
 /// Used for insert command.
 replace: Bool = .default,

@@ -640,6 +640,43 @@ fn putOne(ctx: *const Context) !void {
     try reply.writeValue(ctx.writer, integer);
 }
 
+fn add(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, addOne);
+}
+
+fn addOne(ctx: *const Context) !void {
+    var args = ctx.query.args.iterator();
+
+    const key = args.next() orelse return error.MissingTokens;
+    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+
+    const is_add = try nextNumeric(&args, u8) == 1;
+
+    const serialized = args.next() orelse return error.MissingTokens;
+    const value_type, const content = try Value.splitSerialized(serialized);
+    if (value_type != ref.type()) return error.MismatchType;
+
+    switch (value_type) {
+        .integer => {
+            var result: Value.Integer = try .fromContent(content);
+            const value: i64 = ref.value(.integer).get();
+            if (is_add) try result.add(value) else try result.sub(value);
+            try ref.setValue(ctx.allocator, .integer, &result.content);
+
+            try reply.writeValue(ctx.writer, result);
+        },
+        .decimal => {
+            var result: Value.Decimal = try .fromContent(content);
+            const value: f64 = ref.value(.decimal).get();
+            if (is_add) try result.add(value) else try result.sub(value);
+            try ref.setValue(ctx.allocator, .integer, &result.content);
+
+            try reply.writeValue(ctx.writer, result);
+        },
+        else => return error.MismatchType,
+    }
+}
+
 fn rename(ctx: *const Context) Error!void {
     return writeOrThrow(ctx, renameOne);
 }
