@@ -87,35 +87,12 @@ pub fn fd(s: Stream) linux.fd_t {
     return s.stream.socket.handle;
 }
 
-pub fn writeOutgoing(self: Stream, io: std.Io, data: []const u8) WriteError!void {
-    var writer = self.stream.writer(io, &.{});
-
-    var header: [@sizeOf(StreamingHeader)]u8 = undefined;
-    std.mem.writeInt(StreamingHeader, &header, data.len, .little);
-    var buf: [2][]const u8 = .{ &header, data };
-    writer.interface.writeSplatAll(&buf, 1) catch |err| return switch (err) {
-        error.WriteFailed => writer.err.?,
-    };
+pub fn reader(s: Stream, io: std.Io) std.Io.net.Stream.Reader {
+    return s.stream.reader(io, &.{});
 }
 
-pub fn readIncomingSize(self: Stream, io: std.Io) ReadError!u64 {
-    var buf: [@sizeOf(StreamingHeader)]u8 = undefined;
-    var reader = self.stream.reader(io, &buf);
-    return reader.interface.takeInt(
-        StreamingHeader,
-        .little,
-    ) catch |err| return switch (err) {
-        error.ReadFailed => reader.err.?,
-        error.EndOfStream => |e| e,
-    };
-}
-
-pub fn readIncoming(self: Stream, io: std.Io, buf: []u8) ReadError!void {
-    var reader = self.stream.reader(io, &.{});
-    reader.interface.readSliceAll(buf) catch |err| return switch (err) {
-        error.ReadFailed => reader.err.?,
-        error.EndOfStream => |e| e,
-    };
+pub fn writer(s: Stream, io: std.Io) std.Io.net.Stream.Writer {
+    return s.stream.writer(io, &.{});
 }
 
 fn setNoDelay(socket_fd: linux.fd_t) std.posix.SetSockOptError!void {
