@@ -270,8 +270,8 @@ pub fn getKeys(self: Map) KeyIterator {
     return .{ .wrapped_iterator = self.ptr.keyIterator() };
 }
 
-pub fn getByKey(self: Map, key: []const u8) ?Scalar {
-    return self.ptr.get(key);
+pub fn getByKey(self: Map, key: []const u8) error{MapKeyNotFound}!Scalar {
+    return self.ptr.get(key) orelse error.MapKeyNotFound;
 }
 
 /// Pop selected entry, scalar must be deinitialized by caller.
@@ -279,8 +279,8 @@ pub fn popByKey(
     self: Map,
     allocator: std.mem.Allocator,
     key: []const u8,
-) ?Scalar {
-    const entry = self.ptr.fetchRemove(key) orelse return null;
+) error{MapKeyNotFound}!Scalar {
+    const entry = self.ptr.fetchRemove(key) orelse return error.MapKeyNotFound;
     allocator.free(entry.key);
     return entry.value;
 }
@@ -290,9 +290,8 @@ pub fn removeByKey(
     allocator: std.mem.Allocator,
     key: []const u8,
 ) error{MapKeyNotFound}!void {
-    const entry = self.ptr.fetchRemove(key) orelse return error.MapKeyNotFound;
-    allocator.free(entry.key);
-    entry.value.deinit(allocator);
+    const value = try self.popByKey(allocator, key);
+    value.deinit(allocator);
 }
 
 pub fn removeAll(self: Map, allocator: std.mem.Allocator) void {

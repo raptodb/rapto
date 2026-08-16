@@ -103,8 +103,8 @@ pub fn copy(
     // Copy only if dst_key does not exist.
     if_not_exists: bool,
 ) error{ KeyNotFound, InvalidKey, OutOfMemory }!void {
-    const src_entry = self.map.getEntryAdapted(src_key, SearchContext{}) orelse
-        return error.KeyNotFound;
+    const src_ref = try self.get(src_key);
+    const src_type = src_ref.type();
 
     const dst_entry = try self.map.getOrPutAdapted(
         allocator,
@@ -112,9 +112,6 @@ pub fn copy(
         SearchContext{},
     );
     if (dst_entry.found_existing and if_not_exists) return;
-
-    const src_ref: object.Ref = .wrap(src_entry.key_ptr, src_entry.value_ptr);
-    const src_type = src_ref.type();
 
     if (dst_entry.found_existing) {
         const old_type = dst_entry.key_ptr.getValueType();
@@ -156,8 +153,9 @@ pub fn ensure(
     return .{ .ref = ref, .found_existing = entry.found_existing };
 }
 
-pub fn get(self: *Memory, key: []const u8) ?object.Ref {
-    const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse return null;
+pub fn get(self: *Memory, key: []const u8) error{KeyNotFound}!object.Ref {
+    const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse
+        return error.KeyNotFound;
     return .wrap(entry.key_ptr, entry.value_ptr);
 }
 
@@ -168,7 +166,7 @@ pub fn remove(
     allocator: std.mem.Allocator,
     key: []const u8,
 ) error{KeyNotFound}!void {
-    const ref = self.get(key) orelse return error.KeyNotFound;
+    const ref = try self.get(key);
     return self.removeByRef(allocator, ref);
 }
 

@@ -99,7 +99,7 @@ fn get(ctx: *const Context) Error!void {
 
 fn getOne(ctx: *const Context, key: []const u8) !void {
     var limit: Quota = .init(ctx.query.flags.limit.get());
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
 
     switch (ref.type()) {
         .list => {
@@ -129,7 +129,7 @@ fn getListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -149,7 +149,7 @@ fn getMapOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -167,7 +167,7 @@ fn getMapOne(ctx: *const Context) !void {
             limit.advance();
         }
 
-        const scalar = map.getByKey(map_key) orelse continue;
+        const scalar = map.getByKey(map_key) catch continue;
         try reply.writeValue(ctx.writer, scalar);
     }
 }
@@ -235,7 +235,7 @@ fn del_patterns(ctx: *const Context) Error!void {
 
             // Removes the key if any of selected patterns matches.
             if (matches) {
-                ctx.memory.remove(ctx.allocator, key) catch continue;
+                ctx.memory.removeByRef(ctx.allocator, ref);
                 deleted += 1;
                 limit.advance();
             }
@@ -257,7 +257,7 @@ fn delListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -278,7 +278,7 @@ fn delMapOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -298,7 +298,7 @@ fn pop(ctx: *const Context) Error!void {
 
 fn popOne(ctx: *const Context, key: []const u8) !void {
     var limit: Quota = .init(ctx.query.flags.limit.get());
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
 
     switch (ref.type()) {
         inline .void, .integer, .decimal, .flag, .string, .point => |value_type| {
@@ -318,9 +318,7 @@ fn popOne(ctx: *const Context, key: []const u8) !void {
         },
     }
 
-    ctx.memory.remove(ctx.allocator, key) catch |err| switch (err) {
-        error.KeyNotFound => unreachable,
-    };
+    ctx.memory.removeByRef(ctx.allocator, ref);
 }
 
 fn pop_list(ctx: *const Context) Error!void {
@@ -332,7 +330,7 @@ fn popListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -361,7 +359,7 @@ fn popMapOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -373,7 +371,7 @@ fn popMapOne(ctx: *const Context) !void {
         var frame = try serializer.beginFrame();
         defer frame.end();
 
-        const scalar = map.popByKey(ctx.allocator, map_key) orelse continue;
+        const scalar = map.popByKey(ctx.allocator, map_key) catch continue;
         defer scalar.deinit(ctx.allocator);
         try reply.writeValue(ctx.writer, scalar);
     }
@@ -436,7 +434,7 @@ fn countListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -454,7 +452,7 @@ fn countMapPatternsOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -511,7 +509,7 @@ fn exists(ctx: *const Context) Error!void {
 }
 
 fn existsOne(ctx: *const Context, key: []const u8) !void {
-    const key_exists = ctx.memory.get(key) != null;
+    const key_exists = ctx.memory.get(key) != error.KeyNotFound;
     const integer: Value.Integer = .fromValue(@intFromBool(key_exists));
     try reply.writeValue(ctx.writer, integer);
 }
@@ -524,7 +522,7 @@ fn existsMapOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -536,7 +534,7 @@ fn existsMapOne(ctx: *const Context) !void {
         var frame = try serializer.beginFrame();
         defer frame.end();
 
-        const key_exists = map.getByKey(map_key) != null;
+        const key_exists = map.getByKey(map_key) != error.MapKeyNotFound;
         const integer: Value.Integer = .fromValue(@intFromBool(key_exists));
         try reply.writeValue(ctx.writer, integer);
     }
@@ -594,7 +592,7 @@ fn insertOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -648,7 +646,7 @@ fn addOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
 
     const is_add = try nextNumeric(&args, u8) == 1;
 
@@ -690,10 +688,13 @@ fn renameOne(ctx: *const Context) !void {
     if (std.mem.eql(u8, selected_key, new_key)) return;
 
     const new_ref = ctx.memory.get(new_key);
-    if (new_ref != null and ctx.query.flags.if_not_exists.get()) return error.DuplicatedKey;
+    if (new_ref != error.KeyNotFound and ctx.query.flags.if_not_exists.get()) return error.DuplicatedKey;
 
-    if (new_ref != null) ctx.memory.removeByRef(ctx.allocator, new_ref.?);
-    const selected_ref = ctx.memory.get(selected_key) orelse return error.KeyNotFound;
+    if (new_ref != error.KeyNotFound) ctx.memory.removeByRef(
+        ctx.allocator,
+        new_ref catch unreachable,
+    );
+    const selected_ref = try ctx.memory.get(selected_key);
     try selected_ref.setKey(ctx.allocator, new_key);
 }
 
@@ -720,7 +721,7 @@ fn @"type"(ctx: *const Context) Error!void {
 }
 
 fn typeOne(ctx: *const Context, key: []const u8) !void {
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     try reply.writeSerialized(ctx.writer, .string, @tagName(ref.type()));
 }
 
@@ -733,7 +734,7 @@ fn typeListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
 
     if (ref.type() != .list) return error.MismatchType;
 
@@ -762,7 +763,7 @@ fn typeMapOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -774,7 +775,7 @@ fn typeMapOne(ctx: *const Context) !void {
         var frame = try serializer.beginFrame();
         defer frame.end();
 
-        const scalar = map.getByKey(map_key) orelse continue;
+        const scalar = map.getByKey(map_key) catch continue;
         try reply.writeSerialized(ctx.writer, .string, @tagName(scalar.type()));
     }
 }
@@ -843,7 +844,7 @@ fn entriesPatternsOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = ctx.memory.get(key) orelse return error.KeyNotFound;
+    const ref = try ctx.memory.get(key);
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
