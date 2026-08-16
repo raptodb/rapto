@@ -11,6 +11,7 @@ const glob = @import("glob.zig");
 const reply = @import("reply.zig");
 const assert = std.debug.assert;
 
+const Ref = @import("object.zig").Ref;
 const Memory = @import("Memory.zig");
 const Query = @import("Query.zig");
 const Flags = Query.Flags;
@@ -98,26 +99,8 @@ fn get(ctx: *const Context) Error!void {
 }
 
 fn getOne(ctx: *const Context, key: []const u8) !void {
-    var limit: Quota = .init(ctx.query.flags.limit.get());
     const ref = try ctx.memory.get(key);
-
-    switch (ref.type()) {
-        .list => {
-            limit.reset();
-            const list: Value.List = ref.value(.list);
-            const range = list.get();
-            const fixed_range = range[0..@min(range.len, limit.remaining())];
-            try serializeList(ctx.writer, fixed_range);
-        },
-        .map => {
-            limit.reset();
-            const map: Value.Map = ref.value(.map);
-            try serializeMap(ctx.writer, limit.remaining(), map.get());
-        },
-        inline else => |value_type| {
-            try reply.writeValue(ctx.writer, ref.value(value_type));
-        },
-    }
+    return writeRef(ctx, ref);
 }
 
 fn get_list(ctx: *const Context) Error!void {
@@ -169,14 +152,24 @@ fn getMapOne(ctx: *const Context) !void {
 fn del(ctx: *const Context) Error!void {
     var args = ctx.query.args.iterator();
 
-    var total_deleted: i64 = 0;
-    while (args.next()) |str| {
-        const is_deleted = ctx.memory.remove(ctx.allocator, str) != error.KeyNotFound;
-        total_deleted += @intFromBool(is_deleted);
-    }
+    if (ctx.query.flags.get.get()) {
+        try writeOrThrowForEachKey(ctx, getDelOne);
+    } else {
+        var total_deleted: i64 = 0;
+        while (args.next()) |str| {
+            const is_deleted = ctx.memory.remove(ctx.allocator, str) != error.KeyNotFound;
+            total_deleted += @intFromBool(is_deleted);
+        }
 
-    const integer: Value.Integer = .fromValue(total_deleted);
-    try reply.writeValue(ctx.writer, integer);
+        const integer: Value.Integer = .fromValue(total_deleted);
+        try reply.writeValue(ctx.writer, integer);
+    }
+}
+
+fn getDelOne(ctx: *const Context, key: []const u8) !void {
+    const ref = try ctx.memory.get(key);
+    try writeRef(ctx, ref);
+    ctx.memory.removeByRef(ctx.allocator, ref);
 }
 
 fn del_patterns(ctx: *const Context) Error!void {
@@ -258,10 +251,16 @@ fn delListOne(ctx: *const Context) !void {
 
     const from, const to = try nextRange(&args, list.count());
     const range_len = @min(to - from + 1, limit.remaining());
-    try list.removeByRange(ctx.allocator, from, range_len);
+    const range = try list.getByRange(from, range_len);
 
-    const integer: Value.Integer = .fromValue(@intCast(list.count()));
-    try reply.writeValue(ctx.writer, integer);
+    if (ctx.query.flags.get.get()) {
+        try serializeList(ctx.writer, range);
+    } else {
+        const integer: Value.Integer = .fromValue(@intCast(list.count() - range_len));
+        try reply.writeValue(ctx.writer, integer);
+    }
+
+    try list.removeByRange(ctx.allocator, from, range_len);
 }
 
 fn del_map(ctx: *const Context) Error!void {
@@ -277,97 +276,25 @@ fn delMapOne(ctx: *const Context) !void {
 
     const map: Value.Map = ref.value(.map);
 
-    var iterator = map.getKeys();
-    while (iterator.next()) |map_key| {
-        map.removeByKey(ctx.allocator, map_key) catch continue;
-    }
+    if (ctx.query.flags.get.get()) {
+        var serializer: reply.ListSerializer = try .begin(ctx.writer);
+        defer serializer.end();
 
-    const integer: Value.Integer = .fromValue(@intCast(map.count()));
-    try reply.writeValue(ctx.writer, integer);
-}
+        while (args.next()) |map_key| {
+            var frame = try serializer.beginFrame();
+            defer frame.end();
 
-fn pop(ctx: *const Context) Error!void {
-    return writeOrThrowForEachKey(ctx, popOne);
-}
+            const scalar = map.popByKey(ctx.allocator, map_key) catch continue;
+            defer scalar.deinit(ctx.allocator);
+            try reply.writeValue(ctx.writer, scalar);
+        }
+    } else {
+        while (args.next()) |map_key| {
+            map.removeByKey(ctx.allocator, map_key) catch continue;
+        }
 
-fn popOne(ctx: *const Context, key: []const u8) !void {
-    var limit: Quota = .init(ctx.query.flags.limit.get());
-    const ref = try ctx.memory.get(key);
-
-    switch (ref.type()) {
-        inline .void, .integer, .decimal, .flag, .string, .point => |value_type| {
-            try reply.writeValue(ctx.writer, ref.value(value_type));
-        },
-        .list => {
-            limit.reset();
-            const list: Value.List = ref.value(.list);
-            const range = list.get();
-            const fixed_range = range[0..@min(range.len, limit.remaining())];
-            try serializeList(ctx.writer, fixed_range);
-        },
-        .map => {
-            limit.reset();
-            const map: Value.Map = ref.value(.map);
-            try serializeMap(ctx.writer, limit.remaining(), map.get());
-        },
-    }
-
-    ctx.memory.removeByRef(ctx.allocator, ref);
-}
-
-fn pop_list(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, popListOne);
-}
-
-fn popListOne(ctx: *const Context) !void {
-    const limit: Quota = .init(ctx.query.flags.limit.get());
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .list) return error.MismatchType;
-
-    const list: Value.List = ref.value(.list);
-
-    const from, const to = try nextRange(&args, list.count());
-    const range_len = @min(to - from + 1, limit.remaining());
-    const range = try list.getByRange(from, range_len);
-
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
-
-    for (range) |scalar| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        try reply.writeValue(ctx.writer, scalar);
-        try list.removeByRange(ctx.allocator, from, 1);
-    }
-}
-
-fn pop_map(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, popMapOne);
-}
-
-fn popMapOne(ctx: *const Context) !void {
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
-
-    while (args.next()) |map_key| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        const scalar = map.popByKey(ctx.allocator, map_key) catch continue;
-        defer scalar.deinit(ctx.allocator);
-        try reply.writeValue(ctx.writer, scalar);
+        const integer: Value.Integer = .fromValue(@intCast(map.count()));
+        try reply.writeValue(ctx.writer, integer);
     }
 }
 
@@ -548,9 +475,13 @@ fn setOne(ctx: *const Context) !void {
     if (value_type.group() == .collection) return error.MismatchType;
 
     if (ctx.query.flags.if_not_exists.get()) {
+        // Never replaces.
         _ = try ctx.memory.ensure(ctx.allocator, key, value_type, content);
     } else {
-        // Replaces, if exists, memory entry.
+        if (ctx.query.flags.get.get()) {
+            const old_ref: ?Ref = ctx.memory.get(key) catch null;
+            if (old_ref) |ref| try writeRef(ctx, ref);
+        }
         _ = try ctx.memory.put(ctx.allocator, key, value_type, content);
     }
 }
@@ -595,13 +526,19 @@ fn insertOne(ctx: *const Context) !void {
     const serialized = args.next() orelse return error.MissingTokens;
 
     if (ctx.query.flags.replace.get()) {
+        if (ctx.query.flags.get.get()) {
+            const old_value = (try list.getByRange(index, 1))[0];
+            try reply.writeValue(ctx.writer, old_value);
+        }
         try list.setByIndex(ctx.allocator, index, serialized);
     } else {
         try list.insert(ctx.allocator, index, serialized);
     }
 
-    const integer: Value.Integer = .fromValue(@intCast(list.count()));
-    try reply.writeValue(ctx.writer, integer);
+    if (!ctx.query.flags.replace.get() or !ctx.query.flags.get.get()) {
+        const integer: Value.Integer = .fromValue(@intCast(list.count()));
+        try reply.writeValue(ctx.writer, integer);
+    }
 }
 
 fn put(ctx: *const Context) Error!void {
@@ -623,8 +560,13 @@ fn putOne(ctx: *const Context) !void {
 
     const map: Value.Map = ref.value(.map);
     if (ctx.query.flags.if_not_exists.get()) {
+        // Never replaces.
         _ = try map.ensure(ctx.allocator, map_key, serialized);
     } else {
+        if (ctx.query.flags.get.get()) {
+            const scalar: ?Value.Scalar = map.getByKey(map_key) catch null;
+            if (scalar) |s| try reply.writeValue(ctx.writer, s);
+        }
         _ = try map.put(ctx.allocator, map_key, serialized);
     }
 
@@ -956,6 +898,26 @@ fn serializeList(
         defer frame.end();
 
         try reply.writeValue(writer, scalar);
+    }
+}
+
+fn writeRef(ctx: *const Context, ref: Ref) !void {
+    var limit: Quota = .init(ctx.query.flags.limit.get());
+
+    switch (ref.type()) {
+        .list => {
+            const list: Value.List = ref.value(.list);
+            const range = list.get();
+            const fixed_range = range[0..@min(range.len, limit.remaining())];
+            try serializeList(ctx.writer, fixed_range);
+        },
+        .map => {
+            const map: Value.Map = ref.value(.map);
+            try serializeMap(ctx.writer, limit.remaining(), map.get());
+        },
+        inline else => |value_type| {
+            try reply.writeValue(ctx.writer, ref.value(value_type));
+        },
     }
 }
 

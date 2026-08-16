@@ -21,6 +21,8 @@ cursor: Unsigned = .default,
 replace: Bool = .default,
 /// Used for put/set/copy/rename command.
 if_not_exists: Bool = .default,
+/// Returns old value before remove/replace.
+get: Bool = .default,
 
 pub const Quota = enum(u64) {
     unlimited = std.math.maxInt(usize),
