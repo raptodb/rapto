@@ -368,19 +368,19 @@ test "Map" {
 
     try std.testing.expect(m.count() == 6);
 
-    try std.testing.expect((m.getByKey(k_count).?).integer.get() == 42);
-    try std.testing.expect((m.getByKey(k_pi).?).decimal.isApproxEqualTo(3.14));
-    try std.testing.expect((m.getByKey(k_active).?).flag.get() == .true);
-    try std.testing.expectEqualStrings("hello", (m.getByKey(k_name).?).string.get());
-    _ = (m.getByKey(k_empty).?).void.get();
+    try std.testing.expect((m.getByKey(k_count) catch unreachable).integer.get() == 42);
+    try std.testing.expect((m.getByKey(k_pi) catch unreachable).decimal.isApproxEqualTo(3.14));
+    try std.testing.expect((m.getByKey(k_active) catch unreachable).flag.get() == .true);
+    try std.testing.expectEqualStrings("hello", (m.getByKey(k_name) catch unreachable).string.get());
+    _ = (m.getByKey(k_empty) catch unreachable).void.get();
     {
-        const ax = (m.getByKey(k_pos).?).point.get();
+        const ax = (m.getByKey(k_pos) catch unreachable).point.get();
         try std.testing.expect(ax.x.get() == 1.0);
         try std.testing.expect(ax.y.get() == 2.0);
         try std.testing.expect(ax.z.get() == 3.0);
     }
 
-    try std.testing.expect(m.getByKey(k_missing) == null);
+    try std.testing.expectError(error.MapKeyNotFound, m.getByKey(k_missing));
 
     try std.testing.expect(m.exists(k_count));
     try std.testing.expect(m.exists(k_pos));
@@ -393,15 +393,15 @@ test "Map" {
 
     try m.put(allocator, k_count, sv_int2);
     try std.testing.expect(m.count() == 6);
-    try std.testing.expect((m.getByKey(k_count).?).integer.get() == 99);
+    try std.testing.expect((m.getByKey(k_count) catch unreachable).integer.get() == 99);
 
     try m.put(allocator, k_new, sv_flag);
     try std.testing.expect(m.count() == 7);
-    try std.testing.expect((m.getByKey(k_new).?).flag.get() == .true);
+    try std.testing.expect((m.getByKey(k_new) catch unreachable).flag.get() == .true);
 
     try m.removeByKey(allocator, k_new);
     try std.testing.expect(m.count() == 6);
-    try std.testing.expect(m.getByKey(k_new) == null);
+    try std.testing.expectError(error.MapKeyNotFound, m.getByKey(k_new));
     try std.testing.expectError(error.MapKeyNotFound, m.removeByKey(allocator, k_ghost));
 
     {
@@ -413,7 +413,7 @@ test "Map" {
 
     m.removeAll(allocator);
     try std.testing.expect(m.count() == 0);
-    try std.testing.expect(m.getByKey(k_pi) == null);
+    try std.testing.expectError(error.MapKeyNotFound, m.getByKey(k_pi));
 
     try m.put(allocator, k_pi, sv_dec);
     try m.put(allocator, k_name, sv_str);
@@ -444,8 +444,8 @@ test "Map" {
         }
 
         try std.testing.expect(m2.count() == m.count());
-        try std.testing.expect((m2.getByKey(k_pi).?).decimal.isApproxEqualTo(3.14));
-        try std.testing.expectEqualStrings("hello", (m2.getByKey(k_name).?).string.get());
+        try std.testing.expect((m2.getByKey(k_pi) catch unreachable).decimal.isApproxEqualTo(3.14));
+        try std.testing.expectEqualStrings("hello", (m2.getByKey(k_name) catch unreachable).string.get());
     }
 }
 
