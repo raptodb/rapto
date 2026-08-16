@@ -491,11 +491,11 @@ fn setOne(ctx: *const Context) !void {
     }
 }
 
-fn append(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, appendOne);
+fn append_list(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, appendListOne);
 }
 
-fn appendOne(ctx: *const Context) !void {
+fn appendListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
@@ -511,6 +511,29 @@ fn appendOne(ctx: *const Context) !void {
     try list.insert(ctx.allocator, list.count(), serialized);
 
     const integer: Value.Integer = .fromValue(@intCast(list.count()));
+    try reply.writeValue(ctx.writer, integer);
+}
+
+fn append_string(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, appendStringOne);
+}
+
+fn appendStringOne(ctx: *const Context) !void {
+    var args = ctx.query.args.iterator();
+
+    const key = args.next() orelse return error.MissingTokens;
+    const serialized = args.next() orelse return error.MissingTokens;
+
+    const er = try ctx.memory.ensure(ctx.allocator, key, .list, &.{});
+    const ref = er.ref;
+    errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
+
+    if (ref.type() != .string) return error.MismatchType;
+
+    const string: Value.String = ref.value(.string);
+    try string.insert(ctx.allocator, string.len(), serialized);
+
+    const integer: Value.Integer = .fromValue(@intCast(string.len()));
     try reply.writeValue(ctx.writer, integer);
 }
 

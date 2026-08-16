@@ -19,7 +19,8 @@ pub const Command = enum(u8) {
     // Ordered by insertion. Do not reorder or change existing
     // values to preserve protocol compatibility across versions.
     set,
-    append,
+    append_list,
+    append_string,
     insert_list,
     insert_string,
     put,
@@ -54,8 +55,10 @@ pub const Command = enum(u8) {
     pub fn kind(self: Command) enum { read, write, control } {
         return switch (self) {
             .set,
-            .append,
-            .insert,
+            .append_list,
+            .append_string,
+            .insert_list,
+            .insert_string,
             .put,
             .add,
             .del,
@@ -70,16 +73,16 @@ pub const Command = enum(u8) {
             .get,
             .get_list,
             .get_map,
-            .count_pattern,
+            .count_patterns,
             .count_list,
-            .count_map_pattern,
+            .count_map_patterns,
             .exists,
             .exists_map,
             .type,
             .type_list,
             .type_map,
-            .keys_pattern,
-            .entries_pattern,
+            .keys_patterns,
+            .entries_patterns,
             => .read,
 
             .ping, .down => .control,
@@ -245,6 +248,7 @@ test "Query" {
         }
 
         const deserialized: Query = try .deserialize(writer.buffered());
+        _ = deserialized.command.kind();
 
         try std.testing.expect(deserialized.command == expected.command);
         try std.testing.expect(deserialized.flags.isEqualTo(expected.flags));
