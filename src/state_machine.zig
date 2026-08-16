@@ -154,18 +154,12 @@ fn getMapOne(ctx: *const Context) !void {
 
     const map: Value.Map = ref.value(.map);
 
-    var limit: Quota = .init(ctx.query.flags.limit.get());
     var serializer: reply.ListSerializer = try .begin(ctx.writer);
     defer serializer.end();
 
     while (args.next()) |map_key| {
-        if (limit.exceeded()) return;
-
         var frame = try serializer.beginFrame();
-        defer {
-            frame.end();
-            limit.advance();
-        }
+        defer frame.end();
 
         const scalar = map.getByKey(map_key) catch continue;
         try reply.writeValue(ctx.writer, scalar);
