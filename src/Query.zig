@@ -20,7 +20,8 @@ pub const Command = enum(u8) {
     // values to preserve protocol compatibility across versions.
     set,
     append,
-    insert,
+    insert_list,
+    insert_string,
     put,
     add,
     get,

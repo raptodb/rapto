@@ -474,14 +474,19 @@ fn setOne(ctx: *const Context) !void {
     const value_type, const content = try Value.splitSerialized(serialized);
     if (value_type.group() == .collection) return error.MismatchType;
 
+    if (ctx.query.flags.get.get()) {
+        const old_ref: ?Ref = ctx.memory.get(key) catch null;
+        if (old_ref) |ref| {
+            try writeRef(ctx, ref);
+            // Fast path.
+            if (ctx.query.flags.if_not_exists.get()) return;
+        }
+    }
+
     if (ctx.query.flags.if_not_exists.get()) {
         // Never replaces.
         _ = try ctx.memory.ensure(ctx.allocator, key, value_type, content);
     } else {
-        if (ctx.query.flags.get.get()) {
-            const old_ref: ?Ref = ctx.memory.get(key) catch null;
-            if (old_ref) |ref| try writeRef(ctx, ref);
-        }
         _ = try ctx.memory.put(ctx.allocator, key, value_type, content);
     }
 }
@@ -509,11 +514,40 @@ fn appendOne(ctx: *const Context) !void {
     try reply.writeValue(ctx.writer, integer);
 }
 
-fn insert(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, insertOne);
+fn insert_string(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, insertListOne);
 }
 
-fn insertOne(ctx: *const Context) !void {
+fn insertStringOne(ctx: *const Context) !void {
+    var args = ctx.query.args.iterator();
+
+    const key = args.next() orelse return error.MissingTokens;
+    const ref = try ctx.memory.get(key);
+    if (ref.type() != .list) return error.MismatchType;
+
+    const string: Value.String = ref.value(.string);
+
+    const index = try nextIndex(&args, string.len());
+    const serialized = args.next() orelse return error.MissingTokens;
+    const value_type, const content = try Value.splitSerialized(serialized);
+    if (value_type != .string) return error.MismatchType;
+
+    if (ctx.query.flags.get.get()) {
+        try reply.writeValue(ctx.writer, string.get());
+    }
+
+    if (ctx.query.flags.replace.get()) {
+        try string.replace(index, content);
+    } else {
+        try string.insert(ctx.allocator, index, content);
+    }
+}
+
+fn insert_list(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, insertListOne);
+}
+
+fn insertListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
@@ -525,19 +559,15 @@ fn insertOne(ctx: *const Context) !void {
     const index = try nextIndex(&args, list.count());
     const serialized = args.next() orelse return error.MissingTokens;
 
+    if (ctx.query.flags.get.get()) {
+        const old_value = (try list.getByRange(index, 1))[0];
+        try reply.writeValue(ctx.writer, old_value);
+    }
+
     if (ctx.query.flags.replace.get()) {
-        if (ctx.query.flags.get.get()) {
-            const old_value = (try list.getByRange(index, 1))[0];
-            try reply.writeValue(ctx.writer, old_value);
-        }
         try list.setByIndex(ctx.allocator, index, serialized);
     } else {
         try list.insert(ctx.allocator, index, serialized);
-    }
-
-    if (!ctx.query.flags.replace.get() or !ctx.query.flags.get.get()) {
-        const integer: Value.Integer = .fromValue(@intCast(list.count()));
-        try reply.writeValue(ctx.writer, integer);
     }
 }
 
@@ -559,19 +589,21 @@ fn putOne(ctx: *const Context) !void {
     const serialized = args.next() orelse return error.MissingTokens;
 
     const map: Value.Map = ref.value(.map);
+
+    if (ctx.query.flags.get.get()) {
+        const scalar: ?Value.Scalar = map.getByKey(map_key) catch null;
+        if (scalar) |s| {
+            try reply.writeValue(ctx.writer, s); // Fast path.
+            if (ctx.query.flags.if_not_exists.get()) return;
+        }
+    }
+
     if (ctx.query.flags.if_not_exists.get()) {
         // Never replaces.
         _ = try map.ensure(ctx.allocator, map_key, serialized);
     } else {
-        if (ctx.query.flags.get.get()) {
-            const scalar: ?Value.Scalar = map.getByKey(map_key) catch null;
-            if (scalar) |s| try reply.writeValue(ctx.writer, s);
-        }
         _ = try map.put(ctx.allocator, map_key, serialized);
     }
-
-    const integer: Value.Integer = .fromValue(@intCast(map.count()));
-    try reply.writeValue(ctx.writer, integer);
 }
 
 fn add(ctx: *const Context) Error!void {
