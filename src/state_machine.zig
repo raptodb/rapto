@@ -523,15 +523,17 @@ fn appendStringOne(ctx: *const Context) !void {
 
     const key = args.next() orelse return error.MissingTokens;
     const serialized = args.next() orelse return error.MissingTokens;
+    const value_type, const content = try Value.splitSerialized(serialized);
+    if (value_type != .string) return error.MismatchType;
 
     const er = try ctx.memory.ensure(ctx.allocator, key, .list, &.{});
     const ref = er.ref;
     errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
 
-    if (ref.type() != .string) return error.MismatchType;
+    if (value_type != .string) return error.MismatchType;
 
     const string: Value.String = ref.value(.string);
-    try string.insert(ctx.allocator, string.len(), serialized);
+    try string.insert(ctx.allocator, string.len(), content);
 
     const integer: Value.Integer = .fromValue(@intCast(string.len()));
     try reply.writeValue(ctx.writer, integer);
