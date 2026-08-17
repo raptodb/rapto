@@ -34,11 +34,12 @@ pub fn set(
     allocator: std.mem.Allocator,
     content: []const u8,
 ) std.mem.Allocator.Error!void {
+    if (std.mem.eql(u8, self.get(), content)) return;
     try self.resize(allocator, content.len);
     @memcpy(self.ptr.items[0..content.len], content);
 }
 
-/// Inserts string at specific index. Assumes index is in bounds
+/// Inserts string at specific index. Assumes index is in bounds.
 pub fn insert(
     self: String,
     allocator: std.mem.Allocator,
