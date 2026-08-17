@@ -660,7 +660,7 @@ fn addOne(ctx: *const Context) !void {
             var result: Value.Decimal = try .fromContent(content);
             const value: f64 = ref.value(.decimal).get();
             if (is_add) try result.add(value) else try result.sub(value);
-            try ref.setValue(ctx.allocator, .integer, &result.content);
+            try ref.setValue(ctx.allocator, .decimal, &result.content);
 
             try reply.writeValue(ctx.writer, result);
         },
