@@ -62,7 +62,7 @@ pub const Key = struct {
     /// The tag stores the value type in the 3 least significant bits.
     ptr: TaggedPtr([*]align(ptr_alignment.toByteUnits()) u8) = undefined,
 
-    /// Initializes key by duplicating it
+    /// Initializes key by duplicating it.
     pub fn init(allocator: std.mem.Allocator, key: []const u8, value_type: Value.Type) Error!Key {
         if (!isValidKey(key)) return error.InvalidKey;
 
@@ -202,11 +202,17 @@ pub const Value = union {
         }
 
         pub fn of(value: anytype) Type {
-            const ValueType = @TypeOf(value);
-            inline for (std.meta.fields(Value), std.meta.fields(Type)) |field, t| {
-                if (field.type == ValueType) return @enumFromInt(t.value);
-            }
-            unreachable;
+            return switch (@TypeOf(value)) {
+                Value.Void => .void,
+                Value.Integer => .integer,
+                Value.Decimal => .decimal,
+                Value.Flag => .flag,
+                Value.String => .string,
+                Value.Point => .point,
+                Value.List => .list,
+                Value.Map => .map,
+                else => unreachable,
+            };
         }
 
         pub fn group(self: Type) enum { scalar, collection } {
@@ -222,9 +228,16 @@ pub const Value = union {
     };
 
     pub fn UnionType(comptime value_type: Type) type {
-        @setEvalBranchQuota(2000);
-        const tag = comptime std.meta.stringToEnum(std.meta.FieldEnum(Value), @tagName(value_type));
-        return std.meta.fieldInfo(Value, tag orelse unreachable).type;
+        return switch (value_type) {
+            .void => Value.Void,
+            .integer => Value.Integer,
+            .decimal => Value.Decimal,
+            .flag => Value.Flag,
+            .string => Value.String,
+            .point => Value.Point,
+            .list => Value.List,
+            .map => Value.Map,
+        };
     }
 
     // Scalar types

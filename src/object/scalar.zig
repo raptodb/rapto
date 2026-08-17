@@ -19,7 +19,7 @@ pub const Point = @import("scalar/Point.zig");
 
 /// Scalar value types used by List or Map as item.
 /// Item contains information about the value type,
-/// allowing the serializeToWriter method.
+/// allowing the `serializeToWriter` method.
 pub const Scalar = union(enum) {
     void: Void,
     integer: Integer,
@@ -112,17 +112,9 @@ pub const Scalar = union(enum) {
         };
     }
 
-    pub fn print(self: Scalar, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        return switch (self) {
-            inline else => |_, tag| {
-                try @field(self, @tagName(tag)).print(writer);
-            },
-        };
-    }
-
     pub fn @"type"(self: Scalar) Value.Type {
         const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
-        // This enum is always a subset with less quantity of Type,
+        // This enum is always a subset with less quantity of Type(s),
         // so the conversion is always possible.
         return Value.Type.fromInt(self_int_enum) catch unreachable;
     }
