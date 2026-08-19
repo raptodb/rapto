@@ -94,32 +94,35 @@ streams: struct {
         const index: u64 = @intCast(fd);
         if (index >= self.registered.capacity()) return null;
         if (!self.registered.isSet(index)) return null;
+        return self.getAssumeExists(fd);
+    }
 
+    fn getAssumeExists(self: Streams, fd: linux.fd_t) Stream {
+        const index: u64 = @intCast(fd);
         const addr = self.table.items[index];
         return .from(fd, addr);
     }
 
-    fn put(
+    fn putNoClobber(
         self: *Streams,
         allocator: std.mem.Allocator,
         stream: Stream,
     ) std.mem.Allocator.Error!void {
         const fd = stream.fd();
         const index: u64 = @intCast(fd);
-
         try self.ensure(allocator, fd);
         self.table.items[index] = stream.address();
         self.registered.set(index);
     }
 
-    fn remove(
+    fn removeAssumeExists(
         self: *Streams,
         allocator: std.mem.Allocator,
         fd: linux.fd_t,
     ) std.mem.Allocator.Error!void {
         const index: u64 = @intCast(fd);
         self.registered.unset(index);
-        // `ensure` grows the table precisely to `fd + 1`, so the last
+        // `.ensure()` grows the table precisely to `fd + 1`, so the last
         // table slot is always occupied by the greatest registered fd.
         if (index == self.table.items.len - 1) {
             // Listener file descriptor is never removed before `.deinit()`.
@@ -246,11 +249,11 @@ pub const EventQueue = struct {
         return switch (event_type) {
             .new_connection => .accept,
             .disconnection => ev: {
-                const stream = self.listener.streams.get(fd) orelse unreachable;
+                const stream = self.listener.streams.getAssumeExists(fd);
                 break :ev .{ .disconnect = stream };
             },
             .incoming_data => ev: {
-                const stream = self.listener.streams.get(fd) orelse unreachable;
+                const stream = self.listener.streams.getAssumeExists(fd);
                 break :ev .{ .readable = stream };
             },
             .unknown => ev: {
@@ -312,7 +315,7 @@ fn register(
     stream: Stream,
 ) std.mem.Allocator.Error!void {
     const stream_fd = stream.fd();
-    try self.streams.put(allocator, stream);
+    try self.streams.putNoClobber(allocator, stream);
 
     var event: linux.epoll_event = .{
         .events = linux.EPOLL.IN | linux.EPOLL.RDHUP,
@@ -335,8 +338,9 @@ fn unregister(
     allocator: std.mem.Allocator,
     stream_fd: linux.fd_t,
 ) std.mem.Allocator.Error!void {
-    _ = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_DEL, stream_fd, null);
-    return self.streams.remove(allocator, stream_fd);
+    const rc = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_DEL, stream_fd, null);
+    assert(linux.errno(rc) == .SUCCESS);
+    return self.streams.removeAssumeExists(allocator, stream_fd);
 }
 
 const EventType = enum { new_connection, disconnection, incoming_data, unknown };
