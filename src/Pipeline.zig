@@ -20,16 +20,28 @@ pub const Config = struct {
     /// The preserved size is allocated at initialization time
     /// and is never deallocated until the `.deinit()` method.
     rw_buffer_preserved_size: u64,
+    /// Maximum readable bytes from `.read()` over header.
+    /// This avoid too large inputs from reader (maybe socket)
+    /// throwing error.StreamTooLong.
+    /// TODO: make this configurable with cli flags.
+    max_pipeline_bytes: u64 =
+        // Allows client to send 512 MiB as Redis/Valkey.
+        (512 * 1024 * 1024) - @sizeOf(Header),
 };
 
 /// Size type for length-prefix.
-pub const Header = u64;
+pub const Header = u32;
+
+config: Config,
 
 rw_buffer: RwBuffer,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Pipeline {
     const rwb_config: RwBuffer.Config = .{ .preserved_size = config.rw_buffer_preserved_size };
-    return .{ .rw_buffer = try .init(allocator, rwb_config) };
+    return .{
+        .config = config,
+        .rw_buffer = try .init(allocator, rwb_config),
+    };
 }
 
 pub fn deinit(self: *Pipeline) void {
@@ -53,7 +65,7 @@ pub fn writer(self: *Pipeline) *std.Io.Writer {
     return self.rw_buffer.writer();
 }
 
-pub const ReadError = std.mem.Allocator.Error || std.Io.Reader.Error;
+pub const ReadError = std.mem.Allocator.Error || std.Io.Reader.DelimiterError;
 
 /// Reads a length-prefixed buffer with two syscalls.
 /// This function invalidates buffers, starting a new pipeline cycle.
@@ -64,6 +76,8 @@ pub fn read(self: *Pipeline, reader: *std.Io.Reader) ReadError!void {
     // we can read header of pipeline and next perform a single read.
     try reader.readSliceAll(&buf);
     const size: u64 = std.mem.readInt(Header, &buf, .little);
+    if (size > self.config.max_pipeline_bytes) return error.StreamTooLong;
+
     // Now we can allocate one buffer directly with all length required.
     const read_buffer = try self.rw_buffer.addManyAsSlice(size);
     // Since buf belongs to pipeline, this single-read syscall trasfers
@@ -74,7 +88,7 @@ pub fn read(self: *Pipeline, reader: *std.Io.Reader) ReadError!void {
 pub fn stream(self: *Pipeline, w: *std.Io.Writer) std.Io.Writer.Error!void {
     const written = self.rw_buffer.take();
     var header: [@sizeOf(Header)]u8 = undefined;
-    std.mem.writeInt(Header, &header, written.len, .little);
+    std.mem.writeInt(Header, &header, @intCast(written.len), .little);
     // Builds buffer with length-prefix.
     var buf: [2][]const u8 = .{ &header, written };
     try w.writeVecAll(&buf);
