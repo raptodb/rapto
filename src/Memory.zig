@@ -57,7 +57,7 @@ config: Config,
 /// should not be used directly.
 map: Map,
 
-pub fn init(allocator: std.mem.Allocator, config: Config) error{OutOfMemory}!Memory {
+pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Memory {
     var self: Memory = .{ .config = config, .map = .empty };
     try self.map.ensureTotalCapacity(allocator, config.initial_keys);
     return self;
