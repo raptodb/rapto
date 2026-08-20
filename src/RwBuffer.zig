@@ -32,6 +32,7 @@ pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Erro
     self.config = config;
     if (config.single_buffer) {
         self.write_buffer = try .initCapacity(allocator, config.preserved_size);
+        self.read_buffer = .init(allocator);
     } else {
         const shared_preserved_size = @divFloor(config.preserved_size, 2);
         self.write_buffer = try .initCapacity(allocator, shared_preserved_size);
@@ -76,7 +77,7 @@ pub fn take(self: *RwBuffer) []const u8 {
     return content;
 }
 
-pub fn peek(self: *RwBuffer) []const u8 {
+pub fn peek(self: RwBuffer) []const u8 {
     return self.write_buffer.writer.buffered();
 }
 

@@ -48,7 +48,7 @@ pub fn init(
     if (!config.aof and config.aof_file == null)
         return null;
 
-    const owned_path: ?[]u8 = null;
+    var owned_path: ?[]u8 = null;
     if (config.aof_file == null) {
         owned_path = try std.fmt.allocPrint(allocator, "{s}.raptodb", .{config.name});
     }
@@ -129,7 +129,7 @@ pub fn flush(self: *Aof, io: std.Io) std.Io.File.Writer.Error!void {
 }
 
 pub fn load(
-    self: *Aof,
+    self: Aof,
     allocator: std.mem.Allocator,
     io: std.Io,
     memory: *Memory,
