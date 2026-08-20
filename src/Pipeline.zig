@@ -24,6 +24,7 @@ pub const Config = struct {
     /// This avoid too large inputs from reader (maybe socket)
     /// throwing error.StreamTooLong.
     /// TODO: make this configurable with cli flags.
+    /// NOTE: assuming Header=u32, this limit must be less than 2^32-1.
     max_pipeline_bytes: u64 =
         // Allows clients to send 512 MiB as Redis/Valkey.
         (512 * 1024 * 1024) - @sizeOf(Header),
@@ -31,34 +32,25 @@ pub const Config = struct {
 
 /// Size type for length-prefix.
 pub const Header = u32;
+/// Size type for length-prefix frame, as query or reply.
+pub const FrameHeader = u32;
 
 config: Config,
 
 rw_buffer: RwBuffer,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Pipeline {
-    const rwb_config: RwBuffer.Config = .{ .preserved_size = config.rw_buffer_preserved_size };
+    const rw_buffer_config: RwBuffer.Config = .{
+        .preserved_size = config.rw_buffer_preserved_size,
+    };
     return .{
         .config = config,
-        .rw_buffer = try .init(allocator, rwb_config),
+        .rw_buffer = try .init(allocator, rw_buffer_config),
     };
 }
 
 pub fn deinit(self: *Pipeline) void {
     self.rw_buffer.deinit();
-}
-
-pub fn append(self: *Pipeline, serialized: []const u8) std.mem.Allocator.Error!void {
-    const w = self.writer();
-    frames.Builder.writeHeader(
-        w,
-        @intCast(serialized.len),
-    ) catch |err| return switch (err) {
-        error.WriteFailed => error.OutOfMemory,
-    };
-    w.writeAll(serialized) catch |err| return switch (err) {
-        error.WriteFailed => error.OutOfMemory,
-    };
 }
 
 pub fn writer(self: *Pipeline) *std.Io.Writer {
@@ -87,28 +79,11 @@ pub fn read(self: *Pipeline, reader: *std.Io.Reader) ReadError!void {
 
 pub fn stream(self: *Pipeline, w: *std.Io.Writer) std.Io.Writer.Error!void {
     const written = self.rw_buffer.take();
-    var header: [@sizeOf(Header)]u8 = undefined;
-    std.mem.writeInt(Header, &header, @intCast(written.len), .little);
-    // Builds buffer with length-prefix.
-    var buf: [2][]const u8 = .{ &header, written };
-    try w.writeVecAll(&buf);
+    return frames.append(w, Header, written);
 }
 
-pub const Builder = struct {
-    wrapped_builder: frames.Builder,
-
-    pub fn begin(pipeline: *Pipeline) std.mem.Allocator.Error!Builder {
-        const w = pipeline.writer();
-        return .{ .wrapped_builder = try .begin(w) };
-    }
-
-    pub fn end(self: Builder) void {
-        self.wrapped_builder.end();
-    }
-};
-
 pub const Iterator = struct {
-    wrapped_iterator: frames.Iterator,
+    wrapped_iterator: frames.IteratorType(FrameHeader),
 
     pub fn init(pipeline: []const u8) Iterator {
         return .{ .wrapped_iterator = .init(pipeline) };
@@ -131,3 +106,16 @@ pub fn take(self: *Pipeline) []const u8 {
 pub fn peek(self: *Pipeline) []const u8 {
     return self.rw_buffer.peek();
 }
+
+pub const Builder = struct {
+    wrapped_builder: frames.BuilderType(FrameHeader),
+
+    pub fn begin(pipeline: *Pipeline) std.mem.Allocator.Error!Builder {
+        const w = pipeline.writer();
+        return .{ .wrapped_builder = try .begin(w) };
+    }
+
+    pub fn end(self: Builder) void {
+        self.wrapped_builder.end();
+    }
+};

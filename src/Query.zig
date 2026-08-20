@@ -126,13 +126,11 @@ pub const Serializer = struct {
 
     /// Assuming writer is derived from std.Io.Writer.Allocating.
     pub fn append(writer: *std.Io.Writer, arg: []const u8) std.mem.Allocator.Error!void {
-        frames.Builder.writeHeader(
+        frames.append(
             writer,
-            @intCast(arg.len),
+            frames.Builder.Header,
+            arg,
         ) catch |err| return switch (err) {
-            error.WriteFailed => error.OutOfMemory,
-        };
-        writer.writeAll(arg) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
     }
@@ -246,13 +244,13 @@ test "Query" {
         try expected.command.serializeToWriter(&writer);
         try expected.flags.serializeToWriter(&writer);
         for (expected.args) |arg| {
-            frames.Builder.writeHeader(
+            frames.append(
                 &writer,
-                @intCast(arg.len),
+                frames.Builder.Header,
+                arg,
             ) catch |err| return switch (err) {
                 error.WriteFailed => error.OutOfMemory,
             };
-            try writer.writeAll(arg);
         }
 
         const deserialized: Query = try .deserialize(writer.buffered());

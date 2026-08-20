@@ -153,14 +153,11 @@ pub const Pair = struct {
 
     /// Assumes writer is derived from std.Io.Writer.Allocating.
     pub fn serializeKeyToWriter(pair: Pair, writer: *std.Io.Writer) std.mem.Allocator.Error!void {
-        const key = pair.getKey();
-        frames.Builder.writeHeader(
+        frames.append(
             writer,
-            @intCast(key.len),
+            frames.Builder.Header,
+            pair.getKey(),
         ) catch |err| return switch (err) {
-            error.WriteFailed => error.OutOfMemory,
-        };
-        writer.writeAll(key) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
     }
