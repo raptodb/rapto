@@ -41,8 +41,7 @@ pub const Command = union(enum) {
         };
     }
 
-    pub fn usage() []const u8 {
-        return
+    pub const usage =
         \\Usage: raptodb [command] [flags]
         \\
         \\Available [command] are 'server', 'inspect', 'benchmark'
@@ -82,8 +81,7 @@ pub const Command = union(enum) {
         \\      Specifies the network address for connection.
         \\      Default: 127.0.0.1:7286
         \\
-        ;
-    }
+    ;
 };
 
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
