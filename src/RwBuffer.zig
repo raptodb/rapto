@@ -17,6 +17,9 @@ pub const Config = struct {
     /// The preserved size is allocated at initialization time
     /// and is never deallocated until the `.deinit()` method.
     preserved_size: u64,
+    /// Only write buffer is used. When enabled, `take` will
+    /// have the same behavior of `peek` with cursor reset.
+    single_buffer: bool = false,
 };
 
 config: Config,
@@ -25,12 +28,16 @@ write_buffer: std.Io.Writer.Allocating,
 read_buffer: std.Io.Writer.Allocating,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!RwBuffer {
-    const preserved_size = @divFloor(config.preserved_size, 2);
-    return .{
-        .config = config,
-        .write_buffer = try .initCapacity(allocator, preserved_size),
-        .read_buffer = try .initCapacity(allocator, preserved_size),
-    };
+    var self: RwBuffer = undefined;
+    self.config = config;
+    if (config.single_buffer) {
+        self.write_buffer = try .initCapacity(allocator, config.preserved_size);
+    } else {
+        const shared_preserved_size = @divFloor(config.preserved_size, 2);
+        self.write_buffer = try .initCapacity(allocator, shared_preserved_size);
+        self.read_buffer = try .initCapacity(allocator, shared_preserved_size);
+    }
+    return self;
 }
 
 pub fn deinit(self: *RwBuffer) void {
@@ -39,21 +46,26 @@ pub fn deinit(self: *RwBuffer) void {
 }
 
 pub fn reset(self: *RwBuffer) void {
-    const preserved_size = @divFloor(self.config.preserved_size, 2);
     // Shrinks when used buffer is a quarter of capacity.
     const threshold = 4;
-    resizeAllocating(&self.write_buffer, preserved_size, threshold);
-    resizeAllocating(&self.read_buffer, preserved_size, threshold);
+
+    if (self.config.single_buffer) {
+        resizeAllocating(&self.write_buffer, self.config.preserved_size, threshold);
+    } else {
+        const shared_preserved_size = @divFloor(self.config.preserved_size, 2);
+        resizeAllocating(&self.write_buffer, shared_preserved_size, threshold);
+        resizeAllocating(&self.read_buffer, shared_preserved_size, threshold);
+    }
 }
 
-/// As `peek` followed by buffer swapping. Returned buffer
-/// is valid until next `take`.
+/// As `peek` followed by buffer swap/clear.
+/// Returned buffer is valid until next `take`.
 /// This function invalidates last taken/peeked buffer.
 pub fn take(self: *RwBuffer) []const u8 {
     const content = self.peek();
-    if (content.len == 0) {
+    if (content.len == 0 or self.config.single_buffer) {
         // There is nothing to swap.
-        @branchHint(.unlikely);
+        self.write_buffer.clearRetainingCapacity();
         return content;
     }
     // Swapping from write buffer to read buffer
