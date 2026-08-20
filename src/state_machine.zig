@@ -701,6 +701,11 @@ fn copyOne(ctx: *const Context) !void {
     const src_key = args.next() orelse return error.MissingTokens;
     const dst_key = args.next() orelse return error.MissingTokens;
 
+    if (ctx.query.flags.get.get()) {
+        const ref: ?Ref = ctx.memory.get(dst_key) catch null;
+        if (ref != null) try writeRef(ctx, ref.?);
+    }
+
     return ctx.memory.copy(
         ctx.allocator,
         src_key,
