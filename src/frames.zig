@@ -68,11 +68,9 @@ pub fn BuilderType(comptime HeaderType: type) type {
         /// Assumes writer is derived from `std.Io.Writer.Allocating`.
         pub fn begin(writer: *std.Io.Writer) std.mem.Allocator.Error!Self {
             const header_offset = writer.end;
-            writer.writeInt(
-                HeaderType,
-                0,
-                .little,
-            ) catch |err| return switch (err) {
+            writeHeader(writer, 0) catch |err| return switch (err) {
+                // Assuming writer is derived from std.Io.Writer.Allocating,
+                // write fails are caused by OOM.
                 error.WriteFailed => error.OutOfMemory,
             };
             return .{ .writer = writer, .begin_offset = header_offset };
@@ -98,6 +96,13 @@ pub fn BuilderType(comptime HeaderType: type) type {
                 @intCast(size_from_begin),
                 .little,
             );
+        }
+
+        /// Same behavior of `.begin` -> `.end` cycle when called before
+        /// a frame. This don't require `std.Io.Writer.Allocating` as default
+        /// writer. Often used to avoid builder cycle when length is known.
+        pub fn writeHeader(writer: *std.Io.Writer, length: HeaderType) std.Io.Writer.Error!void {
+            return writer.writeInt(HeaderType, length, .little);
         }
     };
 }

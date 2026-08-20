@@ -38,11 +38,13 @@ pub fn deinit(self: *Pipeline) void {
 
 pub fn append(self: *Pipeline, serialized: []const u8) std.mem.Allocator.Error!void {
     const w = self.writer();
-    var builder: frames.Builder = try .begin(w);
-    defer builder.end();
-    w.writeAll(serialized) catch |err| switch (err) {
-        // Assuming writer is derived from std.Io.Writer.Allocating,
-        // write fails are caused by OOM.
+    frames.Builder.writeHeader(
+        w,
+        @intCast(serialized.len),
+    ) catch |err| return switch (err) {
+        error.WriteFailed => error.OutOfMemory,
+    };
+    w.writeAll(serialized) catch |err| return switch (err) {
         error.WriteFailed => error.OutOfMemory,
     };
 }
@@ -94,8 +96,8 @@ pub const Builder = struct {
 pub const Iterator = struct {
     wrapped_iterator: frames.Iterator,
 
-    pub fn init(content: []const u8) Iterator {
-        return .{ .wrapped_iterator = .init(content) };
+    pub fn init(pipeline: []const u8) Iterator {
+        return .{ .wrapped_iterator = .init(pipeline) };
     }
 
     pub fn next(self: *Iterator) ?Query.DeserializeError!Query {
