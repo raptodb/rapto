@@ -360,6 +360,7 @@ fn @"type"(self: Listener, event_fd: linux.fd_t, event: u32) EventType {
 }
 
 fn setNonBlock(fd: linux.fd_t) void {
+    assert(fd >= 0);
     const flags = linux.fcntl(fd, linux.F.GETFL, 0);
     var o: linux.O = @bitCast(@as(u32, @intCast(flags)));
     o.NONBLOCK = true;

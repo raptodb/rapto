@@ -25,7 +25,7 @@ pub const Config = struct {
     /// throwing error.StreamTooLong.
     /// TODO: make this configurable with cli flags.
     max_pipeline_bytes: u64 =
-        // Allows client to send 512 MiB as Redis/Valkey.
+        // Allows clients to send 512 MiB as Redis/Valkey.
         (512 * 1024 * 1024) - @sizeOf(Header),
 };
 
@@ -75,7 +75,7 @@ pub fn read(self: *Pipeline, reader: *std.Io.Reader) ReadError!void {
     // To reduce syscalls overhead based on size of buffer,
     // we can read header of pipeline and next perform a single read.
     try reader.readSliceAll(&buf);
-    const size: u64 = std.mem.readInt(Header, &buf, .little);
+    const size = std.mem.readInt(Header, &buf, .little);
     if (size > self.config.max_pipeline_bytes) return error.StreamTooLong;
 
     // Now we can allocate one buffer directly with all length required.
