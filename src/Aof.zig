@@ -13,6 +13,8 @@ const frames = @import("frames.zig");
 const state_machine = @import("state_machine.zig");
 const assert = std.debug.assert;
 
+const Pipeline = @import("Pipeline.zig");
+const RwBuffer = @import("RwBuffer.zig");
 const Query = @import("Query.zig");
 const Memory = @import("Memory.zig");
 
@@ -21,7 +23,7 @@ pub const Config = struct {
     name: []const u8,
     /// When this parameter is enabled, writes in AOF
     /// in name.raptodb file.
-    aof: bool = false,
+    aof: bool,
     /// When this parameter is enabled, reads the AOF
     /// file. When both `aof` and `aof_file` are enabled
     /// writes on file as the same name of `aof_file`.
@@ -36,7 +38,7 @@ pub const Config = struct {
 config: Config,
 
 file: std.Io.File,
-allocating: std.Io.Writer.Allocating,
+rw_buffer: RwBuffer,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -46,105 +48,84 @@ pub fn init(
     if (!config.aof and config.aof_file == null)
         return null;
 
-    const owned_path = if (config.aof_file == null)
-        try std.fmt.allocPrint(allocator, "{s}.raptodb", .{config.name})
-    else
-        null;
-    defer if (owned_path) |path|
-        allocator.free(path);
+    const owned_path: ?[]u8 = null;
+    if (config.aof_file == null) {
+        owned_path = try std.fmt.allocPrint(allocator, "{s}.raptodb", .{config.name});
+    }
+    defer if (owned_path) |path| allocator.free(path);
 
-    const path = config.aof_file orelse owned_path.?;
+    const file = try std.Io.Dir.createFileAbsolute(
+        io,
+        config.aof_file orelse owned_path.?,
+        .{ .truncate = false, .read = true },
+    );
 
-    const options: std.Io.Dir.CreateFileOptions = .{
-        .truncate = false,
-        .read = true,
+    const rw_buffer_config: RwBuffer.Config = .{
+        .preserved_size = config.preserved_size,
+        .single_buffer = true,
     };
 
     return .{
-        .file = try std.Io.Dir.createFileAbsolute(
-            io,
-            path,
-            options,
-        ),
-        .allocating = try .initCapacity(
-            allocator,
-            config.preserved_size,
-        ),
+        .file = file,
+        .rw_buffer = try .init(allocator, rw_buffer_config),
         .config = config,
     };
 }
 
 pub fn deinit(self: *Aof, io: std.Io) void {
     self.file.close(io);
-    self.allocating.deinit();
+    self.rw_buffer.deinit();
 }
-
-pub const Builder = struct {
-    wrapped_builder: frames.ExtendedBuilder,
-
-    pub fn begin(aof: *Aof, timestamp: std.Io.Timestamp) std.mem.Allocator.Error!Builder {
-        const writer = &aof.allocating.writer;
-
-        const builder = frames.ExtendedBuilder.begin(writer) catch
-            return error.OutOfMemory;
-        writer.writeInt(i96, timestamp.toNanoseconds(), .little) catch
-            return error.OutOfMemory;
-
-        return .{ .wrapped_builder = builder };
-    }
-
-    pub fn append(self: *Builder, serialized_query: []const u8) std.mem.Allocator.Error!void {
-        var builder = frames.Builder.begin(self.wrapped_builder.writer) catch
-            return error.OutOfMemory;
-        defer builder.end();
-        builder.writer.writeAll(serialized_query) catch return error.OutOfMemory;
-    }
-
-    pub fn end(self: Builder) void {
-        self.wrapped_builder.end();
-    }
-};
 
 const Iterator = struct {
-    reader: std.Io.Reader,
+    reader: *std.Io.Reader,
 
-    const Pipeline = struct {
-        reader: std.Io.Reader,
-
-        pub fn deserialize(
-            self: *Pipeline,
-        ) std.Io.Reader.Error!struct { std.Io.Timestamp, frames.Iterator } {
-            const timestamp = try self.reader.takeInt(i64, .little);
-            return .{
-                .fromNanoseconds(timestamp),
-                .init(self.reader.buffered()),
-            };
-        }
+    const Batch = struct {
+        timestamp: std.Io.Timestamp,
+        // Likely to be accessed with Pipeline.Iterator.
+        pipeline: []const u8,
     };
 
-    pub fn next(self: *Iterator) ?Pipeline {
+    pub fn next(self: *Iterator) ?Batch {
+        const ts = self.reader.takeInt(u64, .little) catch return null;
         const len = self.reader.takeInt(u64, .little) catch return null;
         const pipeline = self.reader.take(len) catch return null;
-        return .{ .reader = .fixed(pipeline) };
+        return .{ .pipeline = pipeline, .timestamp = .fromNanoseconds(ts) };
     }
 };
 
-pub fn iterator(self: *Aof, io: std.Io, buf: []u8) Iterator {
-    const reader = self.file.reader(io, buf);
-    return .{ .reader = reader.interface };
+pub fn append(
+    self: *Aof,
+    timestamp: std.Io.Timestamp,
+    pipeline: []const u8,
+) std.mem.Allocator.Error!void {
+    // Derived from std.Io.Writer.Allocating.
+    // Any WriteFailed error corresponds to OutOfMemory.
+    const writer = self.rw_buffer.writer();
+    const ns_timestamp: u64 = @intCast(timestamp.toNanoseconds());
+    writer.writeInt(u64, ns_timestamp, .little) catch |err| return switch (err) {
+        error.WriteFailed => error.OutOfMemory,
+    };
+    frames.append(writer, Pipeline.Header, pipeline) catch |err| return switch (err) {
+        error.WriteFailed => error.OutOfMemory,
+    };
 }
 
+/// Flushes all appended pipelines to AOF file.
 pub fn flush(self: *Aof, io: std.Io) std.Io.File.Writer.Error!void {
-    const aof_buffer_writer = &self.allocating.writer;
-    if (aof_buffer_writer.end == 0) return;
-
+    const written = self.rw_buffer.peek();
+    if (written.len == 0) return;
     var buf: [4 * 1024]u8 = undefined;
     var aof_writer = self.file.writer(io, &buf);
 
-    aof_writer.interface.writeAll(aof_buffer_writer.buffered()) catch return aof_writer.err.?;
-    aof_writer.interface.flush() catch return aof_writer.err.?;
+    aof_writer.interface.writeAll(written) catch |err| return switch (err) {
+        error.WriteFailed => aof_writer.err.?,
+    };
+    aof_writer.interface.flush() catch |err| return switch (err) {
+        error.WriteFailed => aof_writer.err.?,
+    };
 
-    resizeAllocating(&self.allocating, self.config.preserved_size);
+    self.rw_buffer.reset();
 }
 
 pub fn load(
@@ -152,36 +133,41 @@ pub fn load(
     allocator: std.mem.Allocator,
     io: std.Io,
     memory: *Memory,
-) (state_machine.FatalError || std.Io.Reader.Error || Query.Error)!void {
-    var discarding: std.Io.Writer.Discarding = .init(&.{});
-    const writer = &discarding.writer;
+) std.mem.Allocator.Error!void {
+    var tmp: std.Io.Writer.Allocating = .init(allocator);
+    defer tmp.deinit();
+    const writer = &tmp.writer;
 
     var buf: [4 * 1024]u8 = undefined;
-    var iter = self.iterator(io, &buf);
+    var reader = self.file.reader(io, &buf);
 
-    while (iter.next()) |pipeline| {
-        var pipeline_copy = pipeline;
-        _, var query_iter = try pipeline_copy.deserialize();
-        while (query_iter.next()) |serialized_query| {
-            const query: Query = try .parse(serialized_query);
-            try state_machine.execute(allocator, memory, writer, &query);
-        }
+    var batches: Aof.Iterator = .{ .reader = &reader.interface };
+    while (batches.next()) |batch| {
+        try loadPipeline(allocator, writer, memory, batch.pipeline);
     }
 }
 
-fn resizeAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) void {
-    if (allocating.writer.buffer.len > preserved_size) {
-        @branchHint(.unlikely);
-        shrinkAllocating(allocating, preserved_size);
+fn loadPipeline(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    memory: *Memory,
+    pipeline: []const u8,
+) std.mem.Allocator.Error!void {
+    var queries: Pipeline.Iterator = .init(pipeline);
+    while (queries.next()) |maybe_error| {
+        const query = maybe_error catch continue;
+
+        if (query.command.kind() != .write) return;
+        state_machine.execute(
+            allocator,
+            memory,
+            writer,
+            &query,
+        ) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            // Returned only by down, that is considered a control command.
+            // Only write commands can be executed.
+            error.Shutdown => unreachable,
+        };
     }
-    return allocating.clearRetainingCapacity();
-}
-
-fn shrinkAllocating(allocating: *std.Io.Writer.Allocating, preserved_size: u64) void {
-    assert(allocating.writer.buffer.len > preserved_size);
-
-    var list = allocating.toArrayList();
-    defer allocating.* = .fromArrayList(allocating.allocator, &list);
-
-    list.shrinkAndFree(allocating.allocator, preserved_size);
 }
