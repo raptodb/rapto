@@ -15,7 +15,7 @@ const RwBuffer = @import("RwBuffer.zig");
 const Query = @import("Query.zig");
 
 pub const Config = struct {
-    /// Minimum size for read/write buffer. This optimizes the
+    /// Minimum size for read/write buffers. This optimizes the
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
     /// and is never deallocated until the `.deinit()` method.

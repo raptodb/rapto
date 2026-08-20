@@ -28,7 +28,7 @@ pub const Config = struct {
     /// file. When both `aof` and `aof_file` are enabled
     /// writes on file as the same name of `aof_file`.
     aof_file: ?[]const u8,
-    /// Minimum size of Allocating. This optimizes the
+    /// Minimum size for read/write buffers. This optimizes the
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
     /// and is never deallocated until the `.deinit()` method.
