@@ -540,7 +540,7 @@ fn appendStringOne(ctx: *const Context) !void {
 }
 
 fn insert_string(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, insertListOne);
+    return writeOrThrow(ctx, insertStringOne);
 }
 
 fn insertStringOne(ctx: *const Context) !void {
