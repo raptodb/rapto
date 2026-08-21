@@ -53,6 +53,10 @@ pub fn IteratorType(comptime HeaderType: type) type {
             for (0..n_frames) |_| _ = self.next() orelse return;
         }
 
+        pub fn reset(self: *Self) void {
+            self.seek = 0;
+        }
+
         fn remaining(self: Self) u64 {
             assert(self.seek <= self.frames.len);
             return self.frames.len - self.seek;

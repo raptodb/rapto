@@ -210,7 +210,7 @@ fn del_patterns(ctx: *const Context) Error!void {
             if (!matches) {
                 // To avoid allocations we should
                 // iterate patterns for each key.
-                args = ctx.query.args.iterator();
+                args.reset();
                 while (args.next()) |pattern| {
                     if (glob.match(pattern, key)) {
                         // We found a matching pattern!
@@ -325,7 +325,7 @@ fn count_patterns(ctx: *const Context) Error!void {
             var matches: bool = false;
             // To avoid allocations we should
             // iterate patterns for each key.
-            args = ctx.query.args.iterator();
+            args.reset();
             while (args.next()) |pattern| {
                 if (glob.match(pattern, key)) {
                     // We found a matching pattern!
@@ -400,7 +400,7 @@ fn countMapPatternsOne(ctx: *const Context) !void {
             var matches: bool = false;
             // To avoid allocations we should
             // iterate patterns for each key.
-            args = ctx.query.args.iterator();
+            args.reset();
             // After iterator resetting, skips Memory key.
             // Next arguments should be patterns.
             args.skip(1);
@@ -558,7 +558,7 @@ fn insertStringOne(ctx: *const Context) !void {
     if (value_type != .string) return error.MismatchType;
 
     if (ctx.query.flags.get.get()) {
-        try reply.writeValue(ctx.writer, string.get());
+        try reply.writeValue(ctx.writer, string);
     }
 
     if (ctx.query.flags.replace.get()) {
@@ -811,7 +811,7 @@ fn keysPatternsOne(ctx: *const Context) !void {
         if (!matches) {
             // To avoid allocations we should
             // iterate patterns for each key.
-            args = ctx.query.args.iterator();
+            args.reset();
             while (args.next()) |pattern| {
                 if (glob.match(pattern, key)) {
                     // We found a matching pattern!
@@ -871,7 +871,7 @@ fn entriesPatternsOne(ctx: *const Context) !void {
         if (!matches) {
             // To avoid allocations we should
             // iterate patterns for each key.
-            args = ctx.query.args.iterator();
+            args.reset();
             // After iterator resetting, skips Memory key.
             // Next arguments should be patterns.
             args.skip(1);
