@@ -204,3 +204,113 @@ pub const Iterator = struct {
 pub fn iterator(self: *Memory) Iterator {
     return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
 }
+
+test "put/get/remove" {
+    const allocator = std.testing.allocator;
+
+    var memory: Memory = try .init(allocator, .{ .initial_keys = 4 });
+    defer memory.deinit(allocator);
+
+    const int_content: [8]u8 = @bitCast(@as(i64, 10));
+    _ = try memory.put(allocator, "a", .integer, &int_content);
+    _ = try memory.put(allocator, "b", .integer, &int_content);
+
+    try std.testing.expectEqual(2, memory.count());
+
+    const ref_a = try memory.get("a");
+    try std.testing.expectEqual(.integer, ref_a.type());
+    try std.testing.expectEqual(@as(i64, 10), ref_a.value(.integer).get());
+
+    try std.testing.expectError(error.KeyNotFound, memory.get("missing"));
+
+    _ = try memory.put(allocator, "a", .string, "hello");
+    const ref_a_after = try memory.get("a");
+    try std.testing.expectEqual(.string, ref_a_after.type());
+    try std.testing.expectEqualStrings("hello", ref_a_after.value(.string).get());
+    try std.testing.expectEqual(2, memory.count());
+
+    memory.removeByRef(allocator, ref_a_after);
+    try std.testing.expectEqual(1, memory.count());
+    try std.testing.expectError(error.KeyNotFound, memory.get("a"));
+
+    try std.testing.expectError(error.KeyNotFound, memory.get("a"));
+    const ref_b = try memory.get("b");
+    try std.testing.expectEqual(.integer, ref_b.type());
+}
+
+test "ensure" {
+    const allocator = std.testing.allocator;
+
+    var memory: Memory = try .init(allocator, .{ .initial_keys = 4 });
+    defer memory.deinit(allocator);
+
+    const first_content: [8]u8 = @bitCast(@as(i64, 1));
+    const er1 = try memory.ensure(allocator, "k", .integer, &first_content);
+    try std.testing.expect(!er1.found_existing);
+    try std.testing.expectEqual(@as(i64, 1), er1.ref.value(.integer).get());
+
+    const second_content: [8]u8 = @bitCast(@as(i64, 999));
+    const er2 = try memory.ensure(allocator, "k", .integer, &second_content);
+    try std.testing.expect(er2.found_existing);
+    try std.testing.expectEqual(@as(i64, 1), er2.ref.value(.integer).get());
+
+    try std.testing.expectEqual(1, memory.count());
+    try std.testing.expectEqual(er1.ref.key_ptr, er2.ref.key_ptr);
+}
+
+test "iterator" {
+    const allocator = std.testing.allocator;
+
+    var memory: Memory = try .init(allocator, .{ .initial_keys = 8 });
+    defer memory.deinit(allocator);
+
+    const content: [8]u8 = @bitCast(@as(i64, 0));
+    const keys = [_][]const u8{ "k0", "k1", "k2", "k3" };
+    for (keys) |k| _ = try memory.put(allocator, k, .integer, &content);
+
+    var seen: std.StringHashMap(void) = .init(allocator);
+    defer seen.deinit();
+
+    var it = memory.iterator();
+    var visited: usize = 0;
+    while (it.next()) |ref| : (visited += 1) {
+        try seen.put(ref.key(), {});
+    }
+    try std.testing.expectEqual(keys.len, visited);
+    try std.testing.expectEqual(keys.len, seen.count());
+
+    var it2 = memory.iterator();
+    it2.skip(std.math.maxInt(u64));
+    try std.testing.expect(it2.next() == null);
+
+    it2.reset();
+    var recount: usize = 0;
+    while (it2.next()) |_| recount += 1;
+    try std.testing.expectEqual(keys.len, recount);
+}
+
+test "clear" {
+    const allocator = std.testing.allocator;
+
+    var memory: Memory = try .init(allocator, .{ .initial_keys = 4 });
+    defer memory.deinit(allocator);
+
+    const content: [8]u8 = @bitCast(@as(i64, 0));
+    var i: usize = 0;
+    while (i < 50) : (i += 1) {
+        var buf: [8]u8 = undefined;
+        const k = std.fmt.bufPrint(&buf, "key{d}", .{i}) catch unreachable;
+        _ = try memory.put(allocator, k, .integer, &content);
+    }
+    try std.testing.expectEqual(50, memory.count());
+
+    try memory.clear(allocator);
+
+    try std.testing.expectEqual(0, memory.count());
+    try std.testing.expectError(error.KeyNotFound, memory.get("key0"));
+
+    _ = try memory.put(allocator, "new", .integer, &content);
+    try std.testing.expectEqual(1, memory.count());
+    const ref = try memory.get("new");
+    try std.testing.expectEqual(@as(i64, 0), ref.value(.integer).get());
+}
