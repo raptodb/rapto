@@ -23,6 +23,10 @@ replace: Bool = .default,
 if_not_exists: Bool = .default,
 /// Returns old value before remove/replace.
 get: Bool = .default,
+/// Assumes that any locked key is owned by the caller,
+/// bypassing `error.Locked` checks. This applies to all
+/// keys passed as arguments to the command, not to specific keys.
+assume_lock_ownership: Bool = .default,
 
 pub const Quota = enum(u64) {
     unlimited = std.math.maxInt(usize),

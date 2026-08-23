@@ -56,6 +56,17 @@ pub const Key = struct {
     /// Defined for clarity and conventional purposes.
     const ptr_alignment: std.mem.Alignment = .of(usize);
 
+    /// Representation of first two bytes of key.
+    /// Used to store metadata such as length and
+    /// other utilities.
+    pub const Metadata = packed struct(u16) {
+        len: u8,
+        locked: bool = false,
+
+        // Reserved for incoming features.
+        _: u7 = undefined,
+    };
+
     /// Tagged pointer to a length-prefixed key. The length is stored in the
     /// first byte, limiting keys to 255 bytes. Like Memcached, this limit
     /// works for most use cases and provides better performance.
@@ -63,14 +74,21 @@ pub const Key = struct {
     ptr: TaggedPtr([*]align(ptr_alignment.toByteUnits()) u8) = undefined,
 
     /// Initializes key by duplicating it.
+    /// After creation, key is marked as unlocked.
     pub fn init(allocator: std.mem.Allocator, key: []const u8, value_type: Value.Type) Error!Key {
         if (!isValidKey(key)) return error.InvalidKey;
 
-        const slice = try allocator.alignedAlloc(u8, ptr_alignment, 1 + key.len);
-        // Truncation is allowed by checking key firstly.
-        slice[0] = @truncate(key.len);
+        const slice = try allocator.alignedAlloc(
+            u8,
+            ptr_alignment,
+            @sizeOf(Metadata) + key.len,
+        );
 
-        @memcpy(slice[1..], key);
+        assert(key.len <= std.math.maxInt(u8));
+        const m: Metadata = .{ .len = @truncate(key.len) };
+
+        @memcpy(slice[0..@sizeOf(Metadata)], std.mem.asBytes(&m));
+        @memcpy(slice[@sizeOf(Metadata)..], key);
 
         return .{ .ptr = .init(slice.ptr, @intFromEnum(value_type)) };
     }
@@ -85,42 +103,55 @@ pub const Key = struct {
         if (!isValidKey(new_key)) return error.InvalidKey;
 
         const length_new_key: u8 = @truncate(new_key.len);
-        const length_old_key = self.len();
+        const length_old_key = self.metadata().len;
 
         var ptr = self.ptr.getPointer();
 
         if (length_old_key != length_new_key) {
             const slice = try allocator.realloc(
-                ptr[0 .. 1 + length_old_key],
-                1 + length_new_key,
+                self.content(),
+                @sizeOf(Metadata) + length_new_key,
             );
 
             ptr = slice.ptr;
             self.ptr.setPointer(ptr);
             // Update string length.
-            ptr[0] = length_new_key;
+            const m = self.metadata();
+            m.len = length_new_key;
         }
 
-        @memcpy(ptr[1 .. 1 + length_new_key], new_key);
+        @memcpy(ptr[@sizeOf(Metadata)..][0..length_new_key], new_key);
     }
 
     pub fn get(self: Key) []const u8 {
-        return self.content()[1..];
+        return self.content()[@sizeOf(Metadata)..];
     }
 
     /// Returns entire buffer with length and key.
-    fn content(self: Key) []align(ptr_alignment.toByteUnits()) const u8 {
+    fn content(self: Key) []align(ptr_alignment.toByteUnits()) u8 {
         const ptr = self.ptr.getPointer();
-        return ptr[0 .. 1 + self.len()];
+        const m = self.metadata();
+        return ptr[0 .. @sizeOf(Metadata) + m.len];
     }
 
-    /// Length of key retrieved by first byte.
-    pub fn len(self: Key) u8 {
+    fn metadata(self: Key) *Metadata {
         const ptr = self.ptr.getPointer();
-        // Length is stored in the first byte.
-        const key_len = ptr[0];
-        assert(key_len != 0);
-        return key_len;
+        return @ptrCast(ptr);
+    }
+
+    pub fn isLocked(self: Key) bool {
+        const m = self.metadata();
+        return m.locked;
+    }
+
+    pub fn lock(self: Key) void {
+        const m = self.metadata();
+        m.locked = true;
+    }
+
+    pub fn unlock(self: Key) void {
+        const m = self.metadata();
+        m.locked = false;
     }
 
     pub fn getValueType(self: Key) Value.Type {
@@ -343,6 +374,18 @@ pub const Ref = struct {
     /// Returns the reference of value_ptr.{value_type}.
     pub fn value(self: Ref, comptime value_type: Value.Type) Value.UnionType(value_type) {
         return @field(self.value_ptr, @tagName(value_type));
+    }
+
+    pub fn isLocked(self: Ref) bool {
+        return self.key_ptr.isLocked();
+    }
+
+    pub fn lock(self: Ref) void {
+        return self.key_ptr.lock();
+    }
+
+    pub fn unlock(self: Ref) void {
+        return self.key_ptr.unlock();
     }
 
     pub fn setKey(

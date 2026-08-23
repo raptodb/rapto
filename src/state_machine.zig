@@ -153,26 +153,34 @@ fn del(ctx: *const Context) Error!void {
     var args = ctx.query.args.iterator();
 
     if (ctx.query.flags.get.get()) {
-        try writeOrThrowForEachKey(ctx, getDelOne);
-    } else {
-        var total_deleted: i64 = 0;
-        while (args.next()) |str| {
-            const is_deleted = ctx.memory.remove(ctx.allocator, str) != error.KeyNotFound;
-            total_deleted += @intFromBool(is_deleted);
-        }
-
-        const integer: Value.Integer = .fromValue(total_deleted);
-        try reply.writeValue(ctx.writer, integer);
+        return writeOrThrowForEachKey(ctx, getDelOne);
     }
+
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
+    var total_deleted: i64 = 0;
+    while (args.next()) |key| {
+        const ref = ctx.memory.get(key) catch continue;
+        if (!assume_lock_ownership and ref.isLocked()) continue;
+
+        ctx.memory.removeByRef(ctx.allocator, ref);
+        total_deleted += 1;
+    }
+
+    const integer: Value.Integer = .fromValue(total_deleted);
+    try reply.writeValue(ctx.writer, integer);
 }
 
 fn getDelOne(ctx: *const Context, key: []const u8) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     const ref = try ctx.memory.get(key);
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+
     try writeRef(ctx, ref);
     ctx.memory.removeByRef(ctx.allocator, ref);
 }
 
 fn del_patterns(ctx: *const Context) Error!void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
     const total_deleted: i64 = blk: {
@@ -182,9 +190,9 @@ fn del_patterns(ctx: *const Context) Error!void {
             if (glob.classify(pattern) != .any) continue;
 
             const total_keys = ctx.memory.count();
-            if (total_keys > limit.remaining()) {
-                // We cant remove keys over limit, so
-                // we need to iterate one by one.
+            if (!assume_lock_ownership or total_keys > limit.remaining()) {
+                // We have to count/check keys one by one iterating.
+                // We cant remove keys that are locked or that exceeds limit.
                 // This is an hint to avoid matching with
                 // all available patterns.
                 has_any_pattern = true;
@@ -203,6 +211,8 @@ fn del_patterns(ctx: *const Context) Error!void {
         while (iterator.next()) |ref| {
             if (limit.exceeded()) break;
             const key = ref.key();
+
+            if (!assume_lock_ownership and ref.isLocked()) continue;
 
             var matches: bool = has_any_pattern;
             // If any pattern `*` is not detected, we should see
@@ -240,11 +250,13 @@ fn del_list(ctx: *const Context) Error!void {
 }
 
 fn delListOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = try ctx.memory.get(key);
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -268,10 +280,12 @@ fn del_map(ctx: *const Context) Error!void {
 }
 
 fn delMapOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = try ctx.memory.get(key);
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .map) return error.MismatchType;
 
     const map: Value.Map = ref.value(.map);
@@ -304,14 +318,14 @@ fn count_patterns(ctx: *const Context) Error!void {
     const key_count: i64 = blk: {
         var args = ctx.query.args.iterator();
         while (args.next()) |pattern| {
-            if (glob.classify(pattern) == .any) {
-                const total_keys: i64 = @intCast(ctx.memory.count());
-                // With minimus we follow the same behaviour
-                // if we had done iterations one by one to
-                // check the pattern.
-                // Total keys will always be within limit.
-                break :blk @min(total_keys, limit.remaining());
-            }
+            if (glob.classify(pattern) != .any) continue;
+
+            const total_keys: i64 = @intCast(ctx.memory.count());
+            // With minimus we follow the same behaviour
+            // if we had done iterations one by one to
+            // check the pattern.
+            // Total keys will always be within limit.
+            break :blk @min(total_keys, limit.remaining());
         }
 
         var counted: i64 = 0;
@@ -380,14 +394,14 @@ fn countMapPatternsOne(ctx: *const Context) !void {
 
     const key_count: i64 = blk: {
         while (args.next()) |pattern| {
-            if (glob.classify(pattern) == .any) {
-                const total_keys: i64 = @intCast(ctx.memory.count());
-                // With minimus we follow the same behaviour
-                // if we had done iterations one by one to
-                // check the pattern.
-                // Total keys will always be within limit.
-                break :blk @min(total_keys, limit.remaining());
-            }
+            if (glob.classify(pattern) != .any) continue;
+
+            const total_keys: i64 = @intCast(ctx.memory.count());
+            // With minimus we follow the same behaviour
+            // if we had done iterations one by one to
+            // check the pattern.
+            // Total keys will always be within limit.
+            break :blk @min(total_keys, limit.remaining());
         }
 
         var counted: i64 = 0;
@@ -466,6 +480,7 @@ fn set(ctx: *const Context) Error!void {
 }
 
 fn setOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
@@ -474,20 +489,19 @@ fn setOne(ctx: *const Context) !void {
     const value_type, const content = try Value.splitSerialized(serialized);
     if (value_type.group() == .collection) return error.MismatchType;
 
-    if (ctx.query.flags.get.get()) {
-        const old_ref: ?Ref = ctx.memory.get(key) catch null;
-        if (old_ref) |ref| {
-            try writeRef(ctx, ref);
-            // Fast path.
-            if (ctx.query.flags.if_not_exists.get()) return;
-        }
-    }
+    const existing_ref: ?Ref = ctx.memory.get(key) catch null;
 
-    if (ctx.query.flags.if_not_exists.get()) {
-        // Never replaces.
-        _ = try ctx.memory.ensure(ctx.allocator, key, value_type, content);
+    if (existing_ref) |ref| {
+        if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+
+        if (ctx.query.flags.get.get()) {
+            try writeRef(ctx, ref);
+        }
+        if (!ctx.query.flags.if_not_exists.get()) {
+            try ref.setValue(ctx.allocator, value_type, content);
+        }
     } else {
-        _ = try ctx.memory.put(ctx.allocator, key, value_type, content);
+        _ = try ctx.memory.ensure(ctx.allocator, key, value_type, content);
     }
 }
 
@@ -496,6 +510,7 @@ fn append_list(ctx: *const Context) Error!void {
 }
 
 fn appendListOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
@@ -505,6 +520,7 @@ fn appendListOne(ctx: *const Context) !void {
     const ref = er.ref;
     errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
 
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -519,6 +535,7 @@ fn append_string(ctx: *const Context) Error!void {
 }
 
 fn appendStringOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
@@ -530,6 +547,7 @@ fn appendStringOne(ctx: *const Context) !void {
     const ref = er.ref;
     errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
 
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (value_type != .string) return error.MismatchType;
 
     const string: Value.String = ref.value(.string);
@@ -544,10 +562,13 @@ fn insert_string(ctx: *const Context) Error!void {
 }
 
 fn insertStringOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = try ctx.memory.get(key);
+
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .string) return error.MismatchType;
 
     const string: Value.String = ref.value(.string);
@@ -573,10 +594,12 @@ fn insert_list(ctx: *const Context) Error!void {
 }
 
 fn insertListOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = try ctx.memory.get(key);
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .list) return error.MismatchType;
 
     const list: Value.List = ref.value(.list);
@@ -601,6 +624,7 @@ fn put(ctx: *const Context) Error!void {
 }
 
 fn putOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
@@ -608,6 +632,7 @@ fn putOne(ctx: *const Context) !void {
     const ref = er.ref;
     errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
 
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .map) return error.MismatchType;
 
     const map_key = args.next() orelse return error.MissingTokens;
@@ -636,10 +661,13 @@ fn add(ctx: *const Context) Error!void {
 }
 
 fn addOne(ctx: *const Context) !void {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = try ctx.memory.get(key);
+
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
 
     const is_add = try nextNumeric(&args, u8) == 1;
 
@@ -671,6 +699,7 @@ fn renameOneWrapper(ctx: *const Context) !void {
 }
 
 fn renameOne(ctx: *const Context) !bool {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const selected_key = args.next() orelse return error.MissingTokens;
@@ -679,6 +708,12 @@ fn renameOne(ctx: *const Context) !bool {
     if (std.mem.eql(u8, selected_key, new_key)) return true;
 
     const new_ref = ctx.memory.get(new_key);
+    if (new_ref != error.KeyNotFound) {
+        if (new_ref) |ref| {
+            if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+        } else |_| {}
+    }
+
     if (new_ref != error.KeyNotFound and ctx.query.flags.if_not_exists.get()) return false;
 
     if (new_ref != error.KeyNotFound) ctx.memory.removeByRef(
@@ -686,6 +721,7 @@ fn renameOne(ctx: *const Context) !bool {
         new_ref catch unreachable,
     );
     const selected_ref = try ctx.memory.get(selected_key);
+    if (!assume_lock_ownership and selected_ref.isLocked()) return error.Locked;
 
     try selected_ref.setKey(ctx.allocator, new_key);
     return true;
@@ -702,6 +738,7 @@ fn copyOneWrapper(ctx: *const Context) !void {
 }
 
 fn copyOne(ctx: *const Context) !bool {
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var args = ctx.query.args.iterator();
 
     const src_key = args.next() orelse return error.MissingTokens;
@@ -709,6 +746,8 @@ fn copyOne(ctx: *const Context) !bool {
 
     const dst = try ctx.memory.ensure(ctx.allocator, dst_key, .void, &.{});
     errdefer if (!dst.found_existing) ctx.memory.removeByRef(ctx.allocator, dst.ref);
+    if (!assume_lock_ownership and dst.ref.isLocked()) return error.Locked;
+
     if (dst.found_existing and ctx.query.flags.if_not_exists.get()) return false;
 
     if (ctx.query.flags.get.get() and dst.found_existing) {
@@ -793,11 +832,11 @@ fn keysPatternsOne(ctx: *const Context) !void {
     var has_any_pattern: bool = false;
     var args = ctx.query.args.iterator();
     while (args.next()) |pattern| {
-        if (glob.classify(pattern) == .any) {
-            // Hint to avoid matching with
-            // all available patterns.
-            has_any_pattern = true;
-        }
+        if (glob.classify(pattern) != .any) continue;
+
+        // Hint to avoid matching with
+        // all available patterns.
+        has_any_pattern = true;
     }
 
     var serializer: reply.ListSerializer = try .begin(ctx.writer);
@@ -854,11 +893,11 @@ fn entriesPatternsOne(ctx: *const Context) !void {
 
     var has_any_pattern: bool = false;
     while (args.next()) |pattern| {
-        if (glob.classify(pattern) == .any) {
-            // Hint to avoid matching with
-            // all available patterns.
-            has_any_pattern = true;
-        }
+        if (glob.classify(pattern) != .any) continue;
+
+        // Hint to avoid matching with
+        // all available patterns.
+        has_any_pattern = true;
     }
 
     var serializer: reply.ListSerializer = try .begin(ctx.writer);
@@ -903,6 +942,36 @@ fn entriesPatternsOne(ctx: *const Context) !void {
 
 fn purge(ctx: *const Context) !void {
     return ctx.memory.clear(ctx.allocator);
+}
+
+fn lock(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, tryLock);
+}
+
+fn tryLock(ctx: *const Context) !void {
+    var args = ctx.query.args.iterator();
+    // First we have to check if any key is already locked.
+    while (args.next()) |key| {
+        const ref = try ctx.memory.get(key);
+        if (ref.isLocked()) return error.Locked;
+    }
+    args.reset();
+    // Assuming all the keys aren't locked,
+    // we can lock them all.
+    while (args.next()) |key| {
+        const ref = try ctx.memory.get(key);
+        ref.lock();
+    }
+}
+
+fn unlock(ctx: *const Context) Error!void {
+    var args = ctx.query.args.iterator();
+    // Unlocks all keys that exists.
+    while (args.next()) |key| {
+        // Maybe deleted key after lock?
+        const ref = ctx.memory.get(key) catch continue;
+        ref.unlock();
+    }
 }
 
 fn writeOrThrowForEachKey(

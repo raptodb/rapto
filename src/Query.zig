@@ -46,6 +46,9 @@ pub const Command = enum(u8) {
     entries_patterns,
     purge,
 
+    lock,
+    unlock,
+
     down = std.math.maxInt(u8),
 
     pub fn deserialize(int: u8) error{UnknownCommand}!Command {
@@ -85,7 +88,11 @@ pub const Command = enum(u8) {
             .entries_patterns,
             => .read,
 
-            .ping, .down => .control,
+            .ping,
+            .lock,
+            .unlock,
+            .down,
+            => .control,
         };
     }
 
