@@ -262,6 +262,10 @@ pub const Iterator = struct {
             .serialized_value = self.wrapped_iterator.next() orelse return error.InvalidFormat,
         };
     }
+
+    pub fn reset(self: *Iterator) void {
+        self.wrapped_iterator.seek = 0;
+    }
 };
 
 pub fn get(self: Map) PairIterator {

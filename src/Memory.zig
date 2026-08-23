@@ -195,6 +195,10 @@ pub const Iterator = struct {
         const cap = self.wrapped_iterator.hm.capacity();
         self.wrapped_iterator.index = @min(self.wrapped_iterator.index + n, cap);
     }
+
+    pub fn reset(self: *Iterator) void {
+        self.wrapped_iterator.index = 0;
+    }
 };
 
 pub fn iterator(self: *Memory) Iterator {
