@@ -67,6 +67,11 @@ pub fn execute(
     query: *const Query, // Input
 ) ExecuteError!void {
     const HandlerType = *const fn (*const Context) Error!void;
+    // Handler with the same name as the query command. The implementation of
+    // each handler should be independent and distinct from the others, with
+    // possible code and logic duplication by design.
+    // This makes it explicit that each command has its own path flow, which can be
+    // highly optimized according to the type of operation.
     const handler: HandlerType = switch (query.command) {
         .down => return error.Shutdown,
         inline else => |cmd| @field(@This(), @tagName(cmd)),
@@ -184,6 +189,7 @@ fn del_patterns(ctx: *const Context) Error!void {
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
     const total_deleted: i64 = blk: {
+        // true when patterns contains "*"
         var has_any_pattern: bool = false;
         var args = ctx.query.args.iterator();
         while (args.next()) |pattern| {
@@ -829,11 +835,11 @@ fn keys_patterns(ctx: *const Context) Error!void {
 fn keysPatternsOne(ctx: *const Context) !void {
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
+    // true when patterns contains "*"
     var has_any_pattern: bool = false;
     var args = ctx.query.args.iterator();
     while (args.next()) |pattern| {
         if (glob.classify(pattern) != .any) continue;
-
         // Hint to avoid matching with
         // all available patterns.
         has_any_pattern = true;
@@ -891,6 +897,7 @@ fn entriesPatternsOne(ctx: *const Context) !void {
 
     const map: Value.Map = ref.value(.map);
 
+    // true when patterns contains "*"
     var has_any_pattern: bool = false;
     while (args.next()) |pattern| {
         if (glob.classify(pattern) != .any) continue;
@@ -941,6 +948,7 @@ fn entriesPatternsOne(ctx: *const Context) !void {
 }
 
 fn purge(ctx: *const Context) !void {
+    // implicit assume_lock_ownership = true
     return ctx.memory.clear(ctx.allocator);
 }
 
@@ -965,12 +973,121 @@ fn tryLock(ctx: *const Context) !void {
 }
 
 fn unlock(ctx: *const Context) Error!void {
+    // implicit assume_lock_ownership = true
+
     var args = ctx.query.args.iterator();
     // Unlocks all keys that exists.
     while (args.next()) |key| {
         // Maybe deleted key after lock?
         const ref = ctx.memory.get(key) catch continue;
         ref.unlock();
+    }
+}
+
+fn lock_patterns(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, lockPatternsOne);
+}
+
+fn lockPatternsOne(ctx: *const Context) !void {
+    // true when patterns contains "*"
+    var has_any_pattern: bool = false;
+    var args = ctx.query.args.iterator();
+    while (args.next()) |pattern| {
+        if (glob.classify(pattern) != .any) continue;
+        // Hint to avoid matching with
+        // all available patterns.
+        // You are trying to lock the entire database???
+        has_any_pattern = true;
+    }
+
+    var iterator = ctx.memory.iterator();
+    while (iterator.next()) |ref| {
+        const key = ref.key();
+
+        var matches: bool = has_any_pattern;
+        // If any pattern `*` is not detected, we should see
+        // if there is a matching pattern with key.
+        if (!matches) {
+            // To avoid allocations we should
+            // iterate patterns for each key.
+            args.reset();
+            while (args.next()) |pattern| {
+                if (glob.match(pattern, key)) {
+                    // We found a matching pattern!
+                    matches = true;
+                    break;
+                }
+            }
+        }
+
+        if (matches and ref.isLocked()) return error.Locked;
+    }
+
+    iterator.reset();
+    // We need another iteration to avoid allocations.
+    while (iterator.next()) |ref| {
+        const key = ref.key();
+
+        var matches: bool = has_any_pattern;
+        // If any pattern `*` is not detected, we should see
+        // if there is a matching pattern with key.
+        if (!matches) {
+            // To avoid allocations we should
+            // iterate patterns for each key.
+            args.reset();
+            while (args.next()) |pattern| {
+                if (glob.match(pattern, key)) {
+                    // We found a matching pattern!
+                    matches = true;
+                    break;
+                }
+            }
+        }
+
+        // Assuming all selected keys are not locked, now
+        // we can lock them as owner.
+        if (matches) ref.lock();
+    }
+}
+
+fn unlock_patterns(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, unlockPatternsOne);
+}
+
+fn unlockPatternsOne(ctx: *const Context) !void {
+    // implicit assume_lock_ownership = true
+
+    // true when patterns contains "*"
+    var has_any_pattern: bool = false;
+    var args = ctx.query.args.iterator();
+    while (args.next()) |pattern| {
+        if (glob.classify(pattern) == .any) continue;
+        // Hint to avoid matching with
+        // all available patterns.
+        has_any_pattern = true;
+    }
+
+    var iterator = ctx.memory.iterator();
+    while (iterator.next()) |ref| {
+        const key = ref.key();
+
+        var matches: bool = has_any_pattern;
+        // If any pattern `*` is not detected, we should see
+        // if there is a matching pattern with key.
+        if (!matches) {
+            // To avoid allocations we should
+            // iterate patterns for each key.
+            args.reset();
+            while (args.next()) |pattern| {
+                if (glob.match(pattern, key)) {
+                    // We found a matching pattern!
+                    matches = true;
+                    break;
+                }
+            }
+        }
+
+        if (matches) ref.unlock();
     }
 }
 

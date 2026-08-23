@@ -47,7 +47,9 @@ pub const Command = enum(u8) {
     purge,
 
     lock,
+    lock_patterns,
     unlock,
+    unlock_patterns,
 
     down = std.math.maxInt(u8),
 
@@ -90,7 +92,9 @@ pub const Command = enum(u8) {
 
             .ping,
             .lock,
+            .lock_patterns,
             .unlock,
+            .unlock_patterns,
             .down,
             => .control,
         };
