@@ -526,7 +526,7 @@ fn appendStringOne(ctx: *const Context) !void {
     const value_type, const content = try Value.splitSerialized(serialized);
     if (value_type != .string) return error.MismatchType;
 
-    const er = try ctx.memory.ensure(ctx.allocator, key, .list, &.{});
+    const er = try ctx.memory.ensure(ctx.allocator, key, .string, &.{});
     const ref = er.ref;
     errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
 
@@ -548,7 +548,7 @@ fn insertStringOne(ctx: *const Context) !void {
 
     const key = args.next() orelse return error.MissingTokens;
     const ref = try ctx.memory.get(key);
-    if (ref.type() != .list) return error.MismatchType;
+    if (ref.type() != .string) return error.MismatchType;
 
     const string: Value.String = ref.value(.string);
 
@@ -648,19 +648,11 @@ fn addOne(ctx: *const Context) !void {
     if (value_type != ref.type()) return error.MismatchType;
 
     switch (value_type) {
-        .integer => {
-            var result: Value.Integer = try .fromContent(content);
-            const value: i64 = ref.value(.integer).get();
+        inline .integer, .decimal => |vt| {
+            var result: Value.UnionType(vt) = try .fromContent(content);
+            const value = ref.value(vt).get();
             if (is_add) try result.add(value) else try result.sub(value);
-            try ref.setValue(ctx.allocator, .integer, &result.content);
-
-            try reply.writeValue(ctx.writer, result);
-        },
-        .decimal => {
-            var result: Value.Decimal = try .fromContent(content);
-            const value: f64 = ref.value(.decimal).get();
-            if (is_add) try result.add(value) else try result.sub(value);
-            try ref.setValue(ctx.allocator, .decimal, &result.content);
+            try ref.setValue(ctx.allocator, vt, &result.content);
 
             try reply.writeValue(ctx.writer, result);
         },
@@ -669,49 +661,62 @@ fn addOne(ctx: *const Context) !void {
 }
 
 fn rename(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, renameOne);
+    return writeOrThrow(ctx, renameOneWrapper);
 }
 
-fn renameOne(ctx: *const Context) !void {
+fn renameOneWrapper(ctx: *const Context) !void {
+    const success = try renameOne(ctx);
+    const integer: Value.Integer = .fromValue(@intCast(@intFromBool(success)));
+    try reply.writeValue(ctx.writer, integer);
+}
+
+fn renameOne(ctx: *const Context) !bool {
     var args = ctx.query.args.iterator();
 
     const selected_key = args.next() orelse return error.MissingTokens;
     const new_key = args.next() orelse return error.MissingTokens;
 
-    if (std.mem.eql(u8, selected_key, new_key)) return;
+    if (std.mem.eql(u8, selected_key, new_key)) return true;
 
     const new_ref = ctx.memory.get(new_key);
-    if (new_ref != error.KeyNotFound and ctx.query.flags.if_not_exists.get()) return error.DuplicatedKey;
+    if (new_ref != error.KeyNotFound and ctx.query.flags.if_not_exists.get()) return false;
 
     if (new_ref != error.KeyNotFound) ctx.memory.removeByRef(
         ctx.allocator,
         new_ref catch unreachable,
     );
     const selected_ref = try ctx.memory.get(selected_key);
+
     try selected_ref.setKey(ctx.allocator, new_key);
+    return true;
 }
 
 fn copy(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, copyOne);
+    return writeOrThrow(ctx, copyOneWrapper);
 }
 
-fn copyOne(ctx: *const Context) !void {
+fn copyOneWrapper(ctx: *const Context) !void {
+    const success = try copyOne(ctx);
+    const integer: Value.Integer = .fromValue(@intCast(@intFromBool(success)));
+    try reply.writeValue(ctx.writer, integer);
+}
+
+fn copyOne(ctx: *const Context) !bool {
     var args = ctx.query.args.iterator();
 
     const src_key = args.next() orelse return error.MissingTokens;
     const dst_key = args.next() orelse return error.MissingTokens;
 
-    if (ctx.query.flags.get.get()) {
-        const ref: ?Ref = ctx.memory.get(dst_key) catch null;
-        if (ref != null) try writeRef(ctx, ref.?);
+    const dst = try ctx.memory.ensure(ctx.allocator, dst_key, .void, &.{});
+    errdefer if (!dst.found_existing) ctx.memory.removeByRef(ctx.allocator, dst.ref);
+    if (dst.found_existing and ctx.query.flags.if_not_exists.get()) return false;
+
+    if (ctx.query.flags.get.get() and dst.found_existing) {
+        try writeRef(ctx, dst.ref);
     }
 
-    return ctx.memory.copy(
-        ctx.allocator,
-        src_key,
-        dst_key,
-        ctx.query.flags.if_not_exists.get(),
-    );
+    try ctx.memory.copy(ctx.allocator, src_key, dst.ref);
+    return true;
 }
 
 fn @"type"(ctx: *const Context) Error!void {

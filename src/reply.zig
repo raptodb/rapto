@@ -24,7 +24,6 @@ pub const ErrorCode = enum(u8) {
     math_overflow,
     range_overflow,
     map_key_not_found,
-    duplicated_key,
     unknown_command,
 
     unknown = std.math.maxInt(u8),
@@ -49,7 +48,6 @@ pub const ErrorCode = enum(u8) {
             error.MathOverflow => .math_overflow,
             error.RangeOverflow => .range_overflow,
             error.MapKeyNotFound => .map_key_not_found,
-            error.DuplicatedKey => .duplicated_key,
             error.UnknownCommand => .unknown_command,
             else => .unknown,
         };
