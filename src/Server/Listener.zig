@@ -238,7 +238,7 @@ pub const EventQueue = struct {
     events: []const linux.epoll_event,
     index: u64 = 0,
 
-    pub fn next(self: *EventQueue, allocator: std.mem.Allocator, io: std.Io) ?Event {
+    pub fn next(self: *EventQueue) ?Event {
         if (self.index >= self.events.len) return null;
 
         const epoll_event = self.events[self.index];
@@ -258,7 +258,7 @@ pub const EventQueue = struct {
             },
             .unknown => ev: {
                 @branchHint(.cold);
-                break :ev self.next(allocator, io);
+                break :ev self.next();
             },
         };
     }
