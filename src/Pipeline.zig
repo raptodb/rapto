@@ -18,9 +18,9 @@ pub const Config = struct {
     /// Minimum size for read/write buffers. This optimizes the
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
-    /// and is never deallocated until the `.deinit()` method.
+    /// and is never deallocated until the `deinit()` method.
     rw_buffer_preserved_size: u64,
-    /// Maximum readable bytes from `.read()` over header.
+    /// Maximum readable bytes from `read()` over header.
     /// This avoid too large inputs from reader (maybe socket)
     /// throwing error.StreamTooLong.
     /// TODO: make this configurable with cli flags.

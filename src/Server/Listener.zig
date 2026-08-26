@@ -61,7 +61,7 @@ events: struct {
 
     /// All element pointers are invalidated after
     /// calling this function. To get the events
-    /// slice, `.buffered()` must be called again.
+    /// slice, `buffered()` must be called again.
     fn grow(self: *EventBuffer, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
         @branchHint(.cold);
         try self.buffer.ensureUnusedCapacity(allocator, 1);
@@ -122,7 +122,7 @@ streams: struct {
     ) std.mem.Allocator.Error!void {
         const index: u64 = @intCast(fd);
         self.registered.unset(index);
-        // `.ensure()` grows the table precisely to `fd + 1`, so the last
+        // `ensure()` grows the table precisely to `fd + 1`, so the last
         // table slot is always occupied by the greatest registered fd.
         if (index == self.table.items.len - 1) {
             // Listener file descriptor is never removed before `.deinit()`.

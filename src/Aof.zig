@@ -28,7 +28,7 @@ pub const Config = struct {
     /// Minimum size for read/write buffers. This optimizes the
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
-    /// and is never deallocated until the `.deinit()` method.
+    /// and is never deallocated until the `deinit()` method.
     rw_buffer_preserved_size: u64,
 };
 

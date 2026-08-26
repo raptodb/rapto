@@ -15,7 +15,7 @@ pub const Config = struct {
     /// Minimum size for write/read buffers. This optimizes the
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
-    /// and is never deallocated until the `.deinit()` method.
+    /// and is never deallocated until the `deinit()` method.
     preserved_size: u64,
     /// Only write buffer is used. When enabled, `take` will
     /// have the same behavior of `peek` with cursor reset.
