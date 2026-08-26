@@ -97,6 +97,13 @@ pub fn addManyAsSlice(self: *RwBuffer, n: u64) std.mem.Allocator.Error![]u8 {
     return w.buffer[start..w.end];
 }
 
+pub fn unusedCapacitySlice(self: *RwBuffer) []u8 {
+    return self.writer().unusedCapacitySlice();
+}
+
+/// Writer based on std.Io.Writer.Allocating.
+/// Any error returned as error.WriteFailed
+/// should be converted to error.OutOfMemory.
 pub fn writer(self: *RwBuffer) *std.Io.Writer {
     return &self.write_buffer.writer;
 }

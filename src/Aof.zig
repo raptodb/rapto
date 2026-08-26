@@ -18,58 +18,107 @@ const RwBuffer = @import("RwBuffer.zig");
 const Query = @import("Query.zig");
 const Memory = @import("Memory.zig");
 
+const version = @import("main.zig").version;
+const header_magic: [5]u8 = "RAPTO".*;
+
 pub const Config = struct {
-    /// Name of Server instance.
+    /// Name of Server instance, owner of current AOF file.
+    /// Length must be less than 128 bytes.
     name: []const u8,
-    /// When this parameter is enabled, writes in AOF
-    /// in name.raptodb file.
-    aof: bool,
-    /// When this parameter is enabled, reads the AOF
-    /// file. When both `aof` and `aof_file` are enabled
-    /// writes on file as the same name of `aof_file`.
-    aof_file: ?[]const u8,
     /// Minimum size for read/write buffers. This optimizes the
     /// allocation/deallocation overhead.
     /// The preserved size is allocated at initialization time
     /// and is never deallocated until the `.deinit()` method.
-    preserved_size: u32 = 16 * 1024,
+    rw_buffer_preserved_size: u64,
 };
 
 config: Config,
 
+write_offset: u64 = 0,
 file: std.Io.File,
+/// Based on default configuration, this is used
+/// only for append/flush methods.
+/// This implementation resizes buffer efficiently.
 rw_buffer: RwBuffer,
+
+const Header = extern struct {
+    const Error = error{ InvalidMagic, UnsupportedVersion, NameTooLong };
+
+    magic: [5]u8 = header_magic,
+    version: extern struct {
+        const Version = @This();
+
+        major: u64,
+        minor: u64,
+        // Patch is not considered because it's
+        // assumed that there are no changes to API.
+        // patch: u64,
+
+        const current: Version = .{ .major = version.major, .minor = version.minor };
+
+        fn fromSemanticVersion(sv: std.SemanticVersion) Version {
+            return .{ .major = sv.major, .minor = sv.minor };
+        }
+
+        fn isCompatible(self: Version, v: Version) bool {
+            return self.major == v.major and self.minor == v.minor;
+        }
+    } = .current,
+
+    /// Original server name that created
+    server_name: [128]u8 = @splat(0),
+    /// Reserved for incoming features.
+    _: [512]u8 = @splat(0),
+
+    pub fn init(server_name: []const u8) error{NameTooLong}!Header {
+        var self: Header = .{};
+        if (server_name.len >= self.server_name.len) return error.NameTooLong;
+        @memcpy(self.magic[0..header_magic.len], &header_magic);
+        @memcpy(self.server_name[0..server_name.len], server_name);
+        self.version = .fromSemanticVersion(version);
+        return self;
+    }
+
+    pub const DeserializeError = std.Io.Reader.Error || error{ InvalidMagic, UnsupportedVersion };
+
+    pub fn deserializeFromReader(reader: *std.Io.Reader) DeserializeError!Header {
+        const self = try reader.takeStruct(Header, .little);
+        if (!std.mem.eql(u8, &self.magic, &header_magic)) return error.InvalidMagic;
+        if (!self.version.isCompatible(.current)) return error.UnsupportedVersion;
+        return self;
+    }
+
+    pub fn serializeToWriter(self: Header, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return writer.writeStruct(self, .little);
+    }
+};
+
+pub const InitError = std.mem.Allocator.Error || std.Io.File.OpenError || EnsureHeader || std.Io.File.LengthError || error{NameTooLong};
 
 pub fn init(
     allocator: std.mem.Allocator,
     io: std.Io,
+    path: []const u8,
     config: Config,
-) (std.mem.Allocator.Error || std.Io.File.OpenError)!?Aof {
-    if (!config.aof and config.aof_file == null)
-        return null;
-
-    var owned_path: ?[]u8 = null;
-    if (config.aof_file == null) {
-        owned_path = try std.fmt.allocPrint(allocator, "{s}.raptodb", .{config.name});
-    }
-    defer if (owned_path) |path| allocator.free(path);
-
-    const file = try std.Io.Dir.createFileAbsolute(
-        io,
-        config.aof_file orelse owned_path.?,
-        .{ .truncate = false, .read = true },
-    );
+) InitError!Aof {
+    const options: std.Io.Dir.CreateFileOptions = .{ .truncate = false, .read = true };
+    const file = try std.Io.Dir.createFileAbsolute(io, path, options);
+    errdefer file.close(io);
 
     const rw_buffer_config: RwBuffer.Config = .{
-        .preserved_size = config.preserved_size,
+        .preserved_size = config.rw_buffer_preserved_size,
         .single_buffer = true,
     };
+    var rw_buffer: RwBuffer = try .init(allocator, rw_buffer_config);
+    errdefer rw_buffer.deinit();
 
-    return .{
-        .file = file,
-        .rw_buffer = try .init(allocator, rw_buffer_config),
-        .config = config,
-    };
+    var self: Aof = .{ .file = file, .rw_buffer = rw_buffer, .config = config };
+
+    // Default header when file doesn't exist or is corrupted.
+    const default_header: Header = try .init(config.name);
+    try self.ensureHeader(io, default_header);
+
+    return self;
 }
 
 pub fn deinit(self: *Aof, io: std.Io) void {
@@ -77,32 +126,112 @@ pub fn deinit(self: *Aof, io: std.Io) void {
     self.rw_buffer.deinit();
 }
 
+const WriteHeaderError =
+    std.Io.File.Writer.Error || std.Io.File.Writer.SeekError || std.Io.File.SyncError || std.Io.File.LengthError;
+
+fn writeHeader(self: *Aof, io: std.Io, header: Header) WriteHeaderError!void {
+    var writer = self.file.writer(io, self.rw_buffer.unusedCapacitySlice());
+    try writer.seekToUnbuffered(0);
+    header.serializeToWriter(&writer.interface) catch |err| return switch (err) {
+        error.WriteFailed => writer.err.?,
+    };
+    writer.interface.flush() catch |err| return switch (err) {
+        error.WriteFailed => writer.err.?,
+    };
+    try self.file.sync(io);
+    self.write_offset = try self.file.length(io);
+}
+
+const EnsureHeader = Header.Error || WriteHeaderError || std.Io.File.Reader.Error;
+
+fn ensureHeader(self: *Aof, io: std.Io, header: Header) EnsureHeader!void {
+    const size = try self.file.length(io);
+    if (size == 0) {
+        // File is empty or just created.
+        try self.writeHeader(io, header);
+        return;
+    }
+
+    var reader = self.file.reader(io, self.rw_buffer.unusedCapacitySlice());
+    const maybe_error = Header.deserializeFromReader(&reader.interface);
+
+    _ = maybe_error catch |err| switch (err) {
+        error.EndOfStream => {
+            // Stream too short, maybe corrupted.
+            // We have to overwrite data at offset 0 with
+            // valid header.
+            try self.writeHeader(io, header);
+        },
+        error.ReadFailed => return reader.err.?,
+        error.UnsupportedVersion,
+        error.InvalidMagic,
+        => |e| return e,
+    };
+}
+
 const Iterator = struct {
     reader: *std.Io.Reader,
+    allocating: std.Io.Writer.Allocating,
+
+    fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) Iterator {
+        return .{ .reader = reader, .allocating = .init(allocator) };
+    }
+
+    fn deinit(self: *Iterator) void {
+        self.allocating.deinit();
+    }
 
     const Batch = struct {
         timestamp: std.Io.Timestamp,
-        // Likely to be accessed with Pipeline.Iterator.
         pipeline: []const u8,
+
+        fn iterator(self: Batch) Pipeline.Iterator {
+            return .init(self.pipeline);
+        }
     };
 
-    pub fn next(self: *Iterator) ?Batch {
-        const ts = self.reader.takeInt(u64, .little) catch return null;
-        const len = self.reader.takeInt(u64, .little) catch return null;
-        const pipeline = self.reader.take(len) catch return null;
+    const Error = std.mem.Allocator.Error || std.Io.Reader.Error || error{InvalidFormat};
+
+    fn next(self: *Iterator) Error!?Batch {
+        self.allocating.clearRetainingCapacity();
+        const writer = &self.allocating.writer;
+
+        const ts = self.reader.takeInt(
+            u64,
+            .little,
+        ) catch |err| return switch (err) {
+            error.ReadFailed => error.ReadFailed,
+            // No other queries to read.
+            error.EndOfStream => null,
+        };
+        const len = self.reader.takeInt(
+            Pipeline.Header,
+            .little,
+        ) catch |err| return switch (err) {
+            error.ReadFailed => error.ReadFailed,
+            error.EndOfStream => error.InvalidFormat,
+        };
+
+        const pipeline = writer.writableSlice(len) catch |err| return switch (err) {
+            error.WriteFailed => error.OutOfMemory,
+        };
+        self.reader.readSliceAll(pipeline) catch |err| return switch (err) {
+            error.ReadFailed => error.ReadFailed,
+            error.EndOfStream => error.InvalidFormat,
+        };
+
         return .{ .pipeline = pipeline, .timestamp = .fromNanoseconds(ts) };
     }
 };
 
-pub fn append(
-    self: *Aof,
-    timestamp: std.Io.Timestamp,
-    pipeline: []const u8,
-) std.mem.Allocator.Error!void {
+/// Appends to abstract queue the current pipeline.
+/// When `flush` is called, queue drains the content
+/// to file and `append` starts from empty queue.
+pub fn append(self: *Aof, ts: std.Io.Timestamp, pipeline: []const u8) std.mem.Allocator.Error!void {
     // Derived from std.Io.Writer.Allocating.
     // Any WriteFailed error corresponds to OutOfMemory.
     const writer = self.rw_buffer.writer();
-    const ns_timestamp: u64 = @intCast(timestamp.toNanoseconds());
+    const ns_timestamp: u64 = @intCast(ts.toNanoseconds());
     writer.writeInt(u64, ns_timestamp, .little) catch |err| return switch (err) {
         error.WriteFailed => error.OutOfMemory,
     };
@@ -111,38 +240,42 @@ pub fn append(
     };
 }
 
-/// Flushes all appended pipelines to AOF file.
-pub fn flush(self: *Aof, io: std.Io) std.Io.File.Writer.Error!void {
-    const written = self.rw_buffer.peek();
-    if (written.len == 0) return;
-    var buf: [4 * 1024]u8 = undefined;
-    var aof_writer = self.file.writer(io, &buf);
+pub const FlushError = std.Io.File.SyncError || std.Io.File.WritePositionalError;
 
-    aof_writer.interface.writeAll(written) catch |err| return switch (err) {
-        error.WriteFailed => aof_writer.err.?,
-    };
-    aof_writer.interface.flush() catch |err| return switch (err) {
-        error.WriteFailed => aof_writer.err.?,
-    };
+/// Flushes all appended pipelines to AOF file. Waits
+/// until file is syncronized with flushed content.
+pub fn flush(self: *Aof, io: std.Io) FlushError!void {
+    const written = self.rw_buffer.take();
+    if (written.len == 0) return;
+
+    try self.file.writePositionalAll(io, written, self.write_offset);
+    try self.file.sync(io);
 
     self.rw_buffer.reset();
+    self.write_offset += written.len;
 }
 
+pub const LoadError = Iterator.Error;
+
 pub fn load(
-    self: Aof,
+    self: *Aof,
     allocator: std.mem.Allocator,
     io: std.Io,
     memory: *Memory,
-) std.mem.Allocator.Error!void {
+) Iterator.Error!void {
     var tmp: std.Io.Writer.Allocating = .init(allocator);
     defer tmp.deinit();
     const writer = &tmp.writer;
 
-    var buf: [4 * 1024]u8 = undefined;
-    var reader = self.file.reader(io, &buf);
+    // Minimus buffer required for .takeInt() methods.
+    var min_buf: [8]u8 = undefined;
+    var reader = self.file.reader(io, &min_buf);
+    reader.seekTo(@sizeOf(Header)) catch unreachable;
 
-    var batches: Aof.Iterator = .{ .reader = &reader.interface };
-    while (batches.next()) |batch| {
+    var batches: Aof.Iterator = .init(allocator, &reader.interface);
+    defer batches.deinit();
+
+    while (try batches.next()) |batch| {
         try loadPipeline(allocator, writer, memory, batch.pipeline);
     }
 }
@@ -154,16 +287,14 @@ fn loadPipeline(
     pipeline: []const u8,
 ) std.mem.Allocator.Error!void {
     var queries: Pipeline.Iterator = .init(pipeline);
-    while (queries.next()) |maybe_error| {
-        const query = maybe_error catch continue;
-
+    while (queries.next()) |maybe_query| {
+        const query = maybe_query catch continue;
         if (query.command.kind() != .write) return;
-        state_machine.execute(
-            allocator,
-            memory,
-            writer,
-            &query,
-        ) catch |err| return switch (err) {
+
+        const maybe_error =
+            state_machine.execute(allocator, memory, writer, &query);
+
+        maybe_error catch |err| return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
             // Returned only by down, that is considered a control command.
             // Only write commands can be executed.
