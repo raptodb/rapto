@@ -10,14 +10,11 @@ const Stream = @This();
 const std = @import("std");
 const linux = std.os.linux;
 
-pub const ConnectError = std.Io.net.IpAddress.ConnectError || std.posix.SetSockOptError;
-pub const AcceptError = std.Io.net.Server.AcceptError || std.posix.SetSockOptError;
-pub const ReadError = std.Io.net.Stream.Reader.Error || error{EndOfStream};
-pub const WriteError = std.Io.net.Stream.Writer.Error;
-
 const StreamingHeader = u64;
 
 stream: std.Io.net.Stream,
+
+pub const AcceptError = std.Io.net.Server.AcceptError || std.posix.SetSockOptError;
 
 pub fn nonBlockAccept(io: std.Io, server: *std.Io.net.Server) AcceptError!Stream {
     // Waiting stdlib update to use Io instead of this.
@@ -56,6 +53,8 @@ pub fn nonBlockAccept(io: std.Io, server: *std.Io.net.Server) AcceptError!Stream
 
     return .from(socket_fd, std.Io.Threaded.addressFromPosix(&storage));
 }
+
+pub const ConnectError = std.Io.net.IpAddress.ConnectError || std.posix.SetSockOptError;
 
 pub fn connect(io: std.Io, addr: std.Io.net.IpAddress) ConnectError!Stream {
     const stream = try addr.connect(io, .{ .mode = .stream });
