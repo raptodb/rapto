@@ -11,78 +11,112 @@ const String = @This();
 const std = @import("std");
 const assert = std.debug.assert;
 
-ptr: *std.ArrayList(u8),
+pub const Error = std.mem.Allocator.Error || error{InvalidFormat};
 
-pub fn initFromContent(
-    allocator: std.mem.Allocator,
-    content: []const u8,
-) std.mem.Allocator.Error!String {
-    const list_ptr = try allocator.create(std.ArrayList(u8));
-    errdefer allocator.destroy(list_ptr);
-    list_ptr.* = try .initCapacity(allocator, content.len);
-    list_ptr.appendSliceAssumeCapacity(content);
-    return .{ .ptr = list_ptr };
+/// Pointer to byte array. The first 4 bytes
+/// header represents the length of string.
+ptr: [*]u8,
+
+pub const Header: type = u32;
+
+pub fn initFromContent(allocator: std.mem.Allocator, content: []const u8) Error!String {
+    if (content.len -| @sizeOf(Header) > std.math.maxInt(u32)) return error.InvalidFormat;
+
+    const str = try allocator.alloc(u8, @sizeOf(Header) + content.len);
+    var self: String = .{ .ptr = str.ptr };
+    self.setLen(@truncate(content.len));
+    try self.set(allocator, content);
+
+    return self;
 }
 
 pub fn deinit(self: String, allocator: std.mem.Allocator) void {
-    self.ptr.deinit(allocator);
-    allocator.destroy(self.ptr);
+    allocator.free(self.allocatedSlice());
 }
 
 pub fn set(
-    self: String,
+    self: *String,
     allocator: std.mem.Allocator,
     content: []const u8,
-) std.mem.Allocator.Error!void {
-    if (std.mem.eql(u8, self.get(), content)) return;
-    try self.resize(allocator, content.len);
-    @memcpy(self.ptr.items[0..content.len], content);
+) Error!void {
+    if (content.len -| @sizeOf(Header) > std.math.maxInt(u32)) return error.InvalidFormat;
+
+    const length = self.len();
+    const content_length: u32 = @truncate(content.len);
+
+    if (length != content_length) {
+        const slice: []u8 = try allocator.realloc(
+            self.ptr[0 .. @sizeOf(Header) + length],
+            @sizeOf(Header) + content_length,
+        );
+
+        self.ptr = slice.ptr;
+        self.setLen(content_length);
+    }
+
+    @memcpy(self.getMutable(), content);
 }
 
-/// Inserts string at specific index. Assumes index is in bounds.
+/// Inserts string at specific offset. Assumes offset is in bounds.
 pub fn insert(
-    self: String,
+    self: *String,
     allocator: std.mem.Allocator,
-    index: u64,
+    index: u32,
     content: []const u8,
-) std.mem.Allocator.Error!void {
-    try self.ptr.ensureTotalCapacityPrecise(allocator, self.len() + content.len);
-    self.ptr.insertSliceAssumeCapacity(index, content);
+) Error!void {
+    if (content.len -| (std.math.maxInt(u32) - self.len()) > 0) return error.InvalidFormat;
+
+    const old_len = self.len();
+    const new_len = old_len + @as(u32, @truncate(content.len));
+
+    var str: std.ArrayList(u8) = .fromOwnedSlice(self.allocatedSlice());
+    try str.ensureTotalCapacityPrecise(allocator, @sizeOf(Header) + new_len);
+    str.insertSliceAssumeCapacity(@sizeOf(Header) + index, content);
+    self.ptr = str.toOwnedSliceAssert().ptr;
+
+    self.setLen(new_len);
 }
 
-/// Replaces string at specific index. Assumes index is in bounds.
+/// Replaces string at specific offset. Assumes offset is in bounds.
 pub fn replace(
-    self: String,
-    index: u64,
+    self: *String,
+    index: u32,
     content: []const u8,
-) (std.mem.Allocator.Error || error{RangeOverflow})!void {
+) (Error || error{RangeOverflow})!void {
     if (index +| content.len > self.len()) return error.RangeOverflow;
-    self.ptr.replaceRangeAssumeCapacity(index, content.len, content);
+    var str: std.ArrayList(u8) = .fromOwnedSlice(self.allocatedSlice());
+    str.replaceRangeAssumeCapacity(@sizeOf(Header) + index, content.len, content);
+    self.ptr = str.toOwnedSliceAssert().ptr;
 }
 
 pub fn dupe(self: String, allocator: std.mem.Allocator) std.mem.Allocator.Error!String {
-    return .initFromContent(allocator, self.get());
+    const buf = try allocator.dupe(u8, self.allocatedSlice());
+    return .{ .ptr = buf.ptr };
 }
 
 pub fn get(self: String) []const u8 {
-    return self.ptr.items;
+    return self.ptr[@sizeOf(Header) .. @sizeOf(Header) + self.len()];
 }
 
-pub fn len(self: String) u64 {
-    return self.get().len;
+fn setLen(self: String, length: u32) void {
+    std.mem.writeInt(Header, self.ptr[0..@sizeOf(Header)], length, .little);
+}
+
+fn getMutable(self: String) []u8 {
+    return self.ptr[@sizeOf(Header) .. @sizeOf(Header) + self.len()];
+}
+
+fn allocatedSlice(self: String) []u8 {
+    return self.ptr[0 .. @sizeOf(Header) + self.len()];
+}
+
+/// Returns logical length of string content, excluding header.
+pub fn len(self: String) u32 {
+    return std.mem.readInt(Header, self.ptr[0..@sizeOf(Header)], .little);
 }
 
 pub fn serializeContentToWriter(self: String, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll(self.get());
-}
-
-fn resize(self: String, allocator: std.mem.Allocator, new_len: u64) std.mem.Allocator.Error!void {
-    if (self.len() > new_len) {
-        try self.ptr.shrinkAndFreePrecise(allocator, new_len);
-    } else if (self.len() < new_len) {
-        try self.ptr.ensureTotalCapacityPrecise(allocator, new_len);
-        self.ptr.expandToCapacity();
-    }
 }
 
 test "String" {
