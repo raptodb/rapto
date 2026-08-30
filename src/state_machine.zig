@@ -504,10 +504,10 @@ fn setOne(ctx: *const Context) !void {
             try writeRef(ctx, ref);
         }
         if (!ctx.query.flags.if_not_exists.get()) {
-            try ref.setValue(ctx.allocator, value_type, content);
+            try ref.setValueFromContent(ctx.allocator, value_type, content);
         }
     } else {
-        _ = try ctx.memory.ensure(ctx.allocator, key, value_type, content);
+        _ = try ctx.memory.put(ctx.allocator, key, value_type, content);
     }
 }
 
@@ -556,8 +556,9 @@ fn appendStringOne(ctx: *const Context) !void {
     if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (value_type != .string) return error.MismatchType;
 
-    const string: Value.String = ref.value(.string);
+    var string: Value.String = ref.value(.string);
     try string.insert(ctx.allocator, string.len(), content);
+    ref.setValue(ctx.allocator, .{ .string = string });
 
     const integer: Value.Integer = .fromValue(@intCast(string.len()));
     try reply.writeValue(ctx.writer, integer);
@@ -577,7 +578,7 @@ fn insertStringOne(ctx: *const Context) !void {
     if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
     if (ref.type() != .string) return error.MismatchType;
 
-    const string: Value.String = ref.value(.string);
+    var string: Value.String = ref.value(.string);
 
     const index = try nextIndex(&args, string.len());
     const serialized = args.next() orelse return error.MissingTokens;
@@ -589,10 +590,12 @@ fn insertStringOne(ctx: *const Context) !void {
     }
 
     if (ctx.query.flags.replace.get()) {
-        try string.replace(index, content);
+        try string.replace(@truncate(index), content);
     } else {
-        try string.insert(ctx.allocator, index, content);
+        try string.insert(ctx.allocator, @truncate(index), content);
     }
+
+    ref.setValue(ctx.allocator, .{ .string = string });
 }
 
 fn insert_list(ctx: *const Context) Error!void {
@@ -686,7 +689,10 @@ fn addOne(ctx: *const Context) !void {
             var result: Value.UnionType(vt) = try .fromContent(content);
             const value = ref.value(vt).get();
             if (is_add) try result.add(value) else try result.sub(value);
-            try ref.setValue(ctx.allocator, vt, &result.content);
+            ref.setValue(
+                ctx.allocator,
+                @unionInit(Value, @tagName(vt), result),
+            );
 
             try reply.writeValue(ctx.writer, result);
         },

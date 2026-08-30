@@ -86,7 +86,7 @@ pub fn put(
     const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
 
     if (entry.found_existing) {
-        try ref.setValue(allocator, value_type, content);
+        try ref.setValueFromContent(allocator, value_type, content);
     } else {
         errdefer self.map.removeByPtr(entry.key_ptr);
         entry.key_ptr.*, entry.value_ptr.* = try object.init(allocator, key, value_type, content);
