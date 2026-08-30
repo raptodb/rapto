@@ -31,7 +31,7 @@ expected_keys: u32,
 /// Maybe used when clients sends big queries or batches.
 io_preserved_size: u64,
 
-pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
+pub fn parse(args: *std.process.Args.Iterator) Server {
     var name: ?[]const u8 = null;
     var aof: bool = false;
     var aof_file: ?[]const u8 = null;

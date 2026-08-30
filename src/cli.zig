@@ -24,7 +24,7 @@ pub const Command = union(enum) {
 
     pub fn parse(args: std.process.Args) Command {
         var iterator = args.iterate();
-        // skips executable name
+        // Skips executable name.
         assert(iterator.skip());
 
         const maybe_command = iterator.next() orelse
@@ -33,7 +33,7 @@ pub const Command = union(enum) {
             fatal("unknown '{s}' command", .{maybe_command});
 
         return switch (command) {
-            .server => .{ .server = .parseServerCommand(&iterator) },
+            .server => .{ .server = .parse(&iterator) },
             .inspect => fatal("inspect: unimplemented", .{}),
             .benchmark => fatal("benchmark: unimplemented", .{}),
             .version => .version,
