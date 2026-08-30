@@ -396,10 +396,21 @@ pub const Ref = struct {
         try self.key_ptr.set(allocator, new_key);
     }
 
+    /// Replaces current value directly.
+    pub fn setValue(self: Ref, allocator: std.mem.Allocator, v: Value) void {
+        const current_value_type = self.type();
+        self.value_ptr.deinit(allocator, current_value_type);
+        self.value_ptr.* = v;
+        const value_type: Value.Type = .of(v);
+        if (current_value_type != value_type) {
+            self.key_ptr.setValueType(value_type);
+        }
+    }
+
     /// Sets value with a new scalar value.
     /// If value type is different, deallocates previous value
     /// and allocates new value. Otherwise, updates in-place.
-    pub fn setValue(
+    pub fn setValueFromContent(
         self: Ref,
         allocator: std.mem.Allocator,
         value_type: Value.Type,
@@ -414,11 +425,11 @@ pub const Ref = struct {
         if (value_type != current_value_type) {
             @branchHint(.unlikely);
 
-            // deallocate previous value first
+            // Deallocate previous value first.
             self.value_ptr.deinit(allocator, current_value_type);
             self.value_ptr.* = try .init(allocator, value_type, content);
 
-            // update tag to new value type
+            // Update tag to new value type.
             return self.key_ptr.setValueType(value_type);
         }
 
@@ -543,7 +554,7 @@ test "Ref" {
         const ref: Ref = .wrap(&key, &f);
         defer deinit(allocator, key, f);
 
-        try ref.setValue(allocator, .integer, &integer_20_content);
+        try ref.setValueFromContent(allocator, .integer, &integer_20_content);
 
         try std.testing.expectEqualStrings("my_key", ref.key());
         try std.testing.expectEqual(.integer, ref.type());
@@ -555,7 +566,7 @@ test "Ref" {
         const ref: Ref = .wrap(&key, &f);
         defer deinit(allocator, key, f);
 
-        try ref.setValue(allocator, .string, "hello");
+        try ref.setValueFromContent(allocator, .string, "hello");
 
         try std.testing.expectEqualStrings("my_key", ref.key());
         try std.testing.expectEqual(.string, ref.type());
@@ -567,17 +578,17 @@ test "Ref" {
         const ref: Ref = .wrap(&key, &f);
         defer deinit(allocator, key, f);
 
-        try ref.setValue(allocator, .string, "step one");
+        try ref.setValueFromContent(allocator, .string, "step one");
         try std.testing.expectEqualStrings("evolving", ref.key());
         try std.testing.expectEqual(.string, ref.type());
 
         const decimal_content: [8]u8 = @bitCast(@as(f64, 9.81));
-        try ref.setValue(allocator, .decimal, &decimal_content);
+        try ref.setValueFromContent(allocator, .decimal, &decimal_content);
         try std.testing.expectEqualStrings("evolving", ref.key());
         try std.testing.expectEqual(.decimal, ref.type());
 
         const flag_content: [8]u8 = @bitCast(@as(u64, 1));
-        try ref.setValue(allocator, .flag, &flag_content);
+        try ref.setValueFromContent(allocator, .flag, &flag_content);
         try std.testing.expectEqualStrings("evolving", ref.key());
         try std.testing.expectEqual(.flag, ref.type());
     }
@@ -592,7 +603,7 @@ test "Ref" {
         try std.testing.expectEqualStrings("new_key", ref.key());
         try std.testing.expectEqual(.integer, ref.type());
 
-        try ref.setValue(allocator, .string, "hello");
+        try ref.setValueFromContent(allocator, .string, "hello");
         try std.testing.expectEqualStrings("new_key", ref.key());
         try std.testing.expectEqual(.string, ref.type());
     }
