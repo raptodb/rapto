@@ -203,36 +203,6 @@ pub fn deinit(self: *Listener, allocator: std.mem.Allocator, io: std.Io) void {
     self.events.deinit(allocator);
 }
 
-pub const Acceptor = struct {
-    pub const Error = std.mem.Allocator.Error || Stream.AcceptError;
-
-    listener: *Listener,
-
-    pub fn init(listener: *Listener) Acceptor {
-        return .{ .listener = listener };
-    }
-
-    pub fn acceptNext(
-        self: Acceptor,
-        allocator: std.mem.Allocator,
-        io: std.Io,
-    ) Acceptor.Error!?Stream {
-        const client = Stream.nonBlockAccept(
-            io,
-            &self.listener.server,
-        ) catch |err| return switch (err) {
-            // Client disconnected during accept.
-            // Maybe another available client?
-            error.ConnectionAborted => self.acceptNext(allocator, io),
-            // No other clients are available.
-            error.WouldBlock => null,
-            else => err,
-        };
-        try self.listener.register(allocator, client);
-        return client;
-    }
-};
-
 pub const EventQueue = struct {
     listener: *Listener,
     events: []const linux.epoll_event,
@@ -295,6 +265,36 @@ pub fn collectEvents(
     }
 
     return .{ .listener = self, .events = events[0..len] };
+}
+
+pub const Acceptor = struct {
+    pub const Error = std.mem.Allocator.Error || Stream.AcceptError;
+
+    listener: *Listener,
+
+    pub fn acceptNext(
+        self: Acceptor,
+        allocator: std.mem.Allocator,
+        io: std.Io,
+    ) Acceptor.Error!?Stream {
+        const client = Stream.nonBlockAccept(
+            io,
+            &self.listener.server,
+        ) catch |err| return switch (err) {
+            // Client disconnected during accept.
+            // Maybe another available client?
+            error.ConnectionAborted => self.acceptNext(allocator, io),
+            // No other clients are available.
+            error.WouldBlock => null,
+            else => err,
+        };
+        try self.listener.register(allocator, client);
+        return client;
+    }
+};
+
+pub fn acceptor(self: *Listener) Acceptor {
+    return .{ .listener = self };
 }
 
 pub fn disconnect(

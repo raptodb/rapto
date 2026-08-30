@@ -35,7 +35,9 @@ pub const Context = struct {
     ) !Context {
         const config: Server.Config = .{ .aof_sync_seconds = args.aof_sync_seconds };
 
-        const pipeline_config: Pipeline.Config = .{ .rw_buffer_preserved_size = args.io_preserved_size };
+        const pipeline_config: Pipeline.Config = .{
+            .rw_buffer_preserved_size = args.io_preserved_size,
+        };
         const memory_config: Memory.Config = .{ .initial_keys = args.expected_keys };
         const aof_config: Aof.Config = .{
             .name = args.name,
@@ -78,16 +80,16 @@ pub const Context = struct {
         };
     }
 
-    /// Load queries from AOF. Assumes AOF is enabled.
-    pub fn loadAof(self: *Context, allocator: std.mem.Allocator, io: std.Io) Aof.LoadError!void {
-        return self.aof.?.load(allocator, io, &self.memory);
-    }
-
     pub fn deinit(self: *Context, allocator: std.mem.Allocator, io: std.Io) void {
         self.pipeline.deinit();
         self.memory.deinit(allocator);
         if (self.aof) |*a| a.deinit(io);
         self.listener.deinit(allocator, io);
+    }
+
+    /// Load queries from AOF. Assumes AOF is enabled.
+    pub fn loadAof(self: *Context, allocator: std.mem.Allocator, io: std.Io) Aof.LoadError!void {
+        return self.aof.?.load(allocator, io, &self.memory);
     }
 
     pub fn server(self: *Context) Server {
@@ -168,7 +170,7 @@ pub fn consumeEvent(
 }
 
 fn onAccept(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Allocator.Error!void {
-    var acceptor: Listener.Acceptor = .init(self.listener);
+    var acceptor = self.listener.acceptor();
     while (true) {
         const client = acceptor.acceptNext(
             allocator,
