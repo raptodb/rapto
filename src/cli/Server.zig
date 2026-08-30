@@ -15,21 +15,21 @@ const eql = std.mem.eql;
 name: []const u8,
 /// When this parameter is enabled, writes in AOF
 /// in name.raptodb file.
-aof: bool = false,
+aof: bool,
 /// When this parameter is enabled, reads the AOF
 /// file. When both `aof` and `aof_file` are enabled
 /// writes on file as the same name of `aof_file`.
 aof_file: ?[]const u8,
 /// Writes every `aof_sync_seconds` to aof file.
 /// When is 0, writes always after any query.
-aof_sync_seconds: i32 = 1,
+aof_sync_seconds: i32,
 /// IP address of Server instance, default: 127.0.0.1:7286.
-address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) },
+address: std.Io.net.IpAddress,
 /// Number of expected keys to exploit Memory preallocation.
-expected_keys: u32 = 4 * 1024,
+expected_keys: u32,
 /// Preserved size for IO serialization buffer.
 /// Maybe used when clients sends big queries or batches.
-io_preserved_size: u64 = 16 * 1024,
+io_preserved_size: u64,
 
 pub fn parseServerCommand(args: *std.process.Args.Iterator) Server {
     var name: ?[]const u8 = null;
