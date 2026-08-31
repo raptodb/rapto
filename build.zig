@@ -9,51 +9,58 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
+    // This parameter only affects the executable.
     const optimize = b.standardOptimizeOption(.{});
-
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
 
     const exe = b.addExecutable(.{
         .name = "raptodb",
-        .root_module = exe_mod,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
     });
 
-    zprof(b, exe.root_module, target);
+    exe.lto = .full;
+
+    zprof(b, exe.root_module);
+    mimalloc(b, exe.root_module);
     rapidhash(b, exe.root_module, target);
 
-    exe.use_llvm = true;
-    exe.root_module.link_libc = true;
-
-    const lib_unit_tests = b.addTest(.{
+    const unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/unit_tests.zig"),
             .target = target,
             .optimize = .Debug,
             .single_threaded = false,
+            .link_libc = true,
         }),
     });
 
-    rapidhash(b, lib_unit_tests.root_module, target);
+    rapidhash(b, unit_tests.root_module, target);
 
-    lib_unit_tests.root_module.link_libc = true;
-
-    const run_tests = b.addRunArtifact(lib_unit_tests);
+    const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
 
     b.installArtifact(exe);
 }
 
-fn zprof(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
-    const zprof_dep = b.dependency("zprof", .{
-        .target = target,
-        .optimize = .ReleaseFast,
-    });
+fn zprof(b: *std.Build, module: *std.Build.Module) void {
+    const zprof_dep = b.dependency("zprof", .{});
     module.addImport("zprof", zprof_dep.module("zprof"));
+}
+
+fn mimalloc(b: *std.Build, module: *std.Build.Module) void {
+    const mimalloc_dep = b.dependency("mimalloc", .{});
+    module.addIncludePath(mimalloc_dep.path("include"));
+    module.addCSourceFile(.{
+        .file = mimalloc_dep.path("src/static.c"),
+        .flags = &.{ "-DMI_STATIC_LIB", "-O3", "-flto" },
+    });
 }
 
 fn rapidhash(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
