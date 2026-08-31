@@ -8,6 +8,7 @@ comptime {
     _ = @import("glob.zig");
     _ = @import("main.zig");
     _ = @import("Memory.zig");
+    _ = @import("Mimalloc.zig");
     _ = @import("object.zig");
     _ = @import("object/collection.zig");
     _ = @import("object/collection/List.zig");

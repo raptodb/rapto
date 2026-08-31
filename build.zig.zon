@@ -3,6 +3,10 @@
     .version = "0.1.0-dev",
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
+        .mimalloc = .{
+            .url = "git+https://github.com/microsoft/mimalloc.git#fc1e2acbced0b3e893da1a1375e02ac159d0423f",
+            .hash = "N-V-__8AAKsFWACp5zUGmf8mp7wQUscCeAqn6DTl_9ldIWLR",
+        },
         .rapidhash = .{
             .url = "git+https://github.com/Nicoshev/rapidhash#5c62c4b3352c7d4c87ed3429d2329ddaf9b74df9",
             .hash = "N-V-__8AAP5vBwAjkTabLmdrg_coCgJ9hykuqkIsBpbspUIW",
