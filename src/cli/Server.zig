@@ -23,6 +23,8 @@ aof_file: ?[]const u8,
 /// Writes every `aof_sync_seconds` to aof file.
 /// When is 0, writes always after any query.
 aof_sync_seconds: i32,
+/// Loads AOF file until timestamp is reached.
+aof_load_until: std.Io.Timestamp,
 /// IP address of Server instance, default: 127.0.0.1:7286.
 address: std.Io.net.IpAddress,
 /// Number of expected keys to exploit Memory preallocation.
@@ -39,6 +41,7 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
     var address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) };
     var expected_keys: u32 = 4 * 1024;
     var io_preserved_size: u64 = 16 * 1024;
+    var aof_load_until: std.Io.Timestamp = .fromNanoseconds(std.math.maxInt(i96));
 
     while (args.next()) |flag| {
         if (eql(u8, flag, "--name")) {
@@ -62,6 +65,12 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
                 fatal("specified argument for --aof-sync-seconds has wrong conversion", .{});
         } else if (eql(u8, flag, "--aof-file")) {
             aof_file = args.next() orelse fatal("expected argument after flag", .{});
+        } else if (eql(u8, flag, "--aof-load-until")) {
+            const arg = args.next() orelse
+                fatal("expected argument after flag", .{});
+            const raw_ts = std.fmt.parseUnsigned(u64, arg, 10) catch
+                fatal("specified argument for --aof-load-until has wrong conversion", .{});
+            aof_load_until = .fromNanoseconds(@intCast(raw_ts));
         } else if (eql(u8, flag, "--address")) {
             const arg = args.next() orelse
                 fatal("expected argument after flag", .{});
@@ -82,6 +91,7 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
         .aof = aof,
         .aof_file = aof_file,
         .aof_sync_seconds = aof_sync_seconds,
+        .aof_load_until = aof_load_until,
         .address = address,
         .expected_keys = expected_keys,
         .io_preserved_size = io_preserved_size,

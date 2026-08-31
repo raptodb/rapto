@@ -262,6 +262,7 @@ pub fn load(
     allocator: std.mem.Allocator,
     io: std.Io,
     memory: *Memory,
+    until: std.Io.Timestamp,
 ) Iterator.Error!void {
     var tmp: std.Io.Writer.Allocating = .init(allocator);
     defer tmp.deinit();
@@ -276,6 +277,8 @@ pub fn load(
     defer batches.deinit();
 
     while (try batches.next()) |batch| {
+        if (batch.timestamp.toNanoseconds() > until.toNanoseconds()) break;
+
         try loadPipeline(allocator, writer, memory, batch.pipeline);
     }
 }

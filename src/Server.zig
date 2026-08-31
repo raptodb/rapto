@@ -88,8 +88,13 @@ pub const Context = struct {
     }
 
     /// Load queries from AOF. Assumes AOF is enabled.
-    pub fn loadAof(self: *Context, allocator: std.mem.Allocator, io: std.Io) Aof.LoadError!void {
-        return self.aof.?.load(allocator, io, &self.memory);
+    pub fn loadAof(
+        self: *Context,
+        allocator: std.mem.Allocator,
+        io: std.Io,
+        until: std.Io.Timestamp,
+    ) Aof.LoadError!void {
+        return self.aof.?.load(allocator, io, &self.memory, until);
     }
 
     pub fn server(self: *Context) Server {
