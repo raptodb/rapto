@@ -54,7 +54,6 @@ pub fn reset(self: *RwBuffer) void {
         resizeAllocating(&self.write_buffer, self.config.preserved_size, threshold);
     } else {
         const shared_preserved_size = @divFloor(self.config.preserved_size, 2);
-        resizeAllocating(&self.write_buffer, shared_preserved_size, threshold);
         resizeAllocating(&self.read_buffer, shared_preserved_size, threshold);
     }
 }
@@ -101,6 +100,10 @@ pub fn unusedCapacitySlice(self: *RwBuffer) []u8 {
     return self.writer().unusedCapacitySlice();
 }
 
+pub fn capacity(self: *RwBuffer) u64 {
+    return self.write_buffer.writer.buffer.len;
+}
+
 /// Writer based on std.Io.Writer.Allocating.
 /// Any error returned as error.WriteFailed
 /// should be converted to error.OutOfMemory.
@@ -145,23 +148,24 @@ test "RwBuffer" {
 
     try std.testing.expect(rw_buffer.take().len == 0);
 
-    const cap_before = rw_buffer.write_buffer.writer.buffer.len;
+    const cap_before = rw_buffer.capacity();
     rw_buffer.reset();
-    const cap_after = rw_buffer.write_buffer.writer.buffer.len;
+    const cap_after = rw_buffer.capacity();
     try std.testing.expectEqual(cap_before, cap_after);
     try std.testing.expect(rw_buffer.writer().end == 0);
 
     const big_chunk = [_]u8{'a'} ** 256;
     try rw_buffer.writer().writeAll(&big_chunk);
-    var cap = rw_buffer.write_buffer.writer.buffer.len;
+    var cap = rw_buffer.capacity();
     try std.testing.expect(cap > 8);
 
     rw_buffer.reset();
-    cap = rw_buffer.write_buffer.writer.buffer.len;
+    cap = rw_buffer.capacity();
     try std.testing.expect(cap > 8);
 
+    _ = rw_buffer.take();
     rw_buffer.reset();
-    cap = rw_buffer.write_buffer.writer.buffer.len;
+    cap = rw_buffer.capacity();
     try std.testing.expectEqual(@as(u64, 8), cap);
 
     try rw_buffer.writer().writeAll("new");
