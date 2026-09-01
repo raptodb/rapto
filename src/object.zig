@@ -40,7 +40,7 @@ pub fn init(
 ) InitError!struct { Key, Value } {
     const pair_key: Key = try .init(allocator, key, value_type);
     errdefer pair_key.deinit(allocator);
-    const pair_value: Value = try .init(allocator, value_type, content);
+    const pair_value: Value = try .initFromContent(allocator, value_type, content);
     return .{ pair_key, pair_value };
 }
 
@@ -271,6 +271,8 @@ pub const Value = union {
         };
     }
 
+    pub const Error = std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType };
+
     // Scalar types
     void: Void,
     integer: Integer,
@@ -283,11 +285,11 @@ pub const Value = union {
     list: List,
     map: Map,
 
-    pub fn init(
+    pub fn initFromContent(
         allocator: std.mem.Allocator,
         value_type: Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!Value {
+    ) Error!Value {
         return switch (value_type) {
             inline .void => |vt| @unionInit(
                 Value,
@@ -310,6 +312,10 @@ pub const Value = union {
                 try .init(allocator),
             ),
         };
+    }
+
+    pub fn init(comptime value_type: Type, value: UnionType(value_type)) Value {
+        return @unionInit(Value, @tagName(value_type), value);
     }
 
     pub fn deinit(self: Value, allocator: std.mem.Allocator, value_type: Type) void {
@@ -338,7 +344,7 @@ pub const Value = union {
         allocator: std.mem.Allocator,
         value_type: Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ InvalidFormat, MismatchType, UnknownType })!void {
+    ) Error!void {
         assert(value_type.group() != .collection);
 
         switch (value_type) {
@@ -427,7 +433,7 @@ pub const Ref = struct {
 
             // Deallocate previous value first.
             self.value_ptr.deinit(allocator, current_value_type);
-            self.value_ptr.* = try .init(allocator, value_type, content);
+            self.value_ptr.* = try .initFromContent(allocator, value_type, content);
 
             // Update tag to new value type.
             return self.key_ptr.setValueType(value_type);

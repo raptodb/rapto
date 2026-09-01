@@ -109,10 +109,9 @@ pub fn copy(
     dst_ref.value_ptr.deinit(allocator, old_type);
 
     dst_ref.value_ptr.* = switch (src_ref.type()) {
-        inline else => |t| @unionInit(
-            object.Value,
-            @tagName(t),
-            try src_ref.dupeValue(allocator, t),
+        inline else => |vt| .init(
+            vt,
+            try src_ref.dupeValue(allocator, vt),
         ),
     };
 }

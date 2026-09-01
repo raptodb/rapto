@@ -21,6 +21,8 @@ pub const Point = @import("scalar/Point.zig");
 /// Item contains information about the value type,
 /// allowing the `serializeToWriter` method.
 pub const Scalar = union(enum) {
+    pub const Error = std.mem.Allocator.Error || error{ MismatchType, InvalidFormat };
+
     void: Void,
     integer: Integer,
     decimal: Decimal,
@@ -32,7 +34,7 @@ pub const Scalar = union(enum) {
         allocator: std.mem.Allocator,
         value_type: Value.Type,
         content: []const u8,
-    ) (std.mem.Allocator.Error || error{ MismatchType, InvalidFormat })!Scalar {
+    ) Error!Scalar {
         if (value_type.group() == .collection) return error.MismatchType;
 
         return switch (value_type) {
