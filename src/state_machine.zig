@@ -558,7 +558,7 @@ fn appendStringOne(ctx: *const Context) !void {
 
     var string: Value.String = ref.value(.string);
     try string.insert(ctx.allocator, string.len(), content);
-    ref.setValue(ctx.allocator, .{ .string = string });
+    ref.setValue(ctx.allocator, .init(.string, string));
 
     const integer: Value.Integer = .fromValue(@intCast(string.len()));
     try reply.writeValue(ctx.writer, integer);
@@ -595,7 +595,7 @@ fn insertStringOne(ctx: *const Context) !void {
         try string.insert(ctx.allocator, @truncate(index), content);
     }
 
-    ref.setValue(ctx.allocator, .{ .string = string });
+    ref.setValue(ctx.allocator, .init(.string, string));
 }
 
 fn insert_list(ctx: *const Context) Error!void {
@@ -666,38 +666,44 @@ fn putOne(ctx: *const Context) !void {
 }
 
 fn add(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, addOne);
+    return writeOrThrow(ctx, addOrSub(.add));
 }
 
-fn addOne(ctx: *const Context) !void {
-    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
-    var args = ctx.query.args.iterator();
+fn sub(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, addOrSub(.sub));
+}
 
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
+fn addOrSub(comptime op: enum { add, sub }) *const fn (*const Context) anyerror!void {
+    return struct {
+        fn addOrSub(ctx: *const Context) !void {
+            const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
+            var args = ctx.query.args.iterator();
 
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+            const key = args.next() orelse return error.MissingTokens;
+            const ref = try ctx.memory.get(key);
 
-    const is_add = try nextNumeric(&args, u8) == 1;
+            if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
 
-    const serialized = args.next() orelse return error.MissingTokens;
-    const value_type, const content = try Value.splitSerialized(serialized);
-    if (value_type != ref.type()) return error.MismatchType;
+            const serialized = args.next() orelse return error.MissingTokens;
+            const value_type, const content = try Value.splitSerialized(serialized);
+            if (value_type != ref.type()) return error.MismatchType;
 
-    switch (value_type) {
-        inline .integer, .decimal => |vt| {
-            var result: Value.UnionType(vt) = try .fromContent(content);
-            const value = ref.value(vt).get();
-            if (is_add) try result.add(value) else try result.sub(value);
-            ref.setValue(
-                ctx.allocator,
-                @unionInit(Value, @tagName(vt), result),
-            );
+            switch (value_type) {
+                inline .integer, .decimal => |vt| {
+                    var result: Value.UnionType(vt) = try .fromContent(content);
+                    const value = ref.value(vt).get();
+                    switch (op) {
+                        .add => try result.add(value),
+                        .sub => try result.sub(value),
+                    }
+                    ref.setValue(ctx.allocator, .init(vt, result));
 
-            try reply.writeValue(ctx.writer, result);
-        },
-        else => return error.MismatchType,
-    }
+                    try reply.writeValue(ctx.writer, result);
+                },
+                else => return error.MismatchType,
+            }
+        }
+    }.addOrSub;
 }
 
 fn rename(ctx: *const Context) Error!void {
