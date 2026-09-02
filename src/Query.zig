@@ -113,41 +113,50 @@ pub const Command = enum(u8) {
 };
 
 pub const Args = struct {
+    pub const Header = u32;
+
     content: []const u8,
 
     pub fn serializeToWriter(self: Args, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeAll(self.content);
     }
 
-    pub fn iterator(self: Args) frames.Iterator {
+    pub fn iterator(self: Args) frames.IteratorType(Args.Header) {
         return .init(self.content);
     }
 };
 
 pub const Serializer = struct {
+    writer: *std.Io.Writer,
+
     /// Assuming writer is derived from std.Io.Writer.Allocating.
-    pub fn serialize(
+    pub fn begin(
         writer: *std.Io.Writer,
         command: Command,
         flags: Flags,
-    ) std.mem.Allocator.Error!void {
+    ) std.mem.Allocator.Error!Serializer {
         command.serializeToWriter(writer) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
         flags.serializeToWriter(writer) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
+        return .{ .writer = writer };
     }
 
     /// Assuming writer is derived from std.Io.Writer.Allocating.
-    pub fn append(writer: *std.Io.Writer, arg: []const u8) std.mem.Allocator.Error!void {
+    pub fn appendArg(self: Serializer, arg: []const u8) std.mem.Allocator.Error!void {
         frames.append(
-            writer,
-            frames.Builder.Header,
+            self.writer,
+            Args.Header,
             arg,
         ) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
         };
+    }
+
+    pub fn beginArg(self: Serializer) std.mem.Allocator.Error!frames.BuilderType(Args.Header) {
+        return .begin(self.writer);
     }
 };
 
@@ -256,17 +265,8 @@ test "Query" {
         var buffer: [512]u8 = undefined;
         var writer: std.Io.Writer = .fixed(&buffer);
 
-        try expected.command.serializeToWriter(&writer);
-        try expected.flags.serializeToWriter(&writer);
-        for (expected.args) |arg| {
-            frames.append(
-                &writer,
-                frames.Builder.Header,
-                arg,
-            ) catch |err| return switch (err) {
-                error.WriteFailed => error.OutOfMemory,
-            };
-        }
+        var serializer: Serializer = try .begin(&writer, expected.command, expected.flags);
+        for (expected.args) |arg| try serializer.appendArg(arg);
 
         const deserialized: Query = try .deserialize(writer.buffered());
         _ = deserialized.command.kind();
