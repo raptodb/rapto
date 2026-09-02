@@ -54,6 +54,9 @@ pub fn reset(self: *RwBuffer) void {
         resizeAllocating(&self.write_buffer, self.config.preserved_size, threshold);
     } else {
         const shared_preserved_size = @divFloor(self.config.preserved_size, 2);
+        // Shrinking read_buffer instead of write_buffer avoids
+        // shrinking a buffer before refilling. read_buffer only
+        // holds last cycle's data after a `take()` swap.
         resizeAllocating(&self.read_buffer, shared_preserved_size, threshold);
     }
 }
@@ -100,7 +103,7 @@ pub fn unusedCapacitySlice(self: *RwBuffer) []u8 {
     return self.writer().unusedCapacitySlice();
 }
 
-pub fn capacity(self: *RwBuffer) u64 {
+pub fn capacity(self: RwBuffer) u64 {
     return self.write_buffer.writer.buffer.len;
 }
 
