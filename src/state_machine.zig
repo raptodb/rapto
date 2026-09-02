@@ -321,6 +321,89 @@ fn delMapOne(ctx: *const Context) !void {
     }
 }
 
+fn del_map_patterns(ctx: *const Context) Error!void {
+    return writeOrThrow(ctx, delMapPatternsOne);
+}
+
+fn delMapPatternsOne(ctx: *const Context) !void {
+    const cursor = ctx.query.flags.cursor.get();
+    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
+    var limit: Quota = .init(ctx.query.flags.limit.get());
+    var args = ctx.query.args.iterator();
+
+    const key = args.next() orelse return error.MissingTokens;
+    const ref = try ctx.memory.get(key);
+    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+    if (ref.type() != .map) return error.MismatchType;
+
+    const map: Value.Map = ref.value(.map);
+
+    const total_deleted: i64 = blk: {
+        // true when patterns contains "*"
+        var has_any_pattern: bool = false;
+        while (args.next()) |pattern| {
+            if (glob.classify(pattern) != .any) continue;
+
+            const total_keys = map.count();
+            if (cursor != 0 or !assume_lock_ownership or total_keys > limit.remaining()) {
+                // We have to count/check keys one by one iterating.
+                // We cant remove keys that are locked, before cursor
+                // or that exceeds limit. This is an hint to avoid
+                // matching withall available patterns.
+                has_any_pattern = true;
+                break;
+            }
+            // Assuming limit is greater than number of keys, if between
+            // patterns there is any pattern `*` we can exploit fast
+            // path and remove all keys from map.
+            // Deleted keys are equal to previous live keys.
+            map.removeAll(ctx.allocator);
+            break :blk @intCast(total_keys);
+        }
+
+        var deleted: i64 = 0;
+        var iterator = map.getKeys();
+        // Starts from last cursor.
+        iterator.skip(cursor);
+        while (iterator.next()) |map_key| {
+            if (limit.exceeded()) break;
+            defer limit.advance();
+
+            var matches: bool = has_any_pattern;
+            // If any pattern `*` is not detected, we should see
+            // if there is a matching pattern with key.
+            if (!matches) {
+                // To avoid allocations we should
+                // iterate patterns for each key.
+                args.reset();
+                // After iterator resetting, skips Memory key.
+                // Next arguments should be patterns.
+                args.skip(1);
+                while (args.next()) |pattern| {
+                    if (glob.match(pattern, map_key)) {
+                        // We found a matching pattern!
+                        matches = true;
+                        break;
+                    }
+                }
+            }
+
+            // Removes the key if any of selected patterns matches.
+            if (matches) {
+                map.removeByKey(ctx.allocator, map_key) catch |err| switch (err) {
+                    error.MapKeyNotFound => unreachable,
+                };
+                deleted += 1;
+            }
+        }
+
+        break :blk deleted;
+    };
+
+    const integer: Value.Integer = .fromValue(total_deleted);
+    try reply.writeValue(ctx.writer, integer);
+}
+
 fn count_patterns(ctx: *const Context) Error!void {
     const cursor = ctx.query.flags.cursor.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
