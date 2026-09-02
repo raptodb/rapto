@@ -185,6 +185,7 @@ fn getDelOne(ctx: *const Context, key: []const u8) !void {
 }
 
 fn del_patterns(ctx: *const Context) Error!void {
+    const cursor = ctx.query.flags.cursor.get();
     const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
@@ -196,11 +197,11 @@ fn del_patterns(ctx: *const Context) Error!void {
             if (glob.classify(pattern) != .any) continue;
 
             const total_keys = ctx.memory.count();
-            if (!assume_lock_ownership or total_keys > limit.remaining()) {
+            if (cursor != 0 or !assume_lock_ownership or total_keys > limit.remaining()) {
                 // We have to count/check keys one by one iterating.
-                // We cant remove keys that are locked or that exceeds limit.
-                // This is an hint to avoid matching with
-                // all available patterns.
+                // We cant remove keys that are locked, before cursor
+                // or that exceeds limit. This is an hint to avoid
+                // matching withall available patterns.
                 has_any_pattern = true;
                 break;
             }
@@ -214,6 +215,8 @@ fn del_patterns(ctx: *const Context) Error!void {
 
         var deleted: i64 = 0;
         var iterator = ctx.memory.iterator();
+        // Starts from last cursor.
+        iterator.skip(cursor);
         while (iterator.next()) |ref| {
             if (limit.exceeded()) break;
             defer limit.advance();
@@ -282,7 +285,7 @@ fn delListOne(ctx: *const Context) !void {
 }
 
 fn del_map(ctx: *const Context) Error!void {
-    try writeOrThrow(ctx, delMapOne);
+    return writeOrThrow(ctx, delMapOne);
 }
 
 fn delMapOne(ctx: *const Context) !void {
@@ -319,6 +322,7 @@ fn delMapOne(ctx: *const Context) !void {
 }
 
 fn count_patterns(ctx: *const Context) Error!void {
+    const cursor = ctx.query.flags.cursor.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
     const key_count: i64 = blk: {
@@ -326,7 +330,11 @@ fn count_patterns(ctx: *const Context) Error!void {
         while (args.next()) |pattern| {
             if (glob.classify(pattern) != .any) continue;
 
-            const total_keys: i64 = @intCast(ctx.memory.count());
+            const total_keys: i64 = @intCast(
+                // Asserting that keys before cursor
+                // will not counted.
+                ctx.memory.count() -| cursor,
+            );
             // With minimus we follow the same behaviour
             // if we had done iterations one by one to
             // check the pattern.
@@ -337,7 +345,7 @@ fn count_patterns(ctx: *const Context) Error!void {
         var counted: i64 = 0;
         var iterator = ctx.memory.iterator();
         // Starts from last cursor.
-        iterator.skip(ctx.query.flags.cursor.get());
+        iterator.skip(cursor);
         while (iterator.next()) |ref| {
             if (limit.exceeded()) break;
             defer limit.advance();
@@ -387,6 +395,7 @@ fn count_map_patterns(ctx: *const Context) Error!void {
 }
 
 fn countMapPatternsOne(ctx: *const Context) !void {
+    const cursor = ctx.query.flags.cursor.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
     var args = ctx.query.args.iterator();
 
@@ -400,7 +409,11 @@ fn countMapPatternsOne(ctx: *const Context) !void {
         while (args.next()) |pattern| {
             if (glob.classify(pattern) != .any) continue;
 
-            const total_keys: i64 = @intCast(ctx.memory.count());
+            const total_keys: i64 = @intCast(
+                // Asserting that keys before cursor
+                // will not counted.
+                ctx.memory.count() -| cursor,
+            );
             // With minimus we follow the same behaviour
             // if we had done iterations one by one to
             // check the pattern.
@@ -411,7 +424,7 @@ fn countMapPatternsOne(ctx: *const Context) !void {
         var counted: i64 = 0;
         var iterator = map.getKeys();
         // Starts from last cursor.
-        iterator.skip(ctx.query.flags.cursor.get());
+        iterator.skip(cursor);
         while (iterator.next()) |map_key| {
             if (limit.exceeded()) break;
             defer limit.advance();
@@ -721,19 +734,14 @@ fn renameOne(ctx: *const Context) !bool {
 
     if (std.mem.eql(u8, selected_key, new_key)) return true;
 
-    const new_ref = ctx.memory.get(new_key);
-    if (new_ref != error.KeyNotFound) {
-        if (new_ref) |ref| {
-            if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-        } else |_| {}
-    }
+    const new_ref: ?Ref = ctx.memory.get(new_key) catch |err| switch (err) {
+        error.KeyNotFound => null,
+    };
+    if (new_ref) |ref| if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
 
-    if (new_ref != error.KeyNotFound and ctx.query.flags.if_not_exists.get()) return false;
+    if (new_ref != null and ctx.query.flags.if_not_exists.get()) return false;
 
-    if (new_ref != error.KeyNotFound) ctx.memory.removeByRef(
-        ctx.allocator,
-        new_ref catch unreachable,
-    );
+    if (new_ref) |ref| ctx.memory.removeByRef(ctx.allocator, ref);
     const selected_ref = try ctx.memory.get(selected_key);
     if (!assume_lock_ownership and selected_ref.isLocked()) return error.Locked;
 
@@ -841,6 +849,7 @@ fn keys_patterns(ctx: *const Context) Error!void {
 }
 
 fn keysPatternsOne(ctx: *const Context) !void {
+    const cursor = ctx.query.flags.cursor.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
     // true when patterns contains "*"
@@ -858,9 +867,9 @@ fn keysPatternsOne(ctx: *const Context) !void {
 
     var iterator = ctx.memory.iterator();
     // Starts from last cursor.
-    iterator.skip(ctx.query.flags.cursor.get());
+    iterator.skip(cursor);
     while (iterator.next()) |ref| {
-        if (limit.exceeded()) return;
+        if (limit.exceeded()) break;
         defer limit.advance();
         const key = ref.key();
 
@@ -894,6 +903,7 @@ fn entries_patterns(ctx: *const Context) Error!void {
 }
 
 fn entriesPatternsOne(ctx: *const Context) !void {
+    const cursor = ctx.query.flags.cursor.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
     var args = ctx.query.args.iterator();
 
@@ -907,7 +917,6 @@ fn entriesPatternsOne(ctx: *const Context) !void {
     var has_any_pattern: bool = false;
     while (args.next()) |pattern| {
         if (glob.classify(pattern) != .any) continue;
-
         // Hint to avoid matching with
         // all available patterns.
         has_any_pattern = true;
@@ -918,9 +927,9 @@ fn entriesPatternsOne(ctx: *const Context) !void {
 
     var iterator = map.getKeys();
     // Starts from last cursor.
-    iterator.skip(ctx.query.flags.cursor.get());
+    iterator.skip(cursor);
     while (iterator.next()) |map_key| {
-        if (limit.exceeded()) return;
+        if (limit.exceeded()) break;
         defer limit.advance();
 
         var matches: bool = has_any_pattern;
@@ -1065,7 +1074,7 @@ fn unlockPatternsOne(ctx: *const Context) !void {
     var has_any_pattern: bool = false;
     var args = ctx.query.args.iterator();
     while (args.next()) |pattern| {
-        if (glob.classify(pattern) == .any) continue;
+        if (glob.classify(pattern) != .any) continue;
         // Hint to avoid matching with
         // all available patterns.
         has_any_pattern = true;
