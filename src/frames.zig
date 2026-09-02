@@ -35,22 +35,34 @@ pub fn IteratorType(comptime HeaderType: type) type {
             const header_size = @sizeOf(Header);
 
             if (self.remaining() < header_size) return null;
-            const len = std.mem.readInt(
+            const length = std.mem.readInt(
                 Header,
                 self.frames[self.seek .. self.seek + header_size][0..header_size],
                 .little,
             );
             self.seek += header_size;
 
-            if (self.remaining() < len) return null;
-            const content = self.frames[self.seek .. self.seek + len];
-            self.seek += len;
+            if (self.remaining() < length) return null;
+            const content = self.frames[self.seek .. self.seek + length];
+            self.seek += length;
 
             return content;
         }
 
-        pub fn skip(self: *Self, n_frames: u64) void {
+        pub fn skip(self: *Self, n_frames: Header) void {
             for (0..n_frames) |_| _ = self.next() orelse return;
+        }
+
+        pub fn len(self: Self) Header {
+            var length: Header = 0;
+            // Create new iterator to not adavance seek position.
+            var iterator: Self = .init(self.frames);
+            while (iterator.next()) |_| {
+                // Maybe never overflows.
+                @setRuntimeSafety(false);
+                length += 1;
+            }
+            return length;
         }
 
         pub fn reset(self: *Self) void {
@@ -142,6 +154,8 @@ test "frames" {
     }
 
     var it: Iterator = .init(allocating.written());
+    try std.testing.expect(it.len() == 6);
+
     for (contents) |expected| {
         const next = it.next();
         try std.testing.expect(next != null);
