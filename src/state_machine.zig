@@ -216,6 +216,7 @@ fn del_patterns(ctx: *const Context) Error!void {
         var iterator = ctx.memory.iterator();
         while (iterator.next()) |ref| {
             if (limit.exceeded()) break;
+            defer limit.advance();
             const key = ref.key();
 
             if (!assume_lock_ownership and ref.isLocked()) continue;
@@ -240,7 +241,6 @@ fn del_patterns(ctx: *const Context) Error!void {
             if (matches) {
                 ctx.memory.removeByRef(ctx.allocator, ref);
                 deleted += 1;
-                limit.advance();
             }
         }
 
@@ -340,6 +340,7 @@ fn count_patterns(ctx: *const Context) Error!void {
         iterator.skip(ctx.query.flags.cursor.get());
         while (iterator.next()) |ref| {
             if (limit.exceeded()) break;
+            defer limit.advance();
             const key = ref.key();
 
             var matches: bool = false;
@@ -354,10 +355,7 @@ fn count_patterns(ctx: *const Context) Error!void {
                 }
             }
 
-            if (matches) {
-                counted += 1;
-                limit.advance();
-            }
+            if (matches) counted += 1;
         }
 
         break :blk counted;
@@ -416,6 +414,7 @@ fn countMapPatternsOne(ctx: *const Context) !void {
         iterator.skip(ctx.query.flags.cursor.get());
         while (iterator.next()) |map_key| {
             if (limit.exceeded()) break;
+            defer limit.advance();
 
             var matches: bool = false;
             // To avoid allocations we should
@@ -432,10 +431,7 @@ fn countMapPatternsOne(ctx: *const Context) !void {
                 }
             }
 
-            if (matches) {
-                counted += 1;
-                limit.advance();
-            }
+            if (matches) counted += 1;
         }
 
         break :blk counted;
@@ -865,6 +861,7 @@ fn keysPatternsOne(ctx: *const Context) !void {
     iterator.skip(ctx.query.flags.cursor.get());
     while (iterator.next()) |ref| {
         if (limit.exceeded()) return;
+        defer limit.advance();
         const key = ref.key();
 
         var matches: bool = has_any_pattern;
@@ -885,10 +882,7 @@ fn keysPatternsOne(ctx: *const Context) !void {
 
         if (matches) {
             var frame = try serializer.beginFrame();
-            defer {
-                frame.end();
-                limit.advance();
-            }
+            defer frame.end();
 
             try reply.writeSerialized(ctx.writer, .string, key);
         }
@@ -927,6 +921,7 @@ fn entriesPatternsOne(ctx: *const Context) !void {
     iterator.skip(ctx.query.flags.cursor.get());
     while (iterator.next()) |map_key| {
         if (limit.exceeded()) return;
+        defer limit.advance();
 
         var matches: bool = has_any_pattern;
         // If any pattern `*` is not detected, we should see
@@ -949,10 +944,7 @@ fn entriesPatternsOne(ctx: *const Context) !void {
 
         if (matches) {
             var frame = try serializer.beginFrame();
-            defer {
-                frame.end();
-                limit.advance();
-            }
+            defer frame.end();
 
             try reply.writeSerialized(ctx.writer, .string, map_key);
         }
@@ -1145,8 +1137,8 @@ fn serializeMap(
     var iterator = map_iterator;
     while (iterator.next()) |pair| {
         if (limit.exceeded()) break;
-
         defer limit.advance();
+
         try map_serializer.append(pair);
     }
 }
