@@ -13,6 +13,7 @@ const log = std.log.scoped(.rapto);
 const assert = std.debug.assert;
 
 const Mimalloc = @import("Mimalloc.zig");
+const Server = @import("Server.zig");
 
 pub const version = std.SemanticVersion.parse("0.1.0") catch unreachable;
 
@@ -56,9 +57,9 @@ pub fn main(init: std.process.Init.Minimal) u8 {
 }
 
 fn handleCommand(gpa: std.mem.Allocator, io: std.Io, command: cli.Command) !void {
-    _ = gpa;
-
     return switch (command) {
+        .server => |*args| commandServer(gpa, io, args),
+
         inline .version, .help => |comptime_command| blk: {
             const stdout: std.Io.File = .stdout();
             var stdout_writer = stdout.writer(io, &.{});
@@ -75,10 +76,54 @@ fn handleCommand(gpa: std.mem.Allocator, io: std.Io, command: cli.Command) !void
     };
 }
 
+fn commandServer(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    args: *const cli.Command.Server,
+) std.mem.Allocator.Error!void {
+    const pid = std.os.linux.getpid();
+    log.info("server name={s} pid={d} addr={f}", .{ args.name, pid, args.address });
+
+    var zprof_instance: zprof.Zprof(zprof_config) = .init(gpa, undefined);
+    defer if (zprof_instance.profiler.hasLeaks()) {
+        @branchHint(.cold);
+        const allocated = zprof_instance.profiler.allocated.get();
+        const freed = zprof_instance.profiler.freed.get();
+        if (std.math.sub(u64, allocated, freed)) |unfreed| {
+            log.warn("zprof: memory leak occurred with unfreed={d} bytes", .{unfreed});
+        } else |_| {
+            log.err("zprof: occurred error=Overflow while calculating unfreed bytes.", .{});
+        }
+    };
+    const allocator = zprof_instance.allocator();
+
+    var context = Server.Context.init(allocator, io, args) catch |err|
+        return log.err("occurred error={t} while init server context", .{err});
+    defer context.deinit(allocator, io);
+
+    if (context.aof != null) {
+        var start: std.Io.Timestamp = .now(io, .awake);
+        context.loadAof(allocator, io, args.aof_load_until) catch |err|
+            return log.err("occurred error={t} while loading AOF", .{err});
+        log.info("loaded AOF file in {f}", .{start.untilNow(io, .awake)});
+    }
+
+    const allocated_on_init = zprof_instance.profiler.allocated.get();
+    log.info("startup: allocated {d}KB during server init", .{bytesToKiB(allocated_on_init)});
+
+    log.info("server is LISTENING...", .{});
+    const server = context.server();
+    return server.run(allocator, io);
+}
+
 fn commandVersion(stdout: *std.Io.Writer) std.Io.Writer.Error!void {
     return stdout.print("Raptodb version {f}\n", .{version});
 }
 
 fn commandHelp(stdout: *std.Io.Writer) std.Io.Writer.Error!void {
     return stdout.writeAll(cli.Command.usage);
+}
+
+fn bytesToKiB(bytes: u64) f64 {
+    return @as(f64, @floatFromInt(bytes)) / @as(f64, 1024);
 }
