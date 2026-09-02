@@ -10,6 +10,7 @@ const Pipeline = @This();
 
 const std = @import("std");
 const frames = @import("frames.zig");
+const assert = std.debug.assert;
 
 const RwBuffer = @import("RwBuffer.zig");
 const Query = @import("Query.zig");
@@ -40,12 +41,13 @@ config: Config,
 rw_buffer: RwBuffer,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Pipeline {
-    const rw_buffer_config: RwBuffer.Config = .{
-        .preserved_size = config.rw_buffer_preserved_size,
-    };
+    // See notes about max_pipeline_bytes.
+    assert(config.max_pipeline_bytes <= std.math.maxInt(u32));
+
+    const rwb_config: RwBuffer.Config = .{ .preserved_size = config.rw_buffer_preserved_size };
     return .{
         .config = config,
-        .rw_buffer = try .init(allocator, rw_buffer_config),
+        .rw_buffer = try .init(allocator, rwb_config),
     };
 }
 
@@ -53,6 +55,9 @@ pub fn deinit(self: *Pipeline) void {
     self.rw_buffer.deinit();
 }
 
+/// Writer based on std.Io.Writer.Allocating.
+/// Any error returned as error.WriteFailed
+/// should be converted to error.OutOfMemory.
 pub fn writer(self: *Pipeline) *std.Io.Writer {
     return self.rw_buffer.writer();
 }
@@ -117,5 +122,12 @@ pub const Builder = struct {
 
     pub fn end(self: Builder) void {
         self.wrapped_builder.end();
+    }
+
+    /// Writer based on std.Io.Writer.Allocating.
+    /// Any error returned as error.WriteFailed
+    /// should be converted to error.OutOfMemory.
+    pub fn writer(self: Builder) *std.Io.Writer {
+        return self.wrapped_builder.writer;
     }
 };
