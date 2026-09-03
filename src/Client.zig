@@ -637,10 +637,18 @@ pub const Cursor = struct {
                 try self.queryFn(&self.ctx, self.b, config);
 
                 const rv = try self.b.flushOne(io);
-                if (rv.type() != .list) return error.MismatchType;
+                assert(rv.type() == .list);
                 const list = rv.list;
 
                 self.cursor = @min(self.cursor +| self.count, self.max_cursor);
+                // When list is empty, probably the `count`
+                // scanned entries they were not matched.
+                if (list.len == 0) {
+                    // Do not return an empty list, instead try
+                    // to iterate another time.
+                    return self.next(io);
+                }
+
                 return list;
             }
         };
@@ -673,7 +681,7 @@ pub const Cursor = struct {
                 try self.queryFn(&self.ctx, self.b, config);
 
                 const rv = try self.b.flushOne(io);
-                if (rv.type() != .integer) return error.MismatchType;
+                assert(rv.type() == .integer);
 
                 self.cursor = @min(self.cursor +| self.count, self.max_cursor);
                 return rv.scalar.integer;
