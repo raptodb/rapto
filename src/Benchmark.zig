@@ -232,7 +232,7 @@ pub const Stats = struct {
         );
 
         const batch_size = @divFloor(self.total_ops, @max(self.count(), 1));
-        try writer.print("ops={d:<6}   ", .{batch_size});
+        try writer.print("batch={d:<4}   ", .{batch_size});
 
         const values = [_]std.Io.Duration{
             self.avg(),
