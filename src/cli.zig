@@ -14,10 +14,11 @@ pub const Command = union(enum) {
     const Tag = std.meta.Tag(Command);
 
     pub const Server = @import("cli/Server.zig");
+    pub const Benchmark = @import("cli/Benchmark.zig");
 
     server: Server,
+    benchmark: Benchmark,
     inspect,
-    benchmark,
 
     version,
     help,
@@ -34,8 +35,8 @@ pub const Command = union(enum) {
 
         return switch (command) {
             .server => .{ .server = .parse(&iterator) },
+            .benchmark => .{ .benchmark = .parse(&iterator) },
             .inspect => fatal("inspect: unimplemented", .{}),
-            .benchmark => fatal("benchmark: unimplemented", .{}),
             .version => .version,
             .help => .help,
         };
@@ -44,7 +45,7 @@ pub const Command = union(enum) {
     pub const usage =
         \\Usage: raptodb [command] [flags]
         \\
-        \\Available [command] are 'server', 'inspect', 'benchmark'
+        \\Available [command] are 'server', 'benchmark', 'inspect',
         \\                        'version' and 'help'
         \\Each [command] has its own flags as:
         \\
@@ -60,7 +61,7 @@ pub const Command = union(enum) {
         \\  --io-preserved-size <bytes>
         \\      Preserved size for IO serialization buffer.
         \\      Maybe used when clients sends big queries or batches.
-        \\      Default: 32768 (32KB).
+        \\      Default: 32768 (32KiB).
         \\  
         \\  --aof
         \\      When this parameter is enabled, writes in AOF
@@ -73,13 +74,54 @@ pub const Command = union(enum) {
         \\      Default: current working directory.
         \\
         \\  --aof-sync-seconds <seconds>
-        \\      specifies how many seconds should pass between
+        \\      Specifies how many seconds should pass between
         \\      each save.
         \\      Default: 1 second.
+        \\
+        \\  --aof-load-until <timestamp>
+        \\      Loads AOF file until timestamp is reached.
         \\  
         \\  --address <ip:port>
-        \\      Specifies the network address for connection.
+        \\      Specifies the network address for binding.
         \\      Default: 127.0.0.1:7286
+        \\
+        \\benchmark
+        \\  --address <ip:port>
+        \\      Specifies the network address to connect to.
+        \\      Default: 127.0.0.1:7286
+        \\
+        \\  --clients <quantity>
+        \\      Number of parallel clients used for the benchmark.
+        \\      Default: 1.
+        \\
+        \\  --batch-size <size>
+        \\      Number of operations sent per batch/request.
+        \\      Default: 1.
+        \\
+        \\  --test <command>
+        \\      Specifies the command to benchmark.
+        \\      Available command are: set, get. More commands coming soon.
+        \\      *Required
+        \\
+        \\  --ops <quantity>
+        \\      Total number of operations to run during the benchmark.
+        \\      Default: 100000.
+        \\
+        \\  --dataset-keys <quantity>
+        \\      Number of keys used to generate dataset before benchmarking.
+        \\      Default: 100000.
+        \\
+        \\  --warmup-batches <quantity>
+        \\      Number of batches run before measurements start.
+        \\      Default: 512.
+        \\
+        \\  --key-size <bytes>
+        \\      Size in bytes of each randomic-generated key.
+        \\      Default: 3.
+        \\
+        \\  --value-size <bytes>
+        \\      Size in bytes of each randomic-generated value.
+        \\      Default: 3.
         \\
     ;
 };
