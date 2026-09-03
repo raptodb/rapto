@@ -13,6 +13,7 @@ const log = std.log.scoped(.rapto);
 const assert = std.debug.assert;
 
 const Mimalloc = @import("Mimalloc.zig");
+const Benchmark = @import("Benchmark.zig");
 const Server = @import("Server.zig");
 
 pub const version = std.SemanticVersion.parse("0.1.0") catch unreachable;
@@ -60,12 +61,13 @@ fn handleCommand(gpa: std.mem.Allocator, io: std.Io, command: cli.Command) !void
     return switch (command) {
         .server => |*args| commandServer(gpa, io, args),
 
-        inline .version, .help => |comptime_command| blk: {
+        inline .benchmark, .version, .help => |*args, comptime_command| blk: {
             const stdout: std.Io.File = .stdout();
             var stdout_writer = stdout.writer(io, &.{});
             const writer = &stdout_writer.interface;
 
             break :blk switch (comptime_command) {
+                .benchmark => commandBenchmark(gpa, writer, args),
                 .version => commandVersion(writer),
                 .help => commandHelp(writer),
                 else => comptime unreachable,
@@ -114,6 +116,40 @@ fn commandServer(
     log.info("server is LISTENING...", .{});
     const server = context.server();
     return server.run(allocator, io);
+}
+
+fn commandBenchmark(
+    gpa: std.mem.Allocator,
+    stdout: *std.Io.Writer,
+    args: *const cli.Command.Benchmark,
+) (std.Io.Writer.Error || std.mem.Allocator.Error)!void {
+    var context = Benchmark.Context.init(gpa, args) catch |err|
+        return log.err("occurred error={t} while init benchmark context", .{err});
+    defer context.deinit();
+
+    if (context.config.dataset_keys == 0) {
+        try stdout.print("Dataset: empty; ", .{});
+    } else {
+        try stdout.print(
+            "Dataset: keys={d} key={d}B value={d}B; ",
+            .{ context.config.dataset_keys, context.config.key_size, context.config.value_size },
+        );
+    }
+    if (context.config.warmup_batches == 0) {
+        try stdout.print("Warmup: no.\n", .{});
+    } else {
+        try stdout.print("Warmup: {d} batches.\n", .{context.config.warmup_batches});
+    }
+
+    try stdout.print(
+        "Benchmarking test={t} with {d} parallel clients...\n",
+        .{ context.config.test_cmd, context.config.clients },
+    );
+
+    const benchmark = context.benchmark();
+    const stats = benchmark.run(gpa) catch |err|
+        return log.err("occurred error={t} while running benchmark", .{err});
+    return stats.print(stdout);
 }
 
 fn commandVersion(stdout: *std.Io.Writer) std.Io.Writer.Error!void {
