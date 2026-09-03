@@ -1271,7 +1271,7 @@ fn writeRef(ctx: *const Context, ref: Ref) !void {
 }
 
 fn nextRange(
-    iterator: *frames.Iterator,
+    iterator: *frames.IteratorType(Query.Args.Header),
     length: u64,
 ) error{ MissingTokens, MismatchType }!struct { u64, u64 } {
     const from = try nextIndex(iterator, length);
@@ -1279,13 +1279,13 @@ fn nextRange(
     return .{ from, to };
 }
 
-fn nextIndex(iterator: *frames.Iterator, length: u64) error{ MissingTokens, MismatchType }!u64 {
+fn nextIndex(iterator: *frames.IteratorType(Query.Args.Header), length: u64) error{ MissingTokens, MismatchType }!u64 {
     const relative_index = try nextNumeric(iterator, i64);
     return resolveIndex(relative_index, length);
 }
 
 fn nextNumeric(
-    iterator: *frames.Iterator,
+    iterator: *frames.IteratorType(Query.Args.Header),
     comptime T: type,
 ) error{ MissingTokens, MismatchType }!T {
     const content = iterator.next() orelse return error.MissingTokens;

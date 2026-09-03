@@ -38,6 +38,9 @@ pub const HashMap = std.HashMapUnmanaged(
 
 ptr: *HashMap,
 
+/// Size type for length-prefixed key or value.
+pub const Header = u32;
+
 pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Map {
     const map_ptr = try allocator.create(HashMap);
     errdefer allocator.destroy(map_ptr);
@@ -155,7 +158,7 @@ pub const Pair = struct {
     pub fn serializeKeyToWriter(pair: Pair, writer: *std.Io.Writer) std.mem.Allocator.Error!void {
         frames.append(
             writer,
-            frames.Builder.Header,
+            Header,
             pair.getKey(),
         ) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
@@ -164,7 +167,7 @@ pub const Pair = struct {
 
     /// Assumes writer is derived from std.Io.Writer.Allocating.
     pub fn serializeValueToWriter(pair: Pair, writer: *std.Io.Writer) std.mem.Allocator.Error!void {
-        var builder: frames.Builder = try .begin(writer);
+        var builder: frames.BuilderType(Header) = try .begin(writer);
         defer builder.end();
         pair.entry.value_ptr.serializeToWriter(writer) catch |err| return switch (err) {
             error.WriteFailed => error.OutOfMemory,
@@ -237,7 +240,7 @@ pub const Serializer = struct {
 
 /// Iterator of serialized entries in a serialized Map.
 pub const Iterator = struct {
-    wrapped_iterator: frames.Iterator,
+    wrapped_iterator: frames.IteratorType(Header),
     len: u64,
 
     pub const Entry = struct {

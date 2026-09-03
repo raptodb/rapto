@@ -17,7 +17,7 @@ pub const Error = std.mem.Allocator.Error || error{InvalidFormat};
 /// header represents the length of string.
 ptr: [*]u8,
 
-pub const Header: type = u32;
+pub const Header = u32;
 
 pub fn initFromContent(allocator: std.mem.Allocator, content: []const u8) Error!String {
     if (content.len -| @sizeOf(Header) > std.math.maxInt(u32)) return error.InvalidFormat;

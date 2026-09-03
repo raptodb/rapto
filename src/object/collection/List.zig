@@ -19,6 +19,9 @@ pub const Error = std.mem.Allocator.Error || error{ InvalidFormat, MismatchType,
 
 ptr: *std.ArrayList(Scalar),
 
+/// Size type for length-prefixed key or value.
+pub const Header = u32;
+
 pub fn init(allocator: std.mem.Allocator) Error!List {
     const list_ptr = try allocator.create(std.ArrayList(Scalar));
     errdefer allocator.destroy(list_ptr);
@@ -87,7 +90,7 @@ pub const Serializer = struct {
         return .{ .writer = writer, .len_offset = len_offset };
     }
 
-    pub fn beginFrame(self: *Serializer) std.mem.Allocator.Error!frames.Builder {
+    pub fn beginFrame(self: *Serializer) std.mem.Allocator.Error!frames.BuilderType(Header) {
         self.len += 1;
         return .begin(self.writer);
     }
@@ -103,17 +106,13 @@ pub const Serializer = struct {
 };
 
 pub const Iterator = struct {
-    wrapped_iterator: frames.Iterator,
+    wrapped_iterator: frames.IteratorType(Header),
     len: u64,
 
     pub fn init(content: []const u8) error{InvalidFormat}!Iterator {
         var reader: std.Io.Reader = .fixed(content);
         const len = reader.takeInt(u64, .little) catch return error.InvalidFormat;
         return .{ .wrapped_iterator = .init(reader.buffered()), .len = len };
-    }
-
-    pub fn count(self: Iterator) u64 {
-        return self.len;
     }
 
     pub fn next(self: *Iterator) ?[]const u8 {

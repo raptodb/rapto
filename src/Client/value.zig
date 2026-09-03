@@ -9,6 +9,8 @@ const std = @import("std");
 const frames = @import("../frames.zig");
 const assert = std.debug.assert;
 
+const Pipeline = @import("../Pipeline.zig");
+
 pub const ErrorCode = enum(u8) {
     key_not_found = 0,
     invalid_key,
@@ -49,7 +51,9 @@ pub const Flag = enum(u64) {
 };
 
 pub const ListIterator = struct {
-    wrapped_iterator: frames.Iterator,
+    pub const Header = u32;
+
+    wrapped_iterator: frames.IteratorType(ListIterator.Header),
     len: u64,
 
     pub fn init(content: []const u8) error{InvalidFormat}!ListIterator {
@@ -82,7 +86,9 @@ pub const ListIterator = struct {
 };
 
 pub const MapIterator = struct {
-    wrapped_iterator: frames.Iterator,
+    pub const Header = u32;
+
+    wrapped_iterator: frames.IteratorType(Header),
     len: u64,
 
     pub const Entry = struct {
@@ -305,12 +311,12 @@ pub const ReturnValue = union(enum) {
 pub const ReturnValues = struct {
     pub const DeserializeError = ReturnValue.DeserializeError;
 
-    wrapped_iterator: frames.Iterator,
+    wrapped_iterator: frames.IteratorType(Pipeline.FrameHeader),
     /// Likely to be accessed directly.
     len: u32,
 
     pub fn init(pipeline: []const u8) ReturnValues {
-        const iterator: frames.Iterator = .init(pipeline);
+        const iterator: frames.IteratorType(Pipeline.FrameHeader) = .init(pipeline);
         return .{ .wrapped_iterator = iterator, .len = iterator.len() };
     }
 
