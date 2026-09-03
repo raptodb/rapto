@@ -650,7 +650,7 @@ fn appendStringOne(ctx: *const Context) !void {
 
     var string: Value.String = ref.value(.string);
     try string.insert(ctx.allocator, string.len(), content);
-    ref.setValue(ctx.allocator, .init(.string, string));
+    ref.setValue(ctx.allocator, .string, string);
 
     const integer: Value.Integer = .fromValue(@intCast(string.len()));
     try reply.writeValue(ctx.writer, integer);
@@ -687,7 +687,7 @@ fn insertStringOne(ctx: *const Context) !void {
         try string.insert(ctx.allocator, @truncate(index), content);
     }
 
-    ref.setValue(ctx.allocator, .init(.string, string));
+    ref.setValue(ctx.allocator, .string, string);
 }
 
 fn insert_list(ctx: *const Context) Error!void {
@@ -788,7 +788,7 @@ fn addOrSub(comptime op: enum { add, sub }) *const fn (*const Context) anyerror!
                         .add => try result.add(value),
                         .sub => try result.sub(value),
                     }
-                    ref.setValue(ctx.allocator, .init(vt, result));
+                    ref.setValue(ctx.allocator, vt, result);
 
                     try reply.writeValue(ctx.writer, result);
                 },

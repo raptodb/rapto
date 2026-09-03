@@ -184,8 +184,7 @@ pub const PairIterator = struct {
     }
 
     pub fn skip(self: *PairIterator, n: u64) void {
-        const cap = self.wrapped_iterator.hm.capacity();
-        self.wrapped_iterator.index = @min(self.wrapped_iterator.index + n, cap);
+        for (0..n) |_| _ = self.next() orelse return;
     }
 };
 
@@ -198,10 +197,7 @@ pub const KeyIterator = struct {
     }
 
     pub fn skip(self: *KeyIterator, n: u64) void {
-        const min_skip = @min(n, self.wrapped_iterator.len);
-        self.wrapped_iterator.len -= min_skip;
-        self.wrapped_iterator.metadata += min_skip;
-        self.wrapped_iterator.items += min_skip;
+        for (0..n) |_| _ = self.next() orelse return;
     }
 };
 

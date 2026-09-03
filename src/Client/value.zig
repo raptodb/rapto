@@ -75,7 +75,7 @@ pub const ListIterator = struct {
 
     pub fn format(self: ListIterator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         var iterator = self;
-        try writer.print("list:{d}[", .{iterator.len});
+        try writer.print("list:{d}->[", .{iterator.len});
         var i: u64 = 0;
         while (iterator.next() catch return error.WriteFailed) |s| : (i += 1) {
             if (i != 0) try writer.writeByte(' ');
@@ -114,7 +114,7 @@ pub const MapIterator = struct {
 
     pub fn format(self: MapIterator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         var iterator = self;
-        try writer.print("map:{d}{{", .{iterator.len});
+        try writer.print("map:{d}->{{", .{iterator.len});
         var i: u64 = 0;
         while (iterator.next() catch return error.WriteFailed) |e| : (i += 1) {
             if (i != 0) try writer.writeByte(' ');
@@ -285,8 +285,8 @@ pub const ReturnValue = union(enum) {
         return switch (self) {
             .list => .list,
             .map => .map,
-            .scalar => return switch (self.scalar) {
-                inline else => |s| .fromTagName(@tagName(s)),
+            .scalar => |scalar| return switch (scalar) {
+                inline else => |_, s| Tag.fromTagName(@tagName(s)) catch unreachable,
             },
         };
     }
@@ -326,7 +326,7 @@ pub const ReturnValues = struct {
 
     pub fn next(self: *ReturnValues) DeserializeError!?ReturnValue {
         const serialized = self.wrapped_iterator.next() orelse return null;
-        return .deserialize(serialized);
+        return try .deserialize(serialized);
     }
 
     /// Retrieve ReturnValue from index, assuming it is in bounds.

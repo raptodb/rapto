@@ -191,8 +191,7 @@ pub const Iterator = struct {
     }
 
     pub fn skip(self: *Iterator, n: u64) void {
-        const cap = self.wrapped_iterator.hm.capacity();
-        self.wrapped_iterator.index = @min(self.wrapped_iterator.index + n, cap);
+        for (0..n) |_| _ = self.next() orelse return;
     }
 
     pub fn reset(self: *Iterator) void {

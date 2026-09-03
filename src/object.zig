@@ -403,11 +403,15 @@ pub const Ref = struct {
     }
 
     /// Replaces current value directly.
-    pub fn setValue(self: Ref, allocator: std.mem.Allocator, v: Value) void {
+    pub fn setValue(
+        self: Ref,
+        allocator: std.mem.Allocator,
+        comptime value_type: Value.Type,
+        v: Value.UnionType(value_type),
+    ) void {
         const current_value_type = self.type();
         self.value_ptr.deinit(allocator, current_value_type);
-        self.value_ptr.* = v;
-        const value_type: Value.Type = .of(v);
+        self.value_ptr.* = .init(value_type, v);
         if (current_value_type != value_type) {
             self.key_ptr.setValueType(value_type);
         }

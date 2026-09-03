@@ -133,10 +133,10 @@ pub const Batch = struct {
             },
         };
 
-        const replies = self.pipeline.take();
+        const replies: value.ReturnValues = .init(self.pipeline.take());
         assert(pending_before_stream == replies.len);
 
-        return .init(replies);
+        return replies;
     }
 
     pub const FlushOneError = FlushError || value.ReturnValue.DeserializeError;
@@ -634,7 +634,7 @@ pub const Cursor = struct {
                     .limit = .init(self.count),
                     .cursor = self.cursor,
                 };
-                try self.queryFn(self.ctx, self.b, config);
+                try self.queryFn(&self.ctx, self.b, config);
 
                 const rv = try self.b.flushOne(io);
                 if (rv.type() != .list) return error.MismatchType;
@@ -670,7 +670,7 @@ pub const Cursor = struct {
                     .limit = .init(self.count),
                     .cursor = self.cursor,
                 };
-                try self.queryFn(self.ctx, self.b, config);
+                try self.queryFn(&self.ctx, self.b, config);
 
                 const rv = try self.b.flushOne(io);
                 if (rv.type() != .integer) return error.MismatchType;
