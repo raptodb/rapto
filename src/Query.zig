@@ -212,7 +212,7 @@ pub fn serializeToWriter(self: *const Query, writer: *std.Io.Writer) std.Io.Writ
 
 fn testCompareArgs(actual: []const u8, expected: []const []const u8) bool {
     var i: u64 = 0;
-    var actual_iter: frames.Iterator(Args.Header) = .init(actual);
+    var actual_iter: frames.IteratorType(Args.Header) = .init(actual);
     while (true) : (i += 1) {
         const actual_part = actual_iter.next();
         const expected_part = if (i >= expected.len) null else expected[i];
