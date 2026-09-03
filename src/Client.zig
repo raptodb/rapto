@@ -851,7 +851,10 @@ pub fn close(self: Client, io: std.Io) void {
     self.stream.close(io);
 }
 
-/// Initializes batch by preallocating pipeline.
+/// Initializes a batch by preallocating its pipeline. The batch provides an
+/// accumulator for queries, allowing the accumulated queries to be sent as
+/// an ordered, non-interleaved pipeline.
+/// After accumulation, queries can be flushed with `flush()` or `flushOne()`.
 /// Ownership will be transfered to caller, responsible of `deinit()`.
 pub fn batch(
     self: Client,
