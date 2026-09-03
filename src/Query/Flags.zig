@@ -21,7 +21,7 @@ cursor: Unsigned = .default,
 replace: Bool = .default,
 /// Used for put/set/copy/rename command.
 if_not_exists: Bool = .default,
-/// Returns old value before remove/replace.
+/// Returns old value before remove/replace commands.
 get: Bool = .default,
 /// Assumes that any locked key is owned by the caller,
 /// bypassing `error.Locked` checks. This applies to all

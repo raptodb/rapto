@@ -33,7 +33,7 @@ pub const Config = struct {
 
 /// Size type for length-prefix.
 pub const Header = u32;
-/// Size type for length-prefix frame, as query or reply.
+/// Size type for length-prefixed frame, as query or reply.
 pub const FrameHeader = u32;
 
 config: Config,

@@ -260,7 +260,7 @@ pub fn collectEvents(
     // More events available than capacity?
     if (len == events.len) {
         @branchHint(.unlikely);
-        // More available events for next call to `collectEvents`.
+        // More available events for next call to `collectEvents()`.
         try self.events.grow(allocator);
         events = self.events.buffered();
     }
