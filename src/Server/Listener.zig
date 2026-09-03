@@ -223,6 +223,7 @@ pub const EventQueue = struct {
                 break :ev .{ .disconnect = stream };
             },
             .incoming_data => ev: {
+                @branchHint(.likely);
                 const stream = self.listener.streams.getAssumeExists(fd);
                 break :ev .{ .readable = stream };
             },
@@ -352,8 +353,8 @@ fn @"type"(self: Listener, event_fd: linux.fd_t, event: u32) EventType {
     const listener_fd = self.server.socket.handle;
     // zig fmt: off
     if (event_fd == listener_fd)   return .new_connection;
-    if (event & EPOLL_ERRHUP != 0) return .disconnection;
     if (event & EPOLL.IN != 0)     return .incoming_data;
+    if (event & EPOLL_ERRHUP != 0) return .disconnection;
     if (event & EPOLL.RDHUP != 0)  return .disconnection;
     // zig fmt: on
     return .unknown;
