@@ -2,8 +2,11 @@
 
 comptime {
     _ = @import("Aof.zig");
+    _ = @import("benchmark.zig");
     _ = @import("cli.zig");
     _ = @import("cli/Server.zig");
+    _ = @import("Client.zig");
+    _ = @import("Client/value.zig");
     _ = @import("frames.zig");
     _ = @import("glob.zig");
     _ = @import("main.zig");
