@@ -39,7 +39,7 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
     var aof_file: ?[]const u8 = null;
     var aof_sync_seconds: i32 = 1;
     var address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) };
-    var expected_keys: u32 = 4 * 1024;
+    var expected_keys: u32 = 32 * 1024;
     var io_preserved_size: u64 = 16 * 1024;
     var aof_load_until: std.Io.Timestamp = .fromNanoseconds(std.math.maxInt(i96));
 
