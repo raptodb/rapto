@@ -278,11 +278,11 @@ pub const Batch = struct {
     pub fn delEntriesMatching(
         self: *Batch,
         key: []const u8,
-        map_keys: []const []const u8,
+        glob_patterns: []const []const u8,
         config: MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .limit = config.limit, .cursor = .init(config.cursor) };
-        return self.build(.del_map_patterns, flags, .{ key, map_keys });
+        return self.build(.del_map_patterns, flags, .{ key, glob_patterns });
     }
 
     pub fn count(self: *Batch, config: MatchingConfig) std.mem.Allocator.Error!void {
