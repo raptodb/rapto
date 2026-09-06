@@ -537,7 +537,7 @@ pub const Lock = struct {
         max_pipeline_bytes: u64 = std.math.maxInt(u32),
     };
 
-    pub const Error = Batch.FlushError || error{Locked};
+    pub const Error = Batch.FlushOneError || error{ Locked, KeyNotFound };
 
     /// Likely to be accessed directly. This batch sets
     /// by default `assume_lock_ownership` to true.
@@ -545,19 +545,18 @@ pub const Lock = struct {
 
     b: *Batch,
     locked: bool,
-    keys: union(enum) {
+    keys: Keys,
+
+    const Keys = union(enum) {
         literals: []const []const u8,
         glob_patterns: []const []const u8,
-    },
+    };
 
     fn lock(
         b: *Batch,
         allocator: std.mem.Allocator,
         io: std.Io,
-        keys: union(enum) {
-            literals: []const []const u8,
-            glob_patterns: []const []const u8,
-        },
+        keys: Keys,
         config: Lock.Config,
     ) Lock.Error!Lock {
         assert(b.pending == 0);
@@ -575,19 +574,27 @@ pub const Lock = struct {
         lock_instance.batch.assume_lock_ownership = true;
 
         // Try to lock all selected keys.
-        try b.build(.lock, .{}, .{keys});
-        const resp = try b.flushOne(io);
-        // At least one key is locked...
-        // We can't lock an already locked key.
-        if (resp.maybeError(.locked)) return error.Locked;
+        switch (keys) {
+            .literals => |l| try b.build(.lock, .{}, .{l}),
+            .glob_patterns => |p| try b.build(.lock_patterns, .{}, .{p}),
+        }
+        const rv = try b.flushOne(io);
+        if (!rv.hasError()) {
+            lock_instance.locked = true;
+            return lock_instance;
+        }
 
-        lock_instance.locked = true;
-        return lock_instance;
+        return switch (rv.scalar.@"error") {
+            // We can't lock an already locked key.
+            .locked => error.Locked,
+            .key_not_found => error.KeyNotFound,
+            else => unreachable,
+        };
     }
 
     /// Unlocks all locked keys/patterns. This call flushes query.
     /// Assumes no pending queries from all two batches.
-    pub fn unlock(self: *Lock, io: std.Io) Batch.FlushError!void {
+    pub fn unlock(self: *Lock, io: std.Io) Batch.FlushOneError!void {
         assert(self.locked);
         assert(self.b.pending == 0 and self.batch.pending == 0);
 
@@ -599,7 +606,7 @@ pub const Lock = struct {
         // Unlock never returns an error.
         assert(!rv.hasError());
 
-        try self.batch.deinit();
+        self.batch.deinit();
         // In this line flush has succeeded.
         self.locked = false;
         self.b.assume_lock_ownership = false;
