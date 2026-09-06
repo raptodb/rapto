@@ -31,7 +31,7 @@ pub const Context = struct {
             .batch_size = args.batch_size,
             .test_cmd = std.meta.stringToEnum(Config.TestCmd, args.@"test") orelse
                 return error.UnsupportedTest,
-            .ops_per_client = @divFloor(args.ops, args.clients),
+            .ops_per_client = std.math.divCeil(u64, args.ops, args.clients) catch unreachable,
             .dataset_keys = args.dataset_keys,
             .warmup_batches = args.warmup_batches,
             .key_size = args.key_size,
