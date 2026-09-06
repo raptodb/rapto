@@ -66,11 +66,22 @@ pub const ListIterator = struct {
         return self.len;
     }
 
-    pub fn next(
-        self: *ListIterator,
-    ) error{ MismatchType, InvalidFormat, UnknownType }!?ReturnValue {
+    pub fn next(self: *ListIterator) ReturnValue.DeserializeError!?ReturnValue {
         const serialized = self.wrapped_iterator.next() orelse return null;
         return try .deserialize(serialized);
+    }
+
+    /// Retrieve scalar from index, assuming it is in bounds.
+    pub fn at(self: ListIterator, index: u32) ReturnValue.DeserializeError!ReturnValue {
+        assert(index < self.len);
+        var iterator = self.wrapped_iterator;
+        iterator.skip(index -| 1);
+        const serialized = iterator.next() orelse unreachable;
+        return .deserialize(serialized);
+    }
+
+    pub fn skip(self: *ListIterator, n: u64) void {
+        self.wrapped_iterator.skip(n);
     }
 
     pub fn format(self: ListIterator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -112,6 +123,20 @@ pub const MapIterator = struct {
         return .{ .key = key, .value = try .deserialize(serialized) };
     }
 
+    /// Retrieve entry from index, assuming it is in bounds.
+    pub fn at(self: MapIterator, index: u32) ReturnValue.DeserializeError!Entry {
+        assert(index < self.len);
+        var iterator = self.wrapped_iterator;
+        iterator.skip((index -| 1) *| 2);
+        const key = self.wrapped_iterator.next() orelse unreachable;
+        const serialized = iterator.next() orelse unreachable;
+        return .{ .key = key, .value = try .deserialize(serialized) };
+    }
+
+    pub fn skip(self: *MapIterator, n: u64) void {
+        self.wrapped_iterator.skip(n *| 2);
+    }
+
     pub fn format(self: MapIterator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         var iterator = self;
         try writer.print("map:{d}->{{", .{iterator.len});
@@ -124,7 +149,7 @@ pub const MapIterator = struct {
     }
 };
 
-pub const Tag = enum(u8) {
+pub const Type = enum(u8) {
     void = 0,
     integer,
     decimal,
@@ -136,22 +161,22 @@ pub const Tag = enum(u8) {
 
     @"error" = std.math.maxInt(u8),
 
-    pub fn fromInt(int: u8) error{UnknownType}!Tag {
-        return std.enums.fromInt(Tag, int) orelse error.UnknownType;
+    pub fn fromInt(int: u8) error{UnknownType}!Type {
+        return std.enums.fromInt(Type, int) orelse error.UnknownType;
     }
 
-    pub fn fromTagName(name: []const u8) error{UnknownType}!Tag {
-        return std.meta.stringToEnum(Tag, name) orelse error.UnknownType;
+    pub fn fromTypeName(name: []const u8) error{UnknownType}!Type {
+        return std.meta.stringToEnum(Type, name) orelse error.UnknownType;
     }
 
-    pub fn group(self: Tag) enum { scalar, collection } {
+    pub fn group(self: Type) enum { scalar, collection } {
         return switch (self) {
             .void, .integer, .decimal, .flag, .string, .point, .@"error" => .scalar,
             .list, .map => .collection,
         };
     }
 
-    pub fn serializeToWriter(self: Tag, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn serializeToWriter(self: Type, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return writer.writeByte(@intFromEnum(self));
     }
 };
@@ -164,6 +189,8 @@ pub const Scalar = union(enum) {
     string: []const u8,
     point: struct { x: f64, y: f64, z: f64 },
 
+    // error and none can be received only from server.
+    // Do not use this fields to send scalars to server.
     @"error": ErrorCode,
     none,
 
@@ -172,7 +199,7 @@ pub const Scalar = union(enum) {
     ) error{ MismatchType, InvalidFormat, UnknownType }!Scalar {
         const value_type, const content = splitSerialized(serialized) catch return .none;
 
-        const tag: Tag = try .fromInt(value_type);
+        const tag: Type = try .fromInt(value_type);
         if (tag.group() != .scalar) return error.MismatchType;
 
         var reader: std.Io.Reader = .fixed(content);
@@ -218,7 +245,7 @@ pub const Scalar = union(enum) {
     ) std.Io.Writer.Error!void {
         if (self == .none) return;
 
-        const value_type = Tag.fromTagName(@tagName(self)) catch unreachable;
+        const value_type = Type.fromTypeName(@tagName(self)) catch unreachable;
         try value_type.serializeToWriter(writer);
         switch (self) {
             .void => {},
@@ -268,7 +295,7 @@ pub const ReturnValue = union(enum) {
     pub fn deserialize(serialized: []const u8) DeserializeError!ReturnValue {
         const value_type, const content = splitSerialized(serialized) catch
             return .{ .scalar = .none };
-        const tag: Tag = try .fromInt(value_type);
+        const tag: Type = try .fromInt(value_type);
 
         return switch (tag.group()) {
             .scalar => .{ .scalar = try .deserialize(serialized) },
@@ -281,12 +308,12 @@ pub const ReturnValue = union(enum) {
         };
     }
 
-    pub fn @"type"(self: ReturnValue) Tag {
+    pub fn @"type"(self: ReturnValue) Type {
         return switch (self) {
             .list => .list,
             .map => .map,
             .scalar => |scalar| return switch (scalar) {
-                inline else => |_, s| Tag.fromTagName(@tagName(s)) catch unreachable,
+                inline else => |_, s| Type.fromTypeName(@tagName(s)) catch unreachable,
             },
         };
     }
