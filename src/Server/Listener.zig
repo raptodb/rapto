@@ -315,15 +315,13 @@ fn register(
     allocator: std.mem.Allocator,
     stream: Stream,
 ) std.mem.Allocator.Error!void {
-    const stream_fd = stream.fd();
-    try self.streams.putNoClobber(allocator, stream);
-
+    const fd = stream.fd();
     var event: linux.epoll_event = .{
         .events = linux.EPOLL.IN | linux.EPOLL.RDHUP,
-        .data = .{ .fd = stream_fd },
+        .data = .{ .fd = fd },
     };
 
-    const rc = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, stream_fd, &event);
+    const rc = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, fd, &event);
     switch (linux.errno(rc)) {
         .SUCCESS => {},
         .EXIST => unreachable, // Never exist before registration.
@@ -331,6 +329,8 @@ fn register(
             std.debug.panic("epoll_ctl: occurred error={t} with op=add\n", .{err});
         },
     }
+
+    try self.streams.putNoClobber(allocator, stream);
 }
 
 /// Transfer ownership to caller, responsible for closing the stream.
