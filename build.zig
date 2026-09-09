@@ -46,6 +46,18 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
 
+    const lib = b.addLibrary(.{
+        .name = "rapto-client",
+        .root_module = b.addModule("rapto", .{
+            .root_source_file = b.path("src/Client.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+        .linkage = .static,
+    });
+
+    b.installArtifact(lib);
     b.installArtifact(exe);
 }
 
