@@ -9,14 +9,14 @@ const Client = @This();
 
 const std = @import("std");
 const frames = @import("frames.zig");
-const value = @import("Client/value.zig");
 const assert = std.debug.assert;
 
-const Query = @import("Query.zig");
 const Pipeline = @import("Pipeline.zig");
 const Stream = @import("Stream.zig");
-
 const Quota = Query.Flags.Quota;
+
+pub const Query = @import("Query.zig");
+pub const value = @import("Client/value.zig");
 
 pub const Config = struct {
     /// Address of Server to connect, default: 127.0.0.1:7286.
@@ -109,6 +109,7 @@ pub const Batch = struct {
 
     /// Flushes all queries until last `flush()` to stream.
     /// After flushing, returns replies pipeline. Not thread-safe.
+    /// The return values of last flush, will be invalidated.
     pub fn flush(self: *Batch, io: std.Io) FlushError!value.ReturnValues {
         assert(self.pending != 0);
         const pending_before_stream = self.pending;
@@ -142,6 +143,7 @@ pub const Batch = struct {
     pub const FlushOneError = FlushError || value.ReturnValue.DeserializeError;
 
     /// As `flush()`, assuming one pending query. Not thread-safe between `Client`.
+    /// The return value of last flush, will be invalidated.
     pub fn flushOne(self: *Batch, io: std.Io) FlushOneError!value.ReturnValue {
         assert(self.pending == 1);
         const rvs = try self.flush(io);
@@ -515,8 +517,9 @@ pub const Batch = struct {
     }
 
     /// Cursor is used by iterative operations, so `flush()`
-    /// is handled automatically. Any iterative function of cursor,
-    /// asserts no pending queries. Does not take ownership.
+    /// is handled automatically. Iterative function `next()` of cursor,
+    /// asserts no pending queries and invalidates last return values
+    /// from `flush()` or `next()`. Does not take ownership.
     pub fn cursor(self: *Batch) Cursor {
         return .{ .b = self };
     }
