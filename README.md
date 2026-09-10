@@ -177,8 +177,8 @@ try batch.get(&.{ "store:name", "store:earnings", "store:coordinates" }, .{});
 const replies = try batch.flush(io);
 
 const name = (try replies.at(0)).scalar.string;
-const earnings = (try replies.at(0)).scalar.decimal;
-const coordinates = (try replies.at(0)).scalar.point;
+const earnings = (try replies.at(1)).scalar.decimal;
+const coordinates = (try replies.at(2)).scalar.point;
 ```
 
 ```zig
