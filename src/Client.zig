@@ -206,18 +206,24 @@ pub const Batch = struct {
     pub const InsertConfig = struct { get: bool, replace: bool, index: u64 = std.math.maxInt(u64) };
     pub const RenameConfig = struct { if_not_exists: bool = true };
 
+    /// Returns "pong" when succeeded. Pong means integer=1.
     pub fn ping(self: *Batch) std.mem.Allocator.Error!void {
         return self.build(.ping, .{}, .{});
     }
 
+    /// Signals server shutdown. Server will not process any query after.
+    /// If AOF is enabled, before shutdown saves all queued queries until this.
     pub fn down(self: *Batch) std.mem.Allocator.Error!void {
         return self.build(.down, .{}, .{});
     }
 
+    /// Clears all memory. Ignores locks, always succeeds.
     pub fn purge(self: *Batch) std.mem.Allocator.Error!void {
         return self.build(.purge, .{}, .{});
     }
 
+    /// Returns a list of selected keys's value. If a key
+    /// does not exists, item related to key has key_not_found error.
     pub fn get(
         self: *Batch,
         keys: []const []const u8,
@@ -227,6 +233,7 @@ pub const Batch = struct {
         return self.build(.get, flags, .{keys});
     }
 
+    /// Returns a list of items in range from key's list.
     pub fn getItems(
         self: *Batch,
         key: []const u8,
@@ -236,6 +243,8 @@ pub const Batch = struct {
         return self.build(.get_list, flags, .{ key, config.range });
     }
 
+    /// Returns a list of values for selected map keys. If a map key
+    /// does not exists, item related to key has map_key_not_found error.
     pub fn getEntries(
         self: *Batch,
         key: []const u8,
@@ -244,11 +253,18 @@ pub const Batch = struct {
         return self.build(.get_map, .{}, .{ key, map_keys });
     }
 
-    pub fn del(self: *Batch, key: []const u8, config: DelConfig) std.mem.Allocator.Error!void {
+    /// Deletes keys. If config.get is true, returns deleted value,
+    /// otherwise returns integer count of deleted keys.
+    /// Skips key if locked, unless this batch owns the lock.
+    pub fn del(self: *Batch, keys: []const []const u8, config: DelConfig) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .get = config.get };
-        return self.build(.del, flags, .{key});
+        return self.build(.del, flags, .{keys});
     }
 
+    /// Deletes keys matching glob patterns. Returns integer count
+    /// of deleted keys. Skips locked keys, unless this batch owns
+    /// the lock. If a pattern is exactly "*" and no lock/cursor/limit
+    /// gets in the way, deletes everything with a fast path.
     pub fn delMatching(
         self: *Batch,
         glob_patterns: []const []const u8,
@@ -258,6 +274,11 @@ pub const Batch = struct {
         return self.build(.del_patterns, flags, .{glob_patterns});
     }
 
+    /// Deletes items in range from key's list. If config.get is
+    /// true, returns deleted items, otherwise returns integer count
+    /// of deleted keys. Fails with mismatch_type error if key
+    /// is not a list, or with locked error if key is locked,
+    /// unless this batch owns the lock.
     pub fn delItems(
         self: *Batch,
         key: []const u8,
@@ -267,6 +288,10 @@ pub const Batch = struct {
         return self.build(.del_list, flags, .{ key, config.range });
     }
 
+    /// Deletes selected map keys. If config.get is true, returns
+    /// deleted values, otherwise returns integer count of deleted
+    /// map keys. Missing map keys are skipped.
+    /// Fails with mismatch_type error if key is not a map.
     pub fn delEntries(
         self: *Batch,
         key: []const u8,
@@ -277,6 +302,10 @@ pub const Batch = struct {
         return self.build(.del_map, flags, .{ key, map_keys });
     }
 
+    /// Deletes map keys matching glob patterns. Returns integer
+    /// count of deleted map keys. Fails with mismatch_type error
+    /// if key is not a map. Fails with locked error if key is
+    /// locked, unless this batch owns the lock.
     pub fn delEntriesMatching(
         self: *Batch,
         key: []const u8,
@@ -287,11 +316,13 @@ pub const Batch = struct {
         return self.build(.del_map_patterns, flags, .{ key, glob_patterns });
     }
 
+    /// Returns integer count of all keys in database.
     pub fn count(self: *Batch, config: MatchingConfig) std.mem.Allocator.Error!void {
         const cm_config: MatchingCursorConfig = .{ .limit = config.limit };
         return self.countMatching(&.{"*"}, cm_config);
     }
 
+    /// Returns integer count of keys matching glob patterns.
     pub fn countMatching(
         self: *Batch,
         glob_patterns: []const []const u8,
@@ -304,10 +335,14 @@ pub const Batch = struct {
         return self.build(.count_patterns, flags, .{glob_patterns});
     }
 
+    /// Returns integer count of keys in a list. Fails with
+    /// mismatch_type error if key is not a list.
     pub fn countItems(self: *Batch, key: []const u8) std.mem.Allocator.Error!void {
         return self.build(.count_list, .{}, .{key});
     }
 
+    /// Returns integer count of entries in a map. Fails
+    /// with mismatch_type error if key is not a map.
     pub fn countEntries(
         self: *Batch,
         key: []const u8,
@@ -317,6 +352,8 @@ pub const Batch = struct {
         return self.countEntriesMatching(key, &.{"*"}, cem_config);
     }
 
+    /// Returns integer count of key's map keys matching glob
+    /// patterns. Fails with mismatch_type error if key is not a map.
     pub fn countEntriesMatching(
         self: *Batch,
         key: []const u8,
@@ -330,10 +367,14 @@ pub const Batch = struct {
         return self.build(.count_map_patterns, flags, .{ key, glob_patterns });
     }
 
+    /// Returns a list of integers (0 or 1), one for each key, telling if key exists.
     pub fn exists(self: *Batch, keys: []const []const u8) std.mem.Allocator.Error!void {
         return self.build(.exists, .{}, .{keys});
     }
 
+    /// Returns a list of integers (0 or 1), one for each map key,
+    /// telling if map key exists. Fails with mismatch_type error
+    /// if key is not a map.
     pub fn existsEntries(
         self: *Batch,
         key: []const u8,
@@ -342,6 +383,11 @@ pub const Batch = struct {
         return self.build(.exists_map, .{}, .{ key, map_keys });
     }
 
+    /// Sets key's value. If key exists and config.if_not_exists is
+    /// true, value is not overwritten. Returns the previous value
+    /// if config.get is true and key already existed, nothing otherwise.
+    /// Fails with locked error if key is locked, unless this batch
+    /// owns the lock or key doesn't exist.
     pub fn set(
         self: *Batch,
         key: []const u8,
@@ -355,6 +401,10 @@ pub const Batch = struct {
         return self.build(.set, flags, .{ key, scalar });
     }
 
+    /// Appends scalar to the end of key's list, creating the list
+    /// if key does not exists. Returns integer length of list after
+    /// append. Fails with mismatch_type error if key exists and
+    /// is not a list.
     pub fn appendItem(
         self: *Batch,
         key: []const u8,
@@ -363,6 +413,10 @@ pub const Batch = struct {
         return self.build(.append_list, .{}, .{ key, scalar });
     }
 
+    /// Appends scalar to the end of key's string, creating the string
+    /// if key does not exists. Returns integer length of string after
+    /// append. Fails with mismatch_type error if key exists and
+    /// is not a string, or scalar is not a string.
     pub fn appendString(
         self: *Batch,
         key: []const u8,
@@ -371,6 +425,10 @@ pub const Batch = struct {
         return self.build(.append_string, .{}, .{ key, scalar });
     }
 
+    /// Inserts scalar at index in key's list. If config.replace is
+    /// true, overwrites item at index instead of shifting the list.
+    /// If config.get is true, returns item at index before the
+    /// operation. Fails with mismatch_type error if key is not a list.
     pub fn insertItem(
         self: *Batch,
         key: []const u8,
@@ -381,6 +439,11 @@ pub const Batch = struct {
         return self.build(.insert_list, flags, .{ key, config.index, scalar });
     }
 
+    /// Inserts scalar at index in key's string. If config.replace is
+    /// true, overwrites content at index instead of shifting the string.
+    /// If config.get is true, returns string before the operation.
+    /// Fails with mismatch_type error if key is not a string, or
+    /// scalar is not a string.
     pub fn insertString(
         self: *Batch,
         key: []const u8,
@@ -391,6 +454,11 @@ pub const Batch = struct {
         return self.build(.insert_string, flags, .{ key, config.index, scalar });
     }
 
+    /// Sets map_key's value inside key's map, creating the map if
+    /// key does not exists. If config.if_not_exists is true, value
+    /// is not overwritten if map_key already exists. Returns the
+    /// value at map_key before the operation, if config.get is true.
+    /// Fails with mismatch_type error if key exists and is not a map.
     pub fn put(
         self: *Batch,
         key: []const u8,
@@ -405,14 +473,23 @@ pub const Batch = struct {
         return self.build(.put, flags, .{ key, map_key, scalar });
     }
 
+    /// Adds scalar to key's current value. Key must exists and
+    /// hold same type as scalar (integer or decimal). Returns
+    /// the resulting value.
     pub fn add(self: *Batch, key: []const u8, scalar: value.Scalar) std.mem.Allocator.Error!void {
         return self.build(.add, .{}, .{ key, scalar });
     }
 
+    /// Subtracts scalar from key's current value. Same rules and
+    /// return value as add(), in reverse.
     pub fn sub(self: *Batch, key: []const u8, scalar: value.Scalar) std.mem.Allocator.Error!void {
         return self.build(.sub, .{}, .{ key, scalar });
     }
 
+    /// Renames current_key to new_key. If new_key already exists
+    /// and config.if_not_exists is true, fails silently returning
+    /// integer 0. Otherwise overwrites new_key and returns integer 1.
+    /// Renaming a key to itself always returns integer 1 doing nothing.
     pub fn rename(
         self: *Batch,
         current_key: []const u8,
@@ -423,6 +500,10 @@ pub const Batch = struct {
         return self.build(.rename, flags, .{ current_key, new_key });
     }
 
+    /// Copies from_key's value to to_key. If to_key already exists
+    /// and config.if_not_exists is true, fails silently returning
+    /// integer 0, and returns to_key's previous value if config.get
+    /// is true. Otherwise overwrites to_key and returns integer 1.
     pub fn copy(
         self: *Batch,
         from_key: []const u8,
@@ -436,10 +517,14 @@ pub const Batch = struct {
         return self.build(.copy, flags, .{ from_key, to_key });
     }
 
+    /// Returns a list of type names (as string), one for each key.
     pub fn typeOf(self: *Batch, keys: []const []const u8) std.mem.Allocator.Error!void {
         return self.build(.type, .{}, .{keys});
     }
 
+    /// Returns a list of type names (as string) for items in range
+    /// from key's list. Fails with mismatch_type error if key is
+    /// not a list.
     pub fn typeOfItems(
         self: *Batch,
         key: []const u8,
@@ -449,6 +534,9 @@ pub const Batch = struct {
         return self.build(.type_list, flags, .{ key, config.range });
     }
 
+    /// Returns a list of type names (as string), one for each
+    /// selected map key. Fails with mismatch_type error if key
+    /// is not a map. Missing map keys are skipped, list will be shorter.
     pub fn typeOfEntries(
         self: *Batch,
         key: []const u8,
@@ -457,6 +545,7 @@ pub const Batch = struct {
         return self.build(.type_map, .{}, .{ key, map_keys });
     }
 
+    /// Returns a list of keys matching glob patterns.
     pub fn keysMatching(
         self: *Batch,
         glob_patterns: []const []const u8,
@@ -469,6 +558,8 @@ pub const Batch = struct {
         return self.build(.keys_patterns, flags, .{glob_patterns});
     }
 
+    /// Returns a list of key's map keys matching glob patterns.
+    /// Fails with mismatch_type error if key is not a map.
     pub fn entriesMatching(
         self: *Batch,
         key: []const u8,
