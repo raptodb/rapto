@@ -149,7 +149,10 @@ fn getMapOne(ctx: *const Context) !void {
         var frame = try serializer.beginFrame();
         defer frame.end();
 
-        const scalar = map.getByKey(map_key) catch continue;
+        const scalar = map.getByKey(map_key) catch {
+            try reply.writeError(ctx.writer, .map_key_not_found);
+            continue;
+        };
         try reply.writeValue(ctx.writer, scalar);
     }
 }
@@ -271,14 +274,13 @@ fn delListOne(ctx: *const Context) !void {
     const list: Value.List = ref.value(.list);
 
     const from, const to = try nextRange(&args, list.count());
-    const range_len = @min(to - from + 1, limit.remaining());
+    const range_len: u64 = @min(to - from + 1, limit.remaining());
     const range = try list.getByRange(from, range_len);
 
     if (ctx.query.flags.get.get()) {
         try serializeList(ctx.writer, range);
     } else {
-        const integer: Value.Integer = .fromValue(@intCast(list.count() - range_len));
-        try reply.writeValue(ctx.writer, integer);
+        try reply.writeValue(ctx.writer, @intCast(range_len));
     }
 
     try list.removeByRange(ctx.allocator, from, range_len);
@@ -312,12 +314,12 @@ fn delMapOne(ctx: *const Context) !void {
             try reply.writeValue(ctx.writer, scalar);
         }
     } else {
-        while (args.next()) |map_key| {
+        var total_deleted: i64 = 0;
+        while (args.next()) |map_key| : (total_deleted += 1) {
             map.removeByKey(ctx.allocator, map_key) catch continue;
         }
 
-        const integer: Value.Integer = .fromValue(@intCast(map.count()));
-        try reply.writeValue(ctx.writer, integer);
+        try reply.writeValue(ctx.writer, total_deleted);
     }
 }
 
