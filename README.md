@@ -149,7 +149,11 @@ try batch.delMatching(&.{.from("user:andrea-vaccaro*")}, .{ .limit = .init(10000
 In Rapto, multi-pattern matching is a method for **scanning keys using multiple glob patterns simultaneously**, enabling efficient scans and avoiding multiple queries to search for keys with different patterns. For example:
 
 ```zig
-try batch.countMatching(&.{ "star:HD[0-9]*", "planet:20[2-9][0-9]-*", "comet:??" }, .{});
+try batch.countMatching(&.{
+    .from("star:HD[0-9]*"),
+    .from("planet:20[2-9][0-9]-*"),
+    .from("comet:??"),
+}, .{});
 ```
 
 ## Getting a client
