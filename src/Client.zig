@@ -60,12 +60,14 @@ pub const Batch = struct {
             self.wrapped_builder.end();
         }
 
-        fn append(self: Builder, arg: []const u8) std.mem.Allocator.Error!void {
-            return self.serializer.appendArg(arg);
-        }
-
-        fn appendVec(self: Builder, args: []const []const u8) std.mem.Allocator.Error!void {
-            for (args) |arg| try self.append(arg);
+        fn appendVec(self: Builder, vec: Vec) std.mem.Allocator.Error!void {
+            var builder = try self.serializer.beginArg();
+            defer builder.end();
+            _ = builder.writer.writeVec(vec.data) catch |err| return switch (err) {
+                // Assuming writer is derived from std.Io.Writer.Allocating,
+                // write fails are caused by OOM.
+                error.WriteFailed => error.OutOfMemory,
+            };
         }
 
         fn appendScalarValue(self: Builder, scalar: value.Scalar) std.mem.Allocator.Error!void {
@@ -82,7 +84,7 @@ pub const Batch = struct {
             comptime assert(@sizeOf(T) <= 8);
             var buf: [@sizeOf(T)]u8 = undefined;
             std.mem.writeInt(T, &buf, v, .little);
-            return self.append(buf[0..@sizeOf(T)]);
+            return self.appendVec(.from(buf[0..@sizeOf(T)]));
         }
 
         fn appendRange(self: Builder, range: Range) std.mem.Allocator.Error!void {
@@ -170,8 +172,8 @@ pub const Batch = struct {
         inline for (fields) |field| {
             const arg = @field(args, field.name);
             switch (field.type) {
-                []const []const u8 => try builder.appendVec(arg),
-                []const u8 => try builder.append(arg),
+                []const Vec => for (arg) |vec| try builder.appendVec(vec),
+                Vec => try builder.appendVec(arg),
                 value.Scalar => try builder.appendScalarValue(arg),
                 Range => try builder.appendRange(arg),
                 else => switch (@typeInfo(field.type)) {
@@ -193,6 +195,21 @@ pub const Batch = struct {
             .from_index = 0,
             .to_index = -1,
         };
+    };
+
+    /// Data as a sequence of string slices.
+    /// This is useful when two or more strings
+    /// need to be joined without allocating.
+    pub const Vec = struct {
+        data: []const []const u8,
+
+        pub fn from(str: []const u8) Vec {
+            return .{ .data = &.{str} };
+        }
+
+        pub fn join(data: []const []const u8) Vec {
+            return .{ .data = data };
+        }
     };
 
     pub const MatchingConfig = struct { limit: Quota = .unlimited };
@@ -226,7 +243,7 @@ pub const Batch = struct {
     /// does not exists, item related to key has key_not_found error.
     pub fn get(
         self: *Batch,
-        keys: []const []const u8,
+        keys: []const Vec,
         config: GetConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .limit = config.limit };
@@ -234,11 +251,7 @@ pub const Batch = struct {
     }
 
     /// Returns a list of items in range from key's list.
-    pub fn getItems(
-        self: *Batch,
-        key: []const u8,
-        config: ItemsConfig,
-    ) std.mem.Allocator.Error!void {
+    pub fn getItems(self: *Batch, key: Vec, config: ItemsConfig) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .limit = config.limit };
         return self.build(.get_list, flags, .{ key, config.range });
     }
@@ -246,7 +259,7 @@ pub const Batch = struct {
     /// Deletes keys. If config.get is true, returns deleted value,
     /// otherwise returns integer count of deleted keys.
     /// Skips key if locked, unless this batch owns the lock.
-    pub fn del(self: *Batch, keys: []const []const u8, config: DelConfig) std.mem.Allocator.Error!void {
+    pub fn del(self: *Batch, keys: []const Vec, config: DelConfig) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .get = config.get };
         return self.build(.del, flags, .{keys});
     }
@@ -257,7 +270,7 @@ pub const Batch = struct {
     /// gets in the way, deletes everything with a fast path.
     pub fn delMatching(
         self: *Batch,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Vec,
         config: MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .limit = config.limit, .cursor = .init(config.cursor) };
@@ -269,11 +282,7 @@ pub const Batch = struct {
     /// of deleted keys. Fails with mismatch_type error if key
     /// is not a list, or with locked error if key is locked,
     /// unless this batch owns the lock.
-    pub fn delItems(
-        self: *Batch,
-        key: []const u8,
-        config: DelItemsConfig,
-    ) std.mem.Allocator.Error!void {
+    pub fn delItems(self: *Batch, key: Vec, config: DelItemsConfig) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .get = .init(config.get), .limit = config.limit };
         return self.build(.del_list, flags, .{ key, config.range });
     }
@@ -287,7 +296,7 @@ pub const Batch = struct {
     /// Returns integer count of keys matching glob patterns.
     pub fn countMatching(
         self: *Batch,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Vec,
         config: MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{
@@ -299,12 +308,12 @@ pub const Batch = struct {
 
     /// Returns integer count of keys in a list. Fails with
     /// mismatch_type error if key is not a list.
-    pub fn countItems(self: *Batch, key: []const u8) std.mem.Allocator.Error!void {
+    pub fn countItems(self: *Batch, key: Vec) std.mem.Allocator.Error!void {
         return self.build(.count_list, .{}, .{key});
     }
 
     /// Returns a list of integers (0 or 1), one for each key, telling if key exists.
-    pub fn exists(self: *Batch, keys: []const []const u8) std.mem.Allocator.Error!void {
+    pub fn exists(self: *Batch, keys: []const Vec) std.mem.Allocator.Error!void {
         return self.build(.exists, .{}, .{keys});
     }
 
@@ -315,7 +324,7 @@ pub const Batch = struct {
     /// owns the lock or key doesn't exist.
     pub fn set(
         self: *Batch,
-        key: []const u8,
+        key: Vec,
         scalar: value.Scalar,
         config: CreateConfig,
     ) std.mem.Allocator.Error!void {
@@ -332,7 +341,7 @@ pub const Batch = struct {
     /// is not a list.
     pub fn appendItem(
         self: *Batch,
-        key: []const u8,
+        key: Vec,
         scalar: value.Scalar,
     ) std.mem.Allocator.Error!void {
         return self.build(.append_list, .{}, .{ key, scalar });
@@ -344,7 +353,7 @@ pub const Batch = struct {
     /// is not a string, or scalar is not a string.
     pub fn appendString(
         self: *Batch,
-        key: []const u8,
+        key: Vec,
         scalar: value.Scalar,
     ) std.mem.Allocator.Error!void {
         return self.build(.append_string, .{}, .{ key, scalar });
@@ -356,7 +365,7 @@ pub const Batch = struct {
     /// operation. Fails with mismatch_type error if key is not a list.
     pub fn insertItem(
         self: *Batch,
-        key: []const u8,
+        key: Vec,
         scalar: value.Scalar,
         config: InsertConfig,
     ) std.mem.Allocator.Error!void {
@@ -371,7 +380,7 @@ pub const Batch = struct {
     /// scalar is not a string.
     pub fn insertString(
         self: *Batch,
-        key: []const u8,
+        key: Vec,
         scalar: value.Scalar,
         config: InsertConfig,
     ) std.mem.Allocator.Error!void {
@@ -382,13 +391,13 @@ pub const Batch = struct {
     /// Adds scalar to key's current value. Key must exists and
     /// hold same type as scalar (integer or decimal). Returns
     /// the resulting value.
-    pub fn add(self: *Batch, key: []const u8, scalar: value.Scalar) std.mem.Allocator.Error!void {
+    pub fn add(self: *Batch, key: Vec, scalar: value.Scalar) std.mem.Allocator.Error!void {
         return self.build(.add, .{}, .{ key, scalar });
     }
 
     /// Subtracts scalar from key's current value. Same rules and
     /// return value as add(), in reverse.
-    pub fn sub(self: *Batch, key: []const u8, scalar: value.Scalar) std.mem.Allocator.Error!void {
+    pub fn sub(self: *Batch, key: Vec, scalar: value.Scalar) std.mem.Allocator.Error!void {
         return self.build(.sub, .{}, .{ key, scalar });
     }
 
@@ -398,8 +407,8 @@ pub const Batch = struct {
     /// Renaming a key to itself always returns integer 1 doing nothing.
     pub fn rename(
         self: *Batch,
-        current_key: []const u8,
-        new_key: []const u8,
+        current_key: Vec,
+        new_key: Vec,
         config: RenameConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .if_not_exists = .init(config.if_not_exists) };
@@ -412,8 +421,8 @@ pub const Batch = struct {
     /// is true. Otherwise overwrites to_key and returns integer 1.
     pub fn copy(
         self: *Batch,
-        from_key: []const u8,
-        to_key: []const u8,
+        from_key: Vec,
+        to_key: Vec,
         config: CreateConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{
@@ -424,7 +433,7 @@ pub const Batch = struct {
     }
 
     /// Returns a list of type names (as string), one for each key.
-    pub fn typeOf(self: *Batch, keys: []const []const u8) std.mem.Allocator.Error!void {
+    pub fn typeOf(self: *Batch, keys: []const Vec) std.mem.Allocator.Error!void {
         return self.build(.type, .{}, .{keys});
     }
 
@@ -433,7 +442,7 @@ pub const Batch = struct {
     /// not a list.
     pub fn typeOfItems(
         self: *Batch,
-        key: []const u8,
+        key: Vec,
         config: ItemsConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{ .limit = config.limit };
@@ -443,7 +452,7 @@ pub const Batch = struct {
     /// Returns a list of keys matching glob patterns.
     pub fn keysMatching(
         self: *Batch,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Vec,
         config: MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         const flags: Query.Flags = .{
@@ -465,7 +474,7 @@ pub const Batch = struct {
         self: *Batch,
         allocator: std.mem.Allocator,
         io: std.Io,
-        keys: []const []const u8,
+        keys: []const Vec,
         config: Lock.Config,
     ) Lock.Error!Lock {
         return .lock(self, allocator, io, .{ .literals = keys }, config);
@@ -481,7 +490,7 @@ pub const Batch = struct {
         self: *Batch,
         allocator: std.mem.Allocator,
         io: std.Io,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Vec,
         config: Lock.Config,
     ) Lock.Error!Lock {
         return .lock(self, allocator, io, .{ .glob_patterns = glob_patterns }, config);
@@ -522,8 +531,8 @@ pub const Lock = struct {
     keys: Keys,
 
     const Keys = union(enum) {
-        literals: []const []const u8,
-        glob_patterns: []const []const u8,
+        literals: []const Batch.Vec,
+        glob_patterns: []const Batch.Vec,
     };
 
     fn lock(
@@ -663,12 +672,11 @@ pub const Cursor = struct {
         };
     }
 
-    const KeysContext = struct { glob_patterns: []const []const u8 };
-    const EntriesContext = struct { key: []const u8, glob_patterns: []const []const u8 };
+    const KeysContext = struct { glob_patterns: []const Batch.Vec };
 
     pub fn keysIterator(
         self: Cursor,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Batch.Vec,
         count: u64,
         /// Once `next()` reaches this position, it returns null instead of
         /// issuing another query. Maybe retrieved with `Batch.count(.{})`.
@@ -685,7 +693,7 @@ pub const Cursor = struct {
 
     pub fn countIterator(
         self: Cursor,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Batch.Vec,
         count: u64,
         /// Once `next()` reaches this position, it returns null instead of
         /// issuing another query. Maybe retrieved with `Batch.count(.{})`.
@@ -702,7 +710,7 @@ pub const Cursor = struct {
 
     pub fn delIterator(
         self: Cursor,
-        glob_patterns: []const []const u8,
+        glob_patterns: []const Batch.Vec,
         count: u64,
         /// Once `next()` reaches this position, it returns null instead of
         /// issuing another query. Maybe retrieved with `Batch.count(.{})`.

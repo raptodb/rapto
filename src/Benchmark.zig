@@ -264,7 +264,7 @@ fn batchAppendSet(
     defer allocator.free(string_value);
     self.io.random(key);
     self.io.random(string_value);
-    try batch.set(key, .{ .string = string_value }, .{});
+    try batch.set(.from(key), .{ .string = string_value }, .{});
 }
 
 fn batchAppendGet(
@@ -275,7 +275,7 @@ fn batchAppendGet(
     const key: []u8 = try allocator.alloc(u8, self.config.key_size);
     defer allocator.free(key);
     self.io.random(key);
-    try batch.get(&.{key}, .{});
+    try batch.get(&.{.from(key)}, .{});
 }
 
 fn loadDataset(

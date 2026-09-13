@@ -128,17 +128,6 @@ pub const Serializer = struct {
         return .{ .writer = writer };
     }
 
-    /// Assuming writer is derived from std.Io.Writer.Allocating.
-    pub fn appendArg(self: Serializer, arg: []const u8) std.mem.Allocator.Error!void {
-        frames.append(
-            self.writer,
-            Args.Header,
-            arg,
-        ) catch |err| return switch (err) {
-            error.WriteFailed => error.OutOfMemory,
-        };
-    }
-
     pub fn beginArg(self: Serializer) std.mem.Allocator.Error!frames.BuilderType(Args.Header) {
         return .begin(self.writer);
     }
@@ -250,7 +239,11 @@ test "Query" {
         var writer: std.Io.Writer = .fixed(&buffer);
 
         var serializer: Serializer = try .begin(&writer, expected.command, expected.flags);
-        for (expected.args) |arg| try serializer.appendArg(arg);
+        for (expected.args) |arg| {
+            var builder = try serializer.beginArg();
+            defer builder.end();
+            try builder.writer.writeAll(arg);
+        }
 
         const deserialized: Query = try .deserialize(writer.buffered());
         _ = deserialized.command.kind();
