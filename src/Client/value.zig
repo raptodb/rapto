@@ -20,7 +20,6 @@ pub const ErrorCode = enum(u8) {
     unknown_type,
     math_overflow,
     range_overflow,
-    map_key_not_found,
     unknown_command,
     locked,
 
@@ -96,59 +95,6 @@ pub const ListIterator = struct {
     }
 };
 
-pub const MapIterator = struct {
-    pub const Header = u32;
-
-    wrapped_iterator: frames.IteratorType(Header),
-    len: u64,
-
-    pub const Entry = struct {
-        key: []const u8,
-        value: ReturnValue,
-    };
-
-    pub fn init(content: []const u8) error{InvalidFormat}!MapIterator {
-        var reader: std.Io.Reader = .fixed(content);
-        const len = reader.takeInt(u64, .little) catch return error.InvalidFormat;
-        return .{ .wrapped_iterator = .init(reader.buffered()), .len = len };
-    }
-
-    pub fn count(self: MapIterator) u64 {
-        return self.len;
-    }
-
-    pub fn next(self: *MapIterator) error{ MismatchType, InvalidFormat, UnknownType }!?Entry {
-        const key = self.wrapped_iterator.next() orelse return null;
-        const serialized = self.wrapped_iterator.next() orelse return error.InvalidFormat;
-        return .{ .key = key, .value = try .deserialize(serialized) };
-    }
-
-    /// Retrieve entry from index, assuming it is in bounds.
-    pub fn at(self: MapIterator, index: u32) ReturnValue.DeserializeError!Entry {
-        assert(index < self.len);
-        var iterator = self.wrapped_iterator;
-        iterator.skip((index -| 1) *| 2);
-        const key = self.wrapped_iterator.next() orelse unreachable;
-        const serialized = iterator.next() orelse unreachable;
-        return .{ .key = key, .value = try .deserialize(serialized) };
-    }
-
-    pub fn skip(self: *MapIterator, n: u64) void {
-        self.wrapped_iterator.skip(n *| 2);
-    }
-
-    pub fn format(self: MapIterator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        var iterator = self;
-        try writer.print("map:{d}->{{", .{iterator.len});
-        var i: u64 = 0;
-        while (iterator.next() catch return error.WriteFailed) |e| : (i += 1) {
-            if (i != 0) try writer.writeByte(' ');
-            try writer.print("{s}={f}", .{ e.key, e.value });
-        }
-        try writer.writeByte('}');
-    }
-};
-
 pub const Type = enum(u8) {
     void = 0,
     integer,
@@ -157,7 +103,6 @@ pub const Type = enum(u8) {
     string,
     point,
     list,
-    map,
 
     @"error" = std.math.maxInt(u8),
 
@@ -172,7 +117,7 @@ pub const Type = enum(u8) {
     pub fn group(self: Type) enum { scalar, collection } {
         return switch (self) {
             .void, .integer, .decimal, .flag, .string, .point, .@"error" => .scalar,
-            .list, .map => .collection,
+            .list => .collection,
         };
     }
 
@@ -290,7 +235,6 @@ pub const ReturnValue = union(enum) {
 
     scalar: Scalar,
     list: ListIterator,
-    map: MapIterator,
 
     pub fn deserialize(serialized: []const u8) DeserializeError!ReturnValue {
         const value_type, const content = splitSerialized(serialized) catch
@@ -301,7 +245,6 @@ pub const ReturnValue = union(enum) {
             .scalar => .{ .scalar = try .deserialize(serialized) },
             .collection => switch (tag) {
                 .list => .{ .list = try .init(content) },
-                .map => .{ .map = try .init(content) },
                 // Handled earlier by scalar label.
                 else => unreachable,
             },
@@ -311,7 +254,6 @@ pub const ReturnValue = union(enum) {
     pub fn @"type"(self: ReturnValue) Type {
         return switch (self) {
             .list => .list,
-            .map => .map,
             .scalar => |scalar| return switch (scalar) {
                 inline else => |_, s| Type.fromTypeName(@tagName(s)) catch unreachable,
             },
@@ -330,7 +272,6 @@ pub const ReturnValue = union(enum) {
         switch (self) {
             .scalar => |s| try s.format(writer),
             .list => |list| try list.format(writer),
-            .map => |map| try map.format(writer),
         }
     }
 };

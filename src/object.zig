@@ -183,7 +183,6 @@ pub const Value = union {
     pub const Point = @import("object/scalar.zig").Point;
 
     pub const List = @import("object/collection.zig").List;
-    pub const Map = @import("object/collection.zig").Map;
 
     /// Splits serialized into [value_type:u8][content].
     /// Instead, see `Type.serializeToWriter` to build [serialized].
@@ -226,7 +225,6 @@ pub const Value = union {
 
         // Collection types
         list,
-        map,
 
         pub fn fromInt(integer: anytype) error{UnknownType}!Type {
             return std.enums.fromInt(Type, integer) orelse error.UnknownType;
@@ -241,7 +239,6 @@ pub const Value = union {
                 Value.String => .string,
                 Value.Point => .point,
                 Value.List => .list,
-                Value.Map => .map,
                 else => unreachable,
             };
         }
@@ -249,7 +246,7 @@ pub const Value = union {
         pub fn group(self: Type) enum { scalar, collection } {
             return switch (self) {
                 .void, .integer, .decimal, .flag, .string, .point => .scalar,
-                .list, .map => .collection,
+                .list => .collection,
             };
         }
 
@@ -267,7 +264,6 @@ pub const Value = union {
             .string => Value.String,
             .point => Value.Point,
             .list => Value.List,
-            .map => Value.Map,
         };
     }
 
@@ -283,7 +279,6 @@ pub const Value = union {
 
     // Collection types
     list: List,
-    map: Map,
 
     pub fn initFromContent(
         allocator: std.mem.Allocator,
@@ -306,7 +301,7 @@ pub const Value = union {
                 @tagName(vt),
                 try .initFromContent(allocator, content),
             ),
-            inline .list, .map => |vt| @unionInit(
+            inline .list => |vt| @unionInit(
                 Value,
                 @tagName(vt),
                 try .init(allocator),
@@ -331,7 +326,7 @@ pub const Value = union {
         comptime value_type: Type,
     ) std.mem.Allocator.Error!UnionType(value_type) {
         return switch (value_type) {
-            inline .point, .string, .list, .map => |t| @field(
+            inline .point, .string, .list => |t| @field(
                 self,
                 @tagName(t),
             ).dupe(allocator),
@@ -356,7 +351,7 @@ pub const Value = union {
                 try @field(self, @tagName(vt)).set(allocator, content);
             },
             // Handled earlier.
-            .list, .map => unreachable,
+            .list => unreachable,
         }
     }
 };
@@ -471,7 +466,6 @@ test "Value.Type" {
     try std.testing.expect(try Value.Type.fromInt(4) == .string);
     try std.testing.expect(try Value.Type.fromInt(5) == .point);
     try std.testing.expect(try Value.Type.fromInt(6) == .list);
-    try std.testing.expect(try Value.Type.fromInt(7) == .map);
 
     var allocating: std.Io.Writer.Allocating = .init(allocator);
     defer allocating.deinit();
@@ -502,10 +496,6 @@ test "Value.Type" {
 
     try Value.Type.serializeToWriter(.list, &allocating.writer);
     try std.testing.expect(6 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.map, &allocating.writer);
-    try std.testing.expect(7 == allocating.written()[0]);
     allocating.clearRetainingCapacity();
 }
 

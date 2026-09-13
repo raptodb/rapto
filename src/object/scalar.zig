@@ -17,7 +17,7 @@ pub const Flag = @import("scalar/Flag.zig");
 pub const String = @import("scalar/String.zig");
 pub const Point = @import("scalar/Point.zig");
 
-/// Scalar value types used by List or Map as item.
+/// Scalar value types used by collections as item.
 /// Item contains information about the value type,
 /// allowing the `serializeToWriter` method.
 pub const Scalar = union(enum) {
@@ -54,7 +54,7 @@ pub const Scalar = union(enum) {
                 try .initFromContent(allocator, content),
             ),
             // Handled earlier.
-            .list, .map => unreachable,
+            .list => unreachable,
         };
     }
 

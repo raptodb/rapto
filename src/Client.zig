@@ -243,16 +243,6 @@ pub const Batch = struct {
         return self.build(.get_list, flags, .{ key, config.range });
     }
 
-    /// Returns a list of values for selected map keys. If a map key
-    /// does not exists, item related to key has map_key_not_found error.
-    pub fn getEntries(
-        self: *Batch,
-        key: []const u8,
-        map_keys: []const []const u8,
-    ) std.mem.Allocator.Error!void {
-        return self.build(.get_map, .{}, .{ key, map_keys });
-    }
-
     /// Deletes keys. If config.get is true, returns deleted value,
     /// otherwise returns integer count of deleted keys.
     /// Skips key if locked, unless this batch owns the lock.
@@ -288,34 +278,6 @@ pub const Batch = struct {
         return self.build(.del_list, flags, .{ key, config.range });
     }
 
-    /// Deletes selected map keys. If config.get is true, returns
-    /// deleted values, otherwise returns integer count of deleted
-    /// map keys. Missing map keys are skipped.
-    /// Fails with mismatch_type error if key is not a map.
-    pub fn delEntries(
-        self: *Batch,
-        key: []const u8,
-        map_keys: []const []const u8,
-        config: DelConfig,
-    ) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{ .limit = config.limit };
-        return self.build(.del_map, flags, .{ key, map_keys });
-    }
-
-    /// Deletes map keys matching glob patterns. Returns integer
-    /// count of deleted map keys. Fails with mismatch_type error
-    /// if key is not a map. Fails with locked error if key is
-    /// locked, unless this batch owns the lock.
-    pub fn delEntriesMatching(
-        self: *Batch,
-        key: []const u8,
-        glob_patterns: []const []const u8,
-        config: MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{ .limit = config.limit, .cursor = .init(config.cursor) };
-        return self.build(.del_map_patterns, flags, .{ key, glob_patterns });
-    }
-
     /// Returns integer count of all keys in database.
     pub fn count(self: *Batch, config: MatchingConfig) std.mem.Allocator.Error!void {
         const cm_config: MatchingCursorConfig = .{ .limit = config.limit };
@@ -341,46 +303,9 @@ pub const Batch = struct {
         return self.build(.count_list, .{}, .{key});
     }
 
-    /// Returns integer count of entries in a map. Fails
-    /// with mismatch_type error if key is not a map.
-    pub fn countEntries(
-        self: *Batch,
-        key: []const u8,
-        config: MatchingConfig,
-    ) std.mem.Allocator.Error!void {
-        const cem_config: MatchingCursorConfig = .{ .limit = config.limit };
-        return self.countEntriesMatching(key, &.{"*"}, cem_config);
-    }
-
-    /// Returns integer count of key's map keys matching glob
-    /// patterns. Fails with mismatch_type error if key is not a map.
-    pub fn countEntriesMatching(
-        self: *Batch,
-        key: []const u8,
-        glob_patterns: []const []const u8,
-        config: MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{
-            .limit = config.limit,
-            .cursor = .init(config.cursor),
-        };
-        return self.build(.count_map_patterns, flags, .{ key, glob_patterns });
-    }
-
     /// Returns a list of integers (0 or 1), one for each key, telling if key exists.
     pub fn exists(self: *Batch, keys: []const []const u8) std.mem.Allocator.Error!void {
         return self.build(.exists, .{}, .{keys});
-    }
-
-    /// Returns a list of integers (0 or 1), one for each map key,
-    /// telling if map key exists. Fails with mismatch_type error
-    /// if key is not a map.
-    pub fn existsEntries(
-        self: *Batch,
-        key: []const u8,
-        map_keys: []const []const u8,
-    ) std.mem.Allocator.Error!void {
-        return self.build(.exists_map, .{}, .{ key, map_keys });
     }
 
     /// Sets key's value. If key exists and config.if_not_exists is
@@ -454,25 +379,6 @@ pub const Batch = struct {
         return self.build(.insert_string, flags, .{ key, config.index, scalar });
     }
 
-    /// Sets map_key's value inside key's map, creating the map if
-    /// key does not exists. If config.if_not_exists is true, value
-    /// is not overwritten if map_key already exists. Returns the
-    /// value at map_key before the operation, if config.get is true.
-    /// Fails with mismatch_type error if key exists and is not a map.
-    pub fn put(
-        self: *Batch,
-        key: []const u8,
-        map_key: []const u8,
-        scalar: value.Scalar,
-        config: CreateConfig,
-    ) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{
-            .get = .init(config.get),
-            .if_not_exists = .init(config.if_not_exists),
-        };
-        return self.build(.put, flags, .{ key, map_key, scalar });
-    }
-
     /// Adds scalar to key's current value. Key must exists and
     /// hold same type as scalar (integer or decimal). Returns
     /// the resulting value.
@@ -534,17 +440,6 @@ pub const Batch = struct {
         return self.build(.type_list, flags, .{ key, config.range });
     }
 
-    /// Returns a list of type names (as string), one for each
-    /// selected map key. Fails with mismatch_type error if key
-    /// is not a map. Missing map keys are skipped, list will be shorter.
-    pub fn typeOfEntries(
-        self: *Batch,
-        key: []const u8,
-        map_keys: []const []const u8,
-    ) std.mem.Allocator.Error!void {
-        return self.build(.type_map, .{}, .{ key, map_keys });
-    }
-
     /// Returns a list of keys matching glob patterns.
     pub fn keysMatching(
         self: *Batch,
@@ -556,21 +451,6 @@ pub const Batch = struct {
             .cursor = .init(config.cursor),
         };
         return self.build(.keys_patterns, flags, .{glob_patterns});
-    }
-
-    /// Returns a list of key's map keys matching glob patterns.
-    /// Fails with mismatch_type error if key is not a map.
-    pub fn entriesMatching(
-        self: *Batch,
-        key: []const u8,
-        glob_patterns: []const []const u8,
-        config: MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{
-            .limit = config.limit,
-            .cursor = .init(config.cursor),
-        };
-        return self.build(.entries_patterns, flags, .{ key, glob_patterns });
     }
 
     /// Tries to lock atomically keys until `unlock`. If any key is
@@ -803,27 +683,6 @@ pub const Cursor = struct {
         };
     }
 
-    pub fn entriesIterator(
-        self: Cursor,
-        key: []const u8,
-        glob_patterns: []const []const u8,
-        count: u64,
-        /// Once `next()` reaches this position, it returns null instead of
-        /// issuing another query. Maybe retrieved with `Batch.countEntries(.{})`.
-        max_cursor: u64,
-    ) ListResultIterator(EntriesContext) {
-        return .{
-            .b = self.b,
-            .ctx = .{
-                .key = key,
-                .glob_patterns = glob_patterns,
-            },
-            .queryFn = entriesMatchingFn,
-            .count = count,
-            .max_cursor = max_cursor,
-        };
-    }
-
     pub fn countIterator(
         self: Cursor,
         glob_patterns: []const []const u8,
@@ -836,24 +695,6 @@ pub const Cursor = struct {
             .b = self.b,
             .ctx = .{ .glob_patterns = glob_patterns },
             .queryFn = countMatchingFn,
-            .count = count,
-            .max_cursor = max_cursor,
-        };
-    }
-
-    pub fn countEntriesIterator(
-        self: Cursor,
-        key: []const u8,
-        glob_patterns: []const []const u8,
-        count: u64,
-        /// Once `next()` reaches this position, it returns null instead of
-        /// issuing another query. Maybe retrieved with `Batch.countEntries(.{})`.
-        max_cursor: u64,
-    ) IntegerResultIterator(EntriesContext) {
-        return .{
-            .b = self.b,
-            .ctx = .{ .key = key, .glob_patterns = glob_patterns },
-            .queryFn = countEntriesMatchingFn,
             .count = count,
             .max_cursor = max_cursor,
         };
@@ -876,38 +717,12 @@ pub const Cursor = struct {
         };
     }
 
-    pub fn delEntriesIterator(
-        self: Cursor,
-        key: []const u8,
-        glob_patterns: []const []const u8,
-        count: u64,
-        /// Once `next()` reaches this position, it returns null instead of
-        /// issuing another query. Maybe retrieved with `Batch.countEntries(.{})`.
-        max_cursor: u64,
-    ) IntegerResultIterator(EntriesContext) {
-        return .{
-            .b = self.b,
-            .ctx = .{ .key = key, .glob_patterns = glob_patterns },
-            .queryFn = delEntriesMatchingFn,
-            .count = count,
-            .max_cursor = max_cursor,
-        };
-    }
-
     fn keysMatchingFn(
         ctx: *const KeysContext,
         b: *Batch,
         config: Batch.MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         return b.keysMatching(ctx.glob_patterns, config);
-    }
-
-    fn entriesMatchingFn(
-        ctx: *const EntriesContext,
-        b: *Batch,
-        config: Batch.MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        return b.entriesMatching(ctx.key, ctx.glob_patterns, config);
     }
 
     fn countMatchingFn(
@@ -918,28 +733,12 @@ pub const Cursor = struct {
         return b.countMatching(ctx.glob_patterns, config);
     }
 
-    fn countEntriesMatchingFn(
-        ctx: *const EntriesContext,
-        b: *Batch,
-        config: Batch.MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        return b.countEntriesMatching(ctx.key, ctx.glob_patterns, config);
-    }
-
     fn delMatchingFn(
         ctx: *const KeysContext,
         b: *Batch,
         config: Batch.MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         return b.delMatching(ctx.glob_patterns, config);
-    }
-
-    fn delEntriesMatchingFn(
-        ctx: *const EntriesContext,
-        b: *Batch,
-        config: Batch.MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        return b.delEntriesMatching(ctx.key, ctx.glob_patterns, config);
     }
 };
 

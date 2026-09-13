@@ -6,4 +6,3 @@
 //! It contains the implementation of collections.
 
 pub const List = @import("collection/List.zig");
-pub const Map = @import("collection/Map.zig");

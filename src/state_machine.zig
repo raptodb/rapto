@@ -129,34 +129,6 @@ fn getListOne(ctx: *const Context) !void {
     try serializeList(ctx.writer, range);
 }
 
-fn get_map(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, getMapOne);
-}
-
-fn getMapOne(ctx: *const Context) !void {
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
-
-    while (args.next()) |map_key| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        const scalar = map.getByKey(map_key) catch {
-            try reply.writeError(ctx.writer, .map_key_not_found);
-            continue;
-        };
-        try reply.writeValue(ctx.writer, scalar);
-    }
-}
-
 fn del(ctx: *const Context) Error!void {
     var args = ctx.query.args.iterator();
 
@@ -287,126 +259,6 @@ fn delListOne(ctx: *const Context) !void {
     try list.removeByRange(ctx.allocator, from, range_len);
 }
 
-fn del_map(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, delMapOne);
-}
-
-fn delMapOne(ctx: *const Context) !void {
-    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    if (ctx.query.flags.get.get()) {
-        var serializer: reply.ListSerializer = try .begin(ctx.writer);
-        defer serializer.end();
-
-        while (args.next()) |map_key| {
-            var frame = try serializer.beginFrame();
-            defer frame.end();
-
-            const scalar = map.popByKey(ctx.allocator, map_key) catch continue;
-            defer scalar.deinit(ctx.allocator);
-            try reply.writeValue(ctx.writer, scalar);
-        }
-    } else {
-        var total_deleted: i64 = 0;
-        while (args.next()) |map_key| : (total_deleted += 1) {
-            map.removeByKey(ctx.allocator, map_key) catch continue;
-        }
-
-        try reply.writeValue(ctx.writer, total_deleted);
-    }
-}
-
-fn del_map_patterns(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, delMapPatternsOne);
-}
-
-fn delMapPatternsOne(ctx: *const Context) !void {
-    const cursor = ctx.query.flags.cursor.get();
-    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
-    var limit: Quota = .init(ctx.query.flags.limit.get());
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    const total_deleted: i64 = blk: {
-        // true when patterns contains "*"
-        var has_any_pattern: bool = false;
-        while (args.next()) |pattern| {
-            if (glob.classify(pattern) != .any) continue;
-
-            const total_keys = map.count();
-            if (cursor != 0 or !assume_lock_ownership or total_keys > limit.remaining()) {
-                // We have to count/check keys one by one iterating.
-                // We cant remove keys that are locked, before cursor
-                // or that exceeds limit. This is an hint to avoid
-                // matching withall available patterns.
-                has_any_pattern = true;
-                break;
-            }
-            // Assuming limit is greater than number of keys, if between
-            // patterns there is any pattern `*` we can exploit fast
-            // path and remove all keys from map.
-            // Deleted keys are equal to previous live keys.
-            map.removeAll(ctx.allocator);
-            break :blk @intCast(total_keys);
-        }
-
-        var deleted: i64 = 0;
-        var iterator = map.getKeys();
-        // Starts from last cursor.
-        iterator.skip(cursor);
-        while (iterator.next()) |map_key| {
-            if (limit.exceeded()) break;
-            defer limit.advance();
-
-            var matches: bool = has_any_pattern;
-            // If any pattern `*` is not detected, we should see
-            // if there is a matching pattern with key.
-            if (!matches) {
-                // To avoid allocations we should
-                // iterate patterns for each key.
-                args.reset();
-                // After iterator resetting, skips Memory key.
-                // Next arguments should be patterns.
-                args.skip(1);
-                while (args.next()) |pattern| {
-                    if (glob.match(pattern, map_key)) {
-                        // We found a matching pattern!
-                        matches = true;
-                        break;
-                    }
-                }
-            }
-
-            // Removes the key if any of selected patterns matches.
-            if (matches) {
-                map.removeByKey(ctx.allocator, map_key) catch |err| switch (err) {
-                    error.MapKeyNotFound => unreachable,
-                };
-                deleted += 1;
-            }
-        }
-
-        break :blk deleted;
-    };
-
-    const integer: Value.Integer = .fromValue(total_deleted);
-    try reply.writeValue(ctx.writer, integer);
-}
-
 fn count_patterns(ctx: *const Context) Error!void {
     const cursor = ctx.query.flags.cursor.get();
     var limit: Quota = .init(ctx.query.flags.limit.get());
@@ -476,70 +328,6 @@ fn countListOne(ctx: *const Context) !void {
     try reply.writeValue(ctx.writer, integer);
 }
 
-fn count_map_patterns(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, countMapPatternsOne);
-}
-
-fn countMapPatternsOne(ctx: *const Context) !void {
-    const cursor = ctx.query.flags.cursor.get();
-    var limit: Quota = .init(ctx.query.flags.limit.get());
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    const key_count: i64 = blk: {
-        while (args.next()) |pattern| {
-            if (glob.classify(pattern) != .any) continue;
-
-            const total_keys: i64 = @intCast(
-                // Asserting that keys before cursor
-                // will not counted.
-                ctx.memory.count() -| cursor,
-            );
-            // With minimus we follow the same behaviour
-            // if we had done iterations one by one to
-            // check the pattern.
-            // Total keys will always be within limit.
-            break :blk @min(total_keys, limit.remaining());
-        }
-
-        var counted: i64 = 0;
-        var iterator = map.getKeys();
-        // Starts from last cursor.
-        iterator.skip(cursor);
-        while (iterator.next()) |map_key| {
-            if (limit.exceeded()) break;
-            defer limit.advance();
-
-            var matches: bool = false;
-            // To avoid allocations we should
-            // iterate patterns for each key.
-            args.reset();
-            // After iterator resetting, skips Memory key.
-            // Next arguments should be patterns.
-            args.skip(1);
-            while (args.next()) |pattern| {
-                if (glob.match(pattern, map_key)) {
-                    // We found a matching pattern!
-                    matches = true;
-                    break;
-                }
-            }
-
-            if (matches) counted += 1;
-        }
-
-        break :blk counted;
-    };
-
-    const integer: Value.Integer = .fromValue(key_count);
-    try reply.writeValue(ctx.writer, integer);
-}
-
 fn exists(ctx: *const Context) Error!void {
     return writeOrThrowForEachKey(ctx, existsOne);
 }
@@ -548,32 +336,6 @@ fn existsOne(ctx: *const Context, key: []const u8) !void {
     const key_exists = ctx.memory.get(key) != error.KeyNotFound;
     const integer: Value.Integer = .fromValue(@intFromBool(key_exists));
     try reply.writeValue(ctx.writer, integer);
-}
-
-fn exists_map(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, existsMapOne);
-}
-
-fn existsMapOne(ctx: *const Context) !void {
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
-
-    while (args.next()) |map_key| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        const key_exists = map.getByKey(map_key) != error.MapKeyNotFound;
-        const integer: Value.Integer = .fromValue(@intFromBool(key_exists));
-        try reply.writeValue(ctx.writer, integer);
-    }
 }
 
 fn set(ctx: *const Context) Error!void {
@@ -723,43 +485,6 @@ fn insertListOne(ctx: *const Context) !void {
     }
 }
 
-fn put(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, putOne);
-}
-
-fn putOne(ctx: *const Context) !void {
-    const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const er = try ctx.memory.ensure(ctx.allocator, key, .map, &.{});
-    const ref = er.ref;
-    errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
-
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map_key = args.next() orelse return error.MissingTokens;
-    const serialized = args.next() orelse return error.MissingTokens;
-
-    const map: Value.Map = ref.value(.map);
-
-    if (ctx.query.flags.get.get()) {
-        const scalar: ?Value.Scalar = map.getByKey(map_key) catch null;
-        if (scalar) |s| {
-            try reply.writeValue(ctx.writer, s); // Fast path.
-            if (ctx.query.flags.if_not_exists.get()) return;
-        }
-    }
-
-    if (ctx.query.flags.if_not_exists.get()) {
-        // Never replaces.
-        _ = try map.ensure(ctx.allocator, map_key, serialized);
-    } else {
-        _ = try map.put(ctx.allocator, map_key, serialized);
-    }
-}
-
 fn add(ctx: *const Context) Error!void {
     return writeOrThrow(ctx, addOrSub(.add));
 }
@@ -905,31 +630,6 @@ fn typeListOne(ctx: *const Context) !void {
     }
 }
 
-fn type_map(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, typeMapOne);
-}
-
-fn typeMapOne(ctx: *const Context) !void {
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
-
-    while (args.next()) |map_key| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        const scalar = map.getByKey(map_key) catch continue;
-        try reply.writeSerialized(ctx.writer, .string, @tagName(scalar.type()));
-    }
-}
-
 fn keys_patterns(ctx: *const Context) Error!void {
     return writeOrThrow(ctx, keysPatternsOne);
 }
@@ -980,68 +680,6 @@ fn keysPatternsOne(ctx: *const Context) !void {
             defer frame.end();
 
             try reply.writeSerialized(ctx.writer, .string, key);
-        }
-    }
-}
-
-fn entries_patterns(ctx: *const Context) Error!void {
-    return writeOrThrow(ctx, entriesPatternsOne);
-}
-
-fn entriesPatternsOne(ctx: *const Context) !void {
-    const cursor = ctx.query.flags.cursor.get();
-    var limit: Quota = .init(ctx.query.flags.limit.get());
-    var args = ctx.query.args.iterator();
-
-    const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .map) return error.MismatchType;
-
-    const map: Value.Map = ref.value(.map);
-
-    // true when patterns contains "*"
-    var has_any_pattern: bool = false;
-    while (args.next()) |pattern| {
-        if (glob.classify(pattern) != .any) continue;
-        // Hint to avoid matching with
-        // all available patterns.
-        has_any_pattern = true;
-    }
-
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
-
-    var iterator = map.getKeys();
-    // Starts from last cursor.
-    iterator.skip(cursor);
-    while (iterator.next()) |map_key| {
-        if (limit.exceeded()) break;
-        defer limit.advance();
-
-        var matches: bool = has_any_pattern;
-        // If any pattern `*` is not detected, we should see
-        // if there is a matching pattern with key.
-        if (!matches) {
-            // To avoid allocations we should
-            // iterate patterns for each key.
-            args.reset();
-            // After iterator resetting, skips Memory key.
-            // Next arguments should be patterns.
-            args.skip(1);
-            while (args.next()) |pattern| {
-                if (glob.match(pattern, map_key)) {
-                    // We found a matching pattern!
-                    matches = true;
-                    break;
-                }
-            }
-        }
-
-        if (matches) {
-            var frame = try serializer.beginFrame();
-            defer frame.end();
-
-            try reply.writeSerialized(ctx.writer, .string, map_key);
         }
     }
 }
@@ -1219,25 +857,6 @@ fn writeOrThrow(
     };
 }
 
-fn serializeMap(
-    writer: *std.Io.Writer,
-    quota_limit: u64,
-    map_iterator: Value.Map.PairIterator,
-) Error!void {
-    var limit: Quota = .init(quota_limit);
-
-    var map_serializer: reply.MapSerializer = try .begin(writer);
-    defer map_serializer.end();
-
-    var iterator = map_iterator;
-    while (iterator.next()) |pair| {
-        if (limit.exceeded()) break;
-        defer limit.advance();
-
-        try map_serializer.append(pair);
-    }
-}
-
 fn serializeList(
     writer: *std.Io.Writer,
     items: []const Value.Scalar,
@@ -1262,10 +881,6 @@ fn writeRef(ctx: *const Context, ref: Ref) !void {
             const range = list.get();
             const fixed_range = range[0..@min(range.len, limit.remaining())];
             try serializeList(ctx.writer, fixed_range);
-        },
-        .map => {
-            const map: Value.Map = ref.value(.map);
-            try serializeMap(ctx.writer, limit.remaining(), map.get());
         },
         inline else => |value_type| {
             try reply.writeValue(ctx.writer, ref.value(value_type));

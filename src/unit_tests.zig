@@ -17,7 +17,6 @@ comptime {
     _ = @import("object.zig");
     _ = @import("object/collection.zig");
     _ = @import("object/collection/List.zig");
-    _ = @import("object/collection/Map.zig");
     _ = @import("object/scalar.zig");
     _ = @import("object/scalar/Decimal.zig");
     _ = @import("object/scalar/Flag.zig");

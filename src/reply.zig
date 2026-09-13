@@ -12,7 +12,6 @@ const assert = std.debug.assert;
 const Value = @import("object.zig").Value;
 
 pub const ListSerializer = Value.List.Serializer;
-pub const MapSerializer = Value.Map.Serializer;
 
 pub const ErrorCode = enum(u8) {
     key_not_found = 0,
@@ -23,7 +22,6 @@ pub const ErrorCode = enum(u8) {
     unknown_type,
     math_overflow,
     range_overflow,
-    map_key_not_found,
     unknown_command,
     locked,
 
@@ -48,7 +46,6 @@ pub const ErrorCode = enum(u8) {
             error.UnknownType => .unknown_type,
             error.MathOverflow => .math_overflow,
             error.RangeOverflow => .range_overflow,
-            error.MapKeyNotFound => .map_key_not_found,
             error.UnknownCommand => .unknown_command,
             error.Locked => .locked,
             else => .unknown,

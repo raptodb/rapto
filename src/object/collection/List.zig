@@ -305,6 +305,5 @@ test "List" {
 
     try std.testing.expect(s.get().len == 0);
 
-    try std.testing.expectError(error.MismatchType, Scalar.initFromContent(allocator, .map, &.{}));
     try std.testing.expectError(error.MismatchType, Scalar.initFromContent(allocator, .list, &.{}));
 }
