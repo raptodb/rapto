@@ -278,19 +278,21 @@ pub const Acceptor = struct {
         allocator: std.mem.Allocator,
         io: std.Io,
     ) Acceptor.Error!?Stream {
-        const client = Stream.nonBlockAccept(
-            io,
-            &self.listener.server,
-        ) catch |err| return switch (err) {
-            // Client disconnected during accept.
-            // Maybe another available client?
-            error.ConnectionAborted => self.acceptNext(allocator, io),
-            // No other clients are available.
-            error.WouldBlock => null,
-            else => err,
-        };
-        try self.listener.register(allocator, client);
-        return client;
+        while (true) {
+            const client = Stream.nonBlockAccept(
+                io,
+                &self.listener.server,
+            ) catch |err| return switch (err) {
+                // Client disconnected during accept.
+                // Maybe another available client?
+                error.ConnectionAborted => continue,
+                // No other clients are available.
+                error.WouldBlock => null,
+                else => err,
+            };
+            try self.listener.register(allocator, client);
+            return client;
+        }
     }
 };
 

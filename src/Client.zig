@@ -729,28 +729,21 @@ pub const Cursor = struct {
 
             pub fn next(self: *Self, io: std.Io) Batch.FlushOneError!?value.ListIterator {
                 assert(self.b.pending == 0);
-                if (self.cursor == self.max_cursor) return null;
+                while (self.cursor != self.max_cursor) {
+                    const config: Batch.MatchingCursorConfig = .{
+                        .limit = .init(self.count),
+                        .cursor = self.cursor,
+                    };
+                    try self.queryFn(&self.ctx, self.b, config);
 
-                const config: Batch.MatchingCursorConfig = .{
-                    .limit = .init(self.count),
-                    .cursor = self.cursor,
-                };
-                try self.queryFn(&self.ctx, self.b, config);
+                    const rv = try self.b.flushOne(io);
+                    assert(rv.type() == .list);
+                    const list = rv.list;
 
-                const rv = try self.b.flushOne(io);
-                assert(rv.type() == .list);
-                const list = rv.list;
-
-                self.cursor = @min(self.cursor +| self.count, self.max_cursor);
-                // When list is empty, probably the `count`
-                // scanned entries they were not matched.
-                if (list.len == 0) {
-                    // Do not return an empty list, instead try
-                    // to iterate another time.
-                    return self.next(io);
+                    self.cursor = @min(self.cursor +| self.count, self.max_cursor);
+                    if (list.len != 0) return list;
                 }
-
-                return list;
+                return null;
             }
         };
     }
