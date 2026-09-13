@@ -280,7 +280,8 @@ fn delListOne(ctx: *const Context) !void {
     if (ctx.query.flags.get.get()) {
         try serializeList(ctx.writer, range);
     } else {
-        try reply.writeValue(ctx.writer, @intCast(range_len));
+        const integer: Value.Integer = .fromValue(@intCast(range_len));
+        try reply.writeValue(ctx.writer, integer);
     }
 
     try list.removeByRange(ctx.allocator, from, range_len);

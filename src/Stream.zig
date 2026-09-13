@@ -90,6 +90,7 @@ pub fn reader(s: Stream, io: std.Io) std.Io.net.Stream.Reader {
     return s.stream.reader(io, &.{});
 }
 
+/// Unbuffered writer, this doesn't need `flush()`.
 pub fn writer(s: Stream, io: std.Io) std.Io.net.Stream.Writer {
     return s.stream.writer(io, &.{});
 }
