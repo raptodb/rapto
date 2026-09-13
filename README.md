@@ -63,9 +63,9 @@ defer client.close(io);
 var batch = try client.batch(allocator, .{});
 defer batch.deinit();
 
-try batch.set("x", .{ .string = "rapto" }, .{});
+try batch.set(.from("x"), .{ .string = "rapto" }, .{});
 // Increment last_updated_x by one.
-try batch.add("last_updated_x", .{ .integer = 1 });
+try batch.add(.from("last_updated_x"), .{ .integer = 1 });
 
 var replies = try batch.flush(io);
 while (try replies.next()) |r| assert(!r.hasError());
@@ -79,7 +79,7 @@ const total_keys = (try batch.flushOne(io)).scalar.integer;
 
 const cursor = batch.cursor();
 var iterator = cursor.keysIterator(
-    &.{ "engineer:*", "student:*" },
+    &.{ .from("engineer:*"), .from("student:*") },
     1024,   // Scan count per iteration.
     @intCast(total_keys), // Max cursor.
 );
@@ -96,17 +96,17 @@ const taxes: f64 = 550.8;
 
 // Tries to lock, throwing error.Locked if the selected
 // key is already locked by another instance.
-var lock = try batch.lock(allocator, io, &.{"wallet:01"}, .{});
+var lock = try batch.lock(allocator, io, &.{.from("wallet:01")}, .{});
 defer _ = lock.unlock(io) catch {};
 
-try lock.batch.get(&.{"wallet:01"}, .{});
+try lock.batch.get(&.{.from("wallet:01")}, .{});
 const money = try (try lock.batch.flushOne(io)).list.at(0);
 
 // At this point, no client can modify "wallet:01".
 // `money` has always the same value and
 // it can't be modified normally until `unlock()`.
 if (money.scalar.decimal >= taxes) {
-    try lock.batch.sub("wallet:01", .{ .decimal = taxes });
+    try lock.batch.sub(.from("wallet:01"), .{ .decimal = taxes });
     const reply = try lock.batch.flushOne(io);
     assert(!reply.hasError());
 }
@@ -122,7 +122,7 @@ The technical composition of a query is formed primarily by the command and its 
 
 ```zig
 try batch.insertItem(
-    "pending-jobs",
+    .from("pending-jobs"),
     .{ .integer = 4496 },
     // When index is not set, insert has behavior of append by default.
     .{ .get = true, .replace = true, .index = 5 },
@@ -134,13 +134,14 @@ However, **commands** describe the object of the operation and are divided into 
 Most read and write commands are divided based on two types of key lookup: **deterministic and non-deterministic**. **Literal keys**, which are known in advance and used directly to perform operations, are deterministic, because we know the iterative complexity based on the number of keys inserted.
 
 ```zig
-try batch.get(&.{"key:1", "key:2", "key:3"}, .{});
+try batch.get(&.{.from("key:1"), .from("key:2"), .from("key:3")}, .{});
 ```
 
 On the other hand, **non-deterministic searches** refer to key lookup based on [multi-pattern matching](#multi-pattern-matching): even when iterations can be limited through the iteration-limiting flag, we will never know with certainty which keys were touched, nor whether the number of keys found matches the limit exactly or is lower.
 
 ```zig
-try batch.delEntriesMatching("user:andrea-vaccaro", &.{"*"}, .{ .limit = .init(100000) });
+// Over "user:andrea-vaccaro", deletes also "user:andrea-vaccaro:*".
+try batch.delMatching(&.{.from("user:andrea-vaccaro*")}, .{ .limit = .init(100000) });
 ```
 
 ### Multi-pattern matching
@@ -173,7 +174,13 @@ But, if you need a client in another programming language, you can create it you
 var batch = try client.batch(allocator, .{});
 defer batch.deinit();
 
-try batch.get(&.{ "store:name", "store:earnings", "store:coordinates" }, .{});
+const store_name = store.name;
+
+try batch.get(&.{
+    .join(store_name, ":name"),
+    .join(store_name, ":earnings"),
+    .join(store_name, ":coordinates"),
+}, .{});
 const replies = try batch.flush(io);
 
 const name = (try replies.at(0)).scalar.string;
@@ -192,7 +199,7 @@ const total_keys = (try read_batch.flushOne(io)).scalar.integer;
 
 const cursor = read_batch.cursor();
 var iterator = cursor.keysIterator(
-    &.{"service:v1:*"},
+    &.{.from("service:v1:*")},
     1024,   // Scan count per iteration.
     @intCast(total_keys), // Max cursor.
 );
@@ -203,15 +210,11 @@ while (try iterator.next(io)) |keys_iter| {
         assert(rv_key.type() == .string);
         const key = rv_key.scalar.string;
 
-        // Migrate from http to https.
-        try write_batch.put(key, "port", .{ .integer = 443 }, .{});
-        try write_batch.put(key, "protocol", .{ .string = "https" }, .{});
-
         const new_key: []u8 = try allocator.alloc(u8, key.len);
         defer allocator.free(new_key);
 
         _ = std.mem.replace(u8, key, "service:v1", "service:v2", new_key);
-        try write_batch.rename(key, new_key, .{});
+        try write_batch.rename(.from(key), .from(new_key), .{});
     }
 
     _ = try write_batch.flush(io);
