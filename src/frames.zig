@@ -55,10 +55,10 @@ pub fn IteratorType(comptime HeaderType: type) type {
 
         pub fn len(self: Self) Header {
             var length: Header = 0;
-            // Create new iterator to not adavance seek position.
+            // Create new iterator to not advance seek position.
             var iterator: Self = .init(self.frames);
             while (iterator.next()) |_| {
-                // Maybe never overflows.
+                // Probably never overflows.
                 @setRuntimeSafety(false);
                 length += 1;
             }
