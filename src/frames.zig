@@ -19,6 +19,8 @@ pub const Builder = BuilderType(u32);
 pub const ExtendedBuilder = BuilderType(u64);
 
 pub fn IteratorType(comptime HeaderType: type) type {
+    assert(@sizeOf(HeaderType) <= @sizeOf(u64));
+
     return struct {
         const Self = @This();
 
@@ -32,6 +34,9 @@ pub fn IteratorType(comptime HeaderType: type) type {
         }
 
         pub fn next(self: *Self) ?[]const u8 {
+            // Never overflows.
+            @setRuntimeSafety(false);
+
             const header_size = @sizeOf(Header);
 
             if (self.remaining() < header_size) return null;
@@ -49,6 +54,15 @@ pub fn IteratorType(comptime HeaderType: type) type {
             return content;
         }
 
+        /// Returns a frame from index, assuming it is in bounds.
+        /// This function does not advance seek position.
+        pub fn at(self: Self, index: u32) []const u8 {
+            assert(index < self.len());
+            var iterator: Self = .init(self.frames);
+            iterator.skip(index -| 1);
+            return iterator.next() orelse unreachable;
+        }
+
         pub fn skip(self: *Self, n_frames: Header) void {
             for (0..n_frames) |_| _ = self.next() orelse return;
         }
@@ -58,7 +72,7 @@ pub fn IteratorType(comptime HeaderType: type) type {
             // Create new iterator to not advance seek position.
             var iterator: Self = .init(self.frames);
             while (iterator.next()) |_| {
-                // Probably never overflows.
+                // Never overflows.
                 @setRuntimeSafety(false);
                 length += 1;
             }
@@ -77,6 +91,8 @@ pub fn IteratorType(comptime HeaderType: type) type {
 }
 
 pub fn BuilderType(comptime HeaderType: type) type {
+    assert(@sizeOf(HeaderType) <= @sizeOf(u64));
+
     return struct {
         const Self = @This();
 
