@@ -17,6 +17,7 @@ const Quota = Query.Flags.Quota;
 
 pub const Query = @import("Query.zig");
 pub const value = @import("Client/value.zig");
+pub const reply = @import("Client/reply.zig");
 
 pub const Config = struct {
     /// Address of Server to connect, default: 127.0.0.1:7286.
@@ -112,7 +113,7 @@ pub const Batch = struct {
     /// Flushes all queries until last `flush()` to stream.
     /// After flushing, returns replies pipeline. Not thread-safe.
     /// The return values of last flush, will be invalidated.
-    pub fn flush(self: *Batch, io: std.Io) FlushError!value.ReturnValues {
+    pub fn flush(self: *Batch, io: std.Io) FlushError!reply.Iterator {
         assert(self.pending != 0);
         const pending_before_stream = self.pending;
 
@@ -136,17 +137,17 @@ pub const Batch = struct {
             },
         };
 
-        const replies: value.ReturnValues = .init(self.pipeline.take());
+        const replies: reply.Iterator = .init(self.pipeline.take());
         assert(pending_before_stream == replies.len);
 
         return replies;
     }
 
-    pub const FlushOneError = FlushError || value.ReturnValue.DeserializeError;
+    pub const FlushOneError = FlushError || reply.Value.DeserializeError;
 
     /// As `flush()`, assuming one pending query. Not thread-safe between `Client`.
     /// The return value of last flush, will be invalidated.
-    pub fn flushOne(self: *Batch, io: std.Io) FlushOneError!value.ReturnValue {
+    pub fn flushOne(self: *Batch, io: std.Io) FlushOneError!reply.Value {
         assert(self.pending == 1);
         const rvs = try self.flush(io);
         assert(rvs.len == 1 and self.pending == 0);

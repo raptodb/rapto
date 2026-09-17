@@ -181,9 +181,9 @@ defer batch.deinit();
 const store_name = store.name;
 
 try batch.get(&.{
-    .join(store_name, ":name"),
-    .join(store_name, ":earnings"),
-    .join(store_name, ":coordinates"),
+    .join(&.{store_name, ":name"}),
+    .join(&.{store_name, ":earnings"}),
+    .join(&.{store_name, ":coordinates"}),
 }, .{});
 const replies = try batch.flush(io);
 
