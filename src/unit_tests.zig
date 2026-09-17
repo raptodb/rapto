@@ -8,6 +8,7 @@ comptime {
     _ = @import("cli/Benchmark.zig");
     _ = @import("cli/Server.zig");
     _ = @import("Client.zig");
+    _ = @import("Client/reply.zig");
     _ = @import("Client/value.zig");
     _ = @import("frames.zig");
     _ = @import("glob.zig");
