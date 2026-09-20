@@ -6,10 +6,6 @@
 //! It contains the implementation of client's values.
 
 const std = @import("std");
-const frames = @import("../frames.zig");
-const assert = std.debug.assert;
-
-const Pipeline = @import("../Pipeline.zig");
 
 pub const Void = void;
 pub const Integer = i64;
@@ -64,11 +60,11 @@ pub const Type = enum(u8) {
 
 pub const Scalar = union(enum) {
     void,
-    integer: i64,
-    decimal: f64,
+    integer: Integer,
+    decimal: Decimal,
     flag: Flag,
-    string: []const u8,
-    point: struct { x: f64, y: f64, z: f64 },
+    string: String,
+    point: Point,
 
     pub fn serializeToWriter(
         self: Scalar,

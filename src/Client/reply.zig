@@ -199,6 +199,37 @@ pub const Value = union(enum) {
     }
 };
 
+test "scalar serialize and deserialize" {
+    const cases = [_]value.Scalar{
+        .void,
+        .{ .integer = 100 },
+        .{ .decimal = 3.14 },
+        .{ .flag = .true },
+        .{ .string = "hello" },
+        .{ .point = .{ .x = 1, .y = 2, .z = 3 } },
+    };
+
+    for (cases) |scalar| {
+        var buf: [128]u8 = undefined;
+        var w: std.Io.Writer = .fixed(&buf);
+        try scalar.serializeToWriter(&w);
+
+        const deserialized: Value = try .deserialize(w.buffered());
+        switch (scalar) {
+            .void => try std.testing.expect(deserialized == .void),
+            .integer => |v| try std.testing.expectEqual(v, deserialized.integer),
+            .decimal => |v| try std.testing.expectEqual(v, deserialized.decimal),
+            .flag => |v| try std.testing.expectEqual(v, deserialized.flag),
+            .string => |v| try std.testing.expectEqualStrings(v, deserialized.string),
+            .point => |v| {
+                try std.testing.expectEqual(v.x, deserialized.point.x);
+                try std.testing.expectEqual(v.y, deserialized.point.y);
+                try std.testing.expectEqual(v.z, deserialized.point.z);
+            },
+        }
+    }
+}
+
 pub const Iterator = struct {
     wrapped_iterator: frames.IteratorType(Pipeline.FrameHeader),
     /// Likely to be accessed directly.
@@ -222,7 +253,7 @@ pub const Iterator = struct {
     pub fn nextExpect(
         self: *Iterator,
         comptime value_type: value.Type,
-    ) ?Value.DeserializeError!Value.FieldType(value_type) {
+    ) Value.DeserializeError!?Value.FieldType(value_type) {
         const next_value = try self.next() orelse return null;
         assert(next_value.type() == value_type);
         return @field(next_value, @tagName(value_type));

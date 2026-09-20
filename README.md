@@ -68,7 +68,7 @@ try batch.set(.from("x"), .{ .string = "rapto" }, .{});
 try batch.add(.from("last_updated_x"), .{ .integer = 1 });
 
 var replies = try batch.flush(io);
-while (try replies.next()) |r| assert(r.@"type"() != .@"error");
+while (try replies.next()) |value| assert(value != .@"error");
 ```
 
 Now that we have introduced **batch**, we can derive from this primitive to structures such as `Cursor`, to perform efficient scans (but potentially inconsistent), and `Lock`, to build operations such as **CAS**.
@@ -97,8 +97,8 @@ while (try iterator.next(io)) |keys| {
 var lock = try batch.lock(allocator, io, &.{.from("wallet:01")}, .{});
 defer _ = lock.unlock(io) catch {};
 
-try lock.batch.get(&.{.from("wallet:01")}, .{});
 const money = blk: {
+    try lock.batch.get(&.{.from("wallet:01")}, .{});
     const list = try lock.batch.flushOneExpect(io, .list);
     break :blk list.atExpect(0, .decimal);
 };
@@ -106,10 +106,10 @@ const money = blk: {
 // At this point, no client can modify "wallet:01".
 // `money` has always the same value and
 // it can't be modified normally until `unlock()`.
-if (money.scalar.decimal >= taxes) {
+if (money >= taxes) {
     try lock.batch.sub(.from("wallet:01"), .{ .decimal = taxes });
     const reply = try lock.batch.flushOne(io);
-    assert(reply.type() != .@"error");
+    assert(reply != .@"error");
 }
 ```
 

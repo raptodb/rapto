@@ -576,15 +576,18 @@ pub const Lock = struct {
             .glob_patterns => |p| try b.build(.lock_patterns, .{}, .{p}),
         }
         const rv = try b.flushOne(io);
-        if (!rv.hasError()) {
-            lock_instance.locked = true;
-            return lock_instance;
-        }
 
-        return switch (rv.scalar.@"error") {
-            // We can't lock an already locked key.
-            .locked => error.Locked,
-            .key_not_found => error.KeyNotFound,
+        return switch (rv) {
+            .@"error" => |ec| switch (ec) {
+                // We can't lock an already locked key.
+                .locked => error.Locked,
+                .key_not_found => error.KeyNotFound,
+                else => unreachable,
+            },
+            .none => blk: {
+                lock_instance.locked = true;
+                break :blk lock_instance;
+            },
             else => unreachable,
         };
     }
@@ -601,7 +604,7 @@ pub const Lock = struct {
         }
         const rv = try self.b.flushOne(io);
         // Unlock never returns an error.
-        assert(!rv.hasError());
+        assert(rv != .@"error");
 
         self.batch.deinit();
         // In this line flush has succeeded.
@@ -677,11 +680,10 @@ pub const Cursor = struct {
                 };
                 try self.queryFn(&self.ctx, self.b, config);
 
-                const rv = try self.b.flushOne(io);
-                assert(rv.type() == .integer);
+                const res = try self.b.flushOneExpect(io, .integer);
 
                 self.cursor = @min(self.cursor +| self.count, self.max_cursor);
-                return rv.scalar.integer;
+                return res;
             }
         };
     }
