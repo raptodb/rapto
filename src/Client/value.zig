@@ -50,9 +50,9 @@ pub const Type = enum(u8) {
         return std.meta.stringToEnum(Type, name);
     }
 
-    pub fn group(self: Type) enum { Value, collection } {
+    pub fn group(self: Type) enum { scalar, collection } {
         return switch (self) {
-            .void, .integer, .decimal, .flag, .string, .point, .@"error" => .Value,
+            .void, .integer, .decimal, .flag, .string, .point, .@"error" => .scalar,
             .list => .collection,
         };
     }

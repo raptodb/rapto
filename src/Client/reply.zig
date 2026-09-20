@@ -8,6 +8,7 @@
 const std = @import("std");
 const frames = @import("../frames.zig");
 const value = @import("value.zig");
+const assert = std.debug.assert;
 
 const Pipeline = @import("../Pipeline.zig");
 
@@ -32,10 +33,31 @@ pub const List = struct {
         return try .deserialize(serialized);
     }
 
+    /// Typed `next()`.
+    pub fn nextExpect(
+        self: *List,
+        comptime value_type: value.Type,
+    ) Value.DeserializeError!?Value.FieldType(value_type) {
+        const next_value = try self.next() orelse return null;
+        assert(next_value.type() == value_type);
+        return @field(next_value, @tagName(value_type));
+    }
+
     /// Retrieve scalar from index, assuming it is in bounds.
     pub fn at(self: List, index: u32) Value.DeserializeError!Value {
         const serialized = self.wrapped_iterator.at(index);
         return .deserialize(serialized);
+    }
+
+    /// Retrieve typed scalar from index, assuming it is in bounds.
+    pub fn atExpect(
+        self: List,
+        index: u32,
+        comptime value_type: value.Type,
+    ) Value.DeserializeError!Value.FieldType(value_type) {
+        const value_at = try self.at(index);
+        assert(value_at.type() == value_type);
+        return @field(value_at, @tagName(value_type));
     }
 
     pub fn skip(self: *List, n: u64) void {
@@ -78,7 +100,7 @@ pub const ErrorCode = enum(u8) {
 };
 
 pub const Value = union(enum) {
-    pub const DeserializeError = error{ MismatchType, InvalidFormat, UnknownType };
+    pub const DeserializeError = error{ InvalidFormat, UnknownType };
 
     void,
     integer: value.Integer,
@@ -87,13 +109,26 @@ pub const Value = union(enum) {
     string: value.String,
     point: value.Point,
     @"error": ErrorCode,
-    list: value.List,
+    list: List,
     none,
+
+    pub fn FieldType(comptime from_type: value.Type) type {
+        return switch (from_type) {
+            .void => void,
+            .integer => value.Integer,
+            .decimal => value.Decimal,
+            .flag => value.Flag,
+            .string => value.String,
+            .point => value.Point,
+            .@"error" => ErrorCode,
+            .list => List,
+        };
+    }
 
     pub fn deserialize(serialized: []const u8) DeserializeError!Value {
         const value_type, const content = splitSerialized(serialized) catch
             return .none;
-        const tag: value.Type = try .fromInt(value_type);
+        const tag = value.Type.fromInt(value_type) orelse return error.UnknownType;
 
         var reader: std.Io.Reader = .fixed(content);
 
@@ -128,8 +163,6 @@ pub const Value = union(enum) {
                 return .{ .@"error" = .fromInt(tag_int) };
             },
             .list => return .{ .list = try .init(content) },
-            // Handled earlier.
-            else => unreachable,
         }
     }
 
@@ -185,10 +218,31 @@ pub const Iterator = struct {
         return try .deserialize(serialized);
     }
 
+    /// Typed `next()`.
+    pub fn nextExpect(
+        self: *Iterator,
+        comptime value_type: value.Type,
+    ) ?Value.DeserializeError!Value.FieldType(value_type) {
+        const next_value = try self.next() orelse return null;
+        assert(next_value.type() == value_type);
+        return @field(next_value, @tagName(value_type));
+    }
+
     /// Retrieve value from index, assuming it is in bounds.
     pub fn at(self: Iterator, index: u32) Value.DeserializeError!Value {
         const serialized = self.wrapped_iterator.at(index);
         return .deserialize(serialized);
+    }
+
+    /// Retrieve typed value from index, assuming it is in bounds.
+    pub fn atExpect(
+        self: Iterator,
+        index: u32,
+        comptime value_type: value.Type,
+    ) Value.DeserializeError!Value.FieldType(value_type) {
+        const value_at = try self.at(index);
+        assert(value_at.type() == value_type);
+        return @field(value_at, @tagName(value_type));
     }
 };
 

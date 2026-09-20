@@ -154,6 +154,19 @@ pub const Batch = struct {
         return rvs.at(0);
     }
 
+    /// As `flushOne()` but typed, assuming one pending query.
+    /// Not thread-safe between `Client`.
+    /// The return value of last flush, will be invalidated.
+    pub fn flushOneExpect(
+        self: *Batch,
+        io: std.Io,
+        comptime value_type: value.Type,
+    ) FlushOneError!reply.Value.FieldType(value_type) {
+        const r = try self.flushOne(io);
+        assert(r.type() == value_type);
+        return @field(r, @tagName(value_type));
+    }
+
     pub fn build(
         self: *Batch,
         command: Query.Command,
@@ -291,7 +304,7 @@ pub const Batch = struct {
     /// Returns integer count of all keys in database.
     pub fn count(self: *Batch, config: MatchingConfig) std.mem.Allocator.Error!void {
         const cm_config: MatchingCursorConfig = .{ .limit = config.limit };
-        return self.countMatching(&.{"*"}, cm_config);
+        return self.countMatching(&.{.from("*")}, cm_config);
     }
 
     /// Returns integer count of keys matching glob patterns.
@@ -617,7 +630,7 @@ pub const Cursor = struct {
             count: u64,
             max_cursor: u64,
 
-            pub fn next(self: *Self, io: std.Io) Batch.FlushOneError!?value.ListIterator {
+            pub fn next(self: *Self, io: std.Io) Batch.FlushOneError!?reply.List {
                 assert(self.b.pending == 0);
                 while (self.cursor != self.max_cursor) {
                     const config: Batch.MatchingCursorConfig = .{

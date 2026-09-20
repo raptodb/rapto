@@ -68,14 +68,14 @@ try batch.set(.from("x"), .{ .string = "rapto" }, .{});
 try batch.add(.from("last_updated_x"), .{ .integer = 1 });
 
 var replies = try batch.flush(io);
-while (try replies.next()) |r| assert(!r.hasError());
+while (try replies.next()) |r| assert(r.@"type"() != .@"error");
 ```
 
 Now that we have introduced **batch**, we can derive from this primitive to structures such as `Cursor`, to perform efficient scans (but potentially inconsistent), and `Lock`, to build operations such as **CAS**.
 
 ```zig
 try batch.count(.{});
-const total_keys = (try batch.flushOne(io)).scalar.integer;
+const total_keys = try batch.flushOneExpect(io, .integer);
 
 const cursor = batch.cursor();
 var iterator = cursor.keysIterator(
@@ -85,22 +85,23 @@ var iterator = cursor.keysIterator(
 );
 
 while (try iterator.next(io)) |keys| {
-    // Keys is a ListIterator with more features,
+    // Keys is a List with more features,
     // but for this example we can print it directly.
     std.debug.print("{f}\n", .{keys});
 }
 ```
 
 ```zig
-const taxes: f64 = 550.8;
-
 // Tries to lock, throwing error.Locked if the selected
 // key is already locked by another instance.
 var lock = try batch.lock(allocator, io, &.{.from("wallet:01")}, .{});
 defer _ = lock.unlock(io) catch {};
 
 try lock.batch.get(&.{.from("wallet:01")}, .{});
-const money = try (try lock.batch.flushOne(io)).list.at(0);
+const money = blk: {
+    const list = try lock.batch.flushOneExpect(io, .list);
+    break :blk list.atExpect(0, .decimal);
+};
 
 // At this point, no client can modify "wallet:01".
 // `money` has always the same value and
@@ -108,7 +109,7 @@ const money = try (try lock.batch.flushOne(io)).list.at(0);
 if (money.scalar.decimal >= taxes) {
     try lock.batch.sub(.from("wallet:01"), .{ .decimal = taxes });
     const reply = try lock.batch.flushOne(io);
-    assert(!reply.hasError());
+    assert(reply.type() != .@"error");
 }
 ```
 
@@ -181,15 +182,15 @@ defer batch.deinit();
 const store_name = store.name;
 
 try batch.get(&.{
-    .join(&.{store_name, ":name"}),
-    .join(&.{store_name, ":earnings"}),
-    .join(&.{store_name, ":coordinates"}),
+    .join(&.{ store_name, ":name" }),
+    .join(&.{ store_name, ":earnings" }),
+    .join(&.{ store_name, ":coordinates" }),
 }, .{});
 const replies = try batch.flush(io);
 
-const name = (try replies.at(0)).scalar.string;
-const earnings = (try replies.at(1)).scalar.decimal;
-const coordinates = (try replies.at(2)).scalar.point;
+const name = try replies.atExpect(0, .string);
+const earnings = try replies.atExpect(1, .decimal);
+const coordinates = try replies.atExpect(2, .point);
 ```
 
 ```zig
@@ -199,7 +200,7 @@ var write_batch = try client.batch(allocator, .{});
 defer write_batch.deinit();
 
 try read_batch.count(.{});
-const total_keys = (try read_batch.flushOne(io)).scalar.integer;
+const total_keys = try read_batch.flushOneExpect(io, .integer);
 
 const cursor = read_batch.cursor();
 var iterator = cursor.keysIterator(
@@ -210,10 +211,7 @@ var iterator = cursor.keysIterator(
 
 while (try iterator.next(io)) |keys_iter| {
     var keys = keys_iter;
-    while (try keys.next()) |rv_key| {
-        assert(rv_key.type() == .string);
-        const key = rv_key.scalar.string;
-
+    while (try keys.nextExpect(.string)) |key| {
         const new_key: []u8 = try allocator.alloc(u8, key.len);
         defer allocator.free(new_key);
 
