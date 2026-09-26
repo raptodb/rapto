@@ -209,29 +209,34 @@ pub const EventQueue = struct {
     index: u64 = 0,
 
     pub fn next(self: *EventQueue) ?Event {
-        if (self.index >= self.events.len) return null;
+        while (true) {
+            if (self.index >= self.events.len) return null;
 
-        const epoll_event = self.events[self.index];
-        const fd, const events = .{ epoll_event.data.fd, epoll_event.events };
-        const event_type = self.listener.type(fd, events);
-        self.index += 1;
+            const epoll_event = self.events[self.index];
+            const fd, const events = .{ epoll_event.data.fd, epoll_event.events };
+            const event_type = self.listener.type(fd, events);
+            self.index += 1;
 
-        return switch (event_type) {
-            .new_connection => .accept,
-            .disconnection => ev: {
-                const stream = self.listener.streams.getAssumeExists(fd);
-                break :ev .{ .disconnect = stream };
-            },
-            .incoming_data => ev: {
-                @branchHint(.likely);
-                const stream = self.listener.streams.getAssumeExists(fd);
-                break :ev .{ .readable = stream };
-            },
-            .unknown => ev: {
+            if (event_type == .unknown) {
                 @branchHint(.cold);
-                break :ev self.next();
-            },
-        };
+                continue;
+            }
+
+            return switch (event_type) {
+                .new_connection => .accept,
+                .disconnection => ev: {
+                    const stream = self.listener.streams.getAssumeExists(fd);
+                    break :ev .{ .disconnect = stream };
+                },
+                .incoming_data => ev: {
+                    @branchHint(.likely);
+                    const stream = self.listener.streams.getAssumeExists(fd);
+                    break :ev .{ .readable = stream };
+                },
+                // Handled earlier.
+                .unknown => unreachable,
+            };
+        }
     }
 };
 
