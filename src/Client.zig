@@ -64,7 +64,8 @@ pub const Batch = struct {
         fn appendVec(self: Builder, vec: Vec) std.mem.Allocator.Error!void {
             var builder = try self.serializer.beginArg();
             defer builder.end();
-            _ = builder.writer.writeVec(vec.data) catch |err| return switch (err) {
+            const data: []const []const u8 = if (vec == .data) vec.data else &[_][]const u8{vec.str};
+            _ = builder.writer.writeVec(data) catch |err| return switch (err) {
                 // Assuming writer is derived from std.Io.Writer.Allocating,
                 // write fails are caused by OOM.
                 error.WriteFailed => error.OutOfMemory,
@@ -214,11 +215,12 @@ pub const Batch = struct {
     /// Data as a sequence of string slices.
     /// This is useful when two or more strings
     /// need to be joined without allocating.
-    pub const Vec = struct {
+    pub const Vec = union(enum) {
+        str: []const u8,
         data: []const []const u8,
 
         pub fn from(str: []const u8) Vec {
-            return .{ .data = &.{str} };
+            return .{ .str = str };
         }
 
         pub fn join(data: []const []const u8) Vec {
