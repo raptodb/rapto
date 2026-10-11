@@ -255,7 +255,7 @@ Benchmarks are sufficiently configurable and allow isolated testing by consideri
 
 To learn how to customize benchmarks, simply **run** `./raptodb help` and check the benchmark section or follow these runs:
 
-*\* Benchmarked on WSL2 with Intel Core i7-12700H, server instance with default parameters*
+*\* Benchmarked on WSL2 with Intel Core i7-12700H*
 ```
 > ./raptodb benchmark --test get --dataset-keys 10000000 --ops 10000000
   --key-size 64 --value-size 64 --batch-size 1024 --warmup-batches 8 --clients 1
