@@ -8,22 +8,11 @@
 const std = @import("std");
 
 pub fn classify(string: []const u8) enum { any, literal, pattern } {
-    if (string.len == 0) return .literal;
-
-    var all_stars = true;
-    var has_special = false;
-
-    for (string) |c| switch (c) {
-        '*' => has_special = true,
-        '?', '[', '\\' => {
-            all_stars = false;
-            has_special = true;
-        },
-        else => all_stars = false,
-    };
-
-    if (all_stars) return .any;
-    return if (has_special) .pattern else .literal;
+    if (std.mem.findAny(u8, string, "*?[\\") == null)
+        return .literal;
+    if (std.mem.findNone(u8, string, "*") == null)
+        return .any;
+    return .pattern;
 }
 
 /// Glob matching related to https://github.com/gcc-mirror/gcc/blob/master/libiberty/fnmatch.c.
