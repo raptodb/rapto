@@ -11,7 +11,7 @@ pub fn TaggedPtr(comptime T: type) type {
     assert(@typeInfo(T) == .pointer);
 
     const tag_bits: u64 = std.math.log2(@alignOf(T));
-    const Tag: type = std.meta.Int(.unsigned, tag_bits);
+    const Tag: type = @Int(.unsigned, tag_bits);
 
     return struct {
         const Self = @This();

@@ -37,6 +37,6 @@ pub fn serializeContentToWriter(_: Void, _: *std.Io.Writer) std.Io.Writer.Error!
 test "Void" {
     var s: Void = .fromContent();
 
-    try std.testing.expectEqual(void{}, s.get());
+    try std.testing.expectEqual({}, s.get());
     try std.testing.expect(s.len() == 0);
 }

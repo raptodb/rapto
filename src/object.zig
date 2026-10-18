@@ -16,7 +16,7 @@ comptime {
     // Ensures fixed size of {key, value} pair have
     // a size of 2 pointers on ReleaseFast mode.
     const mode = @import("builtin").mode;
-    if (mode == .ReleaseFast or mode == .ReleaseSafe) {
+    if (mode == .fast or mode == .safe) {
         assert(@sizeOf(Key) == @sizeOf(usize));
         assert(@sizeOf(Value) == @sizeOf(usize));
     }
