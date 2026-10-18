@@ -229,7 +229,7 @@ while (try iterator.next(io)) |keys_iter| {
 
 This will allow, in the future, once the `inspect` tool is implemented, the AOF to be compacted, modified, analyzed, and its statistics displayed. For now, we can only record and load the AOF, with the ability to load batches up to a given timestamp.
 
-## Build and testing
+## Build, testing and coverage
 
 To build and run:
 ```sh
@@ -244,7 +244,13 @@ To run unit tests:
 ```sh
 zig build test
 ```
+
 More unit tests will be available. Fuzz testing and integration will also be supported soon.
+
+To generate test coverage report:
+```sh
+zig build coverage
+```
 
 ## Run the benchmark yourself
 

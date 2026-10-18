@@ -52,6 +52,23 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
 
+    const install_tests = b.addInstallArtifact(unit_tests, .{
+        .dest_dir = .{ .override = .bin },
+        .dest_sub_path = "test-bin",
+    });
+
+    const run_coverage = b.addSystemCommand(&.{
+        "kcov",
+        "--clean",
+        "--include-pattern=rapto/src",
+        "--exclude-line=unreachable",
+        b.pathJoin(&.{ b.root.sub_path, "zig-out", "cov" }),
+        b.pathJoin(&.{ b.root.sub_path, "zig-out", "bin", "test-bin" }),
+    });
+    run_coverage.step.dependOn(&install_tests.step);
+    const cover_step = b.step("coverage", "Generate test coverage report");
+    cover_step.dependOn(&run_coverage.step);
+
     const lib = b.addLibrary(.{
         .name = "rapto-client",
         .root_module = b.addModule("rapto", .{
