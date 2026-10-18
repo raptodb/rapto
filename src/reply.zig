@@ -33,7 +33,7 @@ pub const ErrorCode = enum(u8) {
     }
 
     pub fn serializeToWriter(code: ErrorCode, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        return writer.writeInt(u8, @intFromEnum(code), .little);
+        return writer.writeInt(u8, @backingInt(code), .little);
     }
 
     pub fn fromError(err: anyerror) ErrorCode {

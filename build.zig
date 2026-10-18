@@ -6,6 +6,7 @@
 //! It contains the implementation of build system.
 
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -19,6 +20,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
+            // .strip = false, // For debug symbols
         }),
         .use_llvm = true,
         .use_lld = true,
@@ -34,12 +36,16 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/unit_tests.zig"),
             .target = target,
-            .optimize = .Debug,
+            .optimize = .debug,
             .single_threaded = false,
             .link_libc = true,
         }),
+        .use_llvm = true,
+        .use_lld = true,
     });
 
+    zprof(b, unit_tests.root_module);
+    mimalloc(b, unit_tests.root_module);
     rapidhash(b, unit_tests.root_module, target);
 
     const run_tests = b.addRunArtifact(unit_tests);
@@ -77,10 +83,11 @@ fn mimalloc(b: *std.Build, module: *std.Build.Module) void {
 
 fn rapidhash(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
     const rapidhash_dep = b.dependency("rapidhash", .{});
-    const translated = b.addTranslateC(.{
-        .root_source_file = rapidhash_dep.path("rapidhash.h"),
+    const translate_c = b.dependency("translate_c", .{});
+    const translator: Translator = .init(translate_c, .{
+        .c_source_file = rapidhash_dep.path("rapidhash.h"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
     });
-    module.addImport("rapidhash", translated.createModule());
+    module.addImport("rapidhash", translator.mod);
 }

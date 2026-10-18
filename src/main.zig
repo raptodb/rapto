@@ -33,7 +33,7 @@ fn zprofWriterFn(_: *std.Io.Writer, is_alloc: bool, size: usize) void {
 }
 
 pub fn main(init: std.process.Init.Minimal) u8 {
-    if (builtin.os.tag != .linux) @panic("bad os: linux is required\n");
+    if (builtin.target.os.tag != .linux) @panic("bad os: linux is required\n");
 
     const command: cli.Command = .parse(init.args);
 
@@ -111,7 +111,7 @@ fn commandServer(
     }
 
     const allocated_on_init = zprof_instance.profiler.allocated.get();
-    log.info("startup: allocated {d}KB during server init", .{bytesToKiB(allocated_on_init)});
+    log.info("startup: allocated {d:.3}KB during server init", .{bytesToKiB(allocated_on_init)});
 
     log.info("server is LISTENING...", .{});
     const server = context.server();

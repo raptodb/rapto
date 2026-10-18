@@ -1,7 +1,7 @@
 .{
     .name = .rapto,
     .version = "0.1.0-dev",
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .mimalloc = .{
             .url = "git+https://github.com/microsoft/mimalloc.git#fc1e2acbced0b3e893da1a1375e02ac159d0423f",
@@ -14,6 +14,10 @@
         .zprof = .{
             .url = "git+https://github.com/andrvv/zprof#e3ce60a09d46bf5b095ff01e220593a722df8167",
             .hash = "zprof-4.1.1-Z3ILTZN4AACGyJ-IeV74hgT2l4eqXAUU5OodXH028iw_",
+        },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c#875969d3493e245e01bf5d7860f792d8f3eb9ef5",
+            .hash = "translate_c-0.0.0-Q_BUWoFOBwAhz77Zd15HCVuhTKzdUKc94kezmCeJ7IC_",
         },
     },
     .paths = .{""},

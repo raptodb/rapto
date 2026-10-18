@@ -157,7 +157,7 @@ test "RwBuffer" {
     try std.testing.expectEqual(cap_before, cap_after);
     try std.testing.expect(rw_buffer.writer().end == 0);
 
-    const big_chunk = [_]u8{'a'} ** 256;
+    const big_chunk: [256]u8 = @splat('a');
     try rw_buffer.writer().writeAll(&big_chunk);
     var cap = rw_buffer.capacity();
     try std.testing.expect(cap > 8);

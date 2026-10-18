@@ -174,7 +174,7 @@ pub const Batch = struct {
         flags: Query.Flags,
         args: anytype,
     ) std.mem.Allocator.Error!void {
-        const args_info = @typeInfo(@TypeOf(args));
+        const args_info: std.builtin.Type = @typeInfo(@TypeOf(args));
         comptime assert(args_info == .@"struct");
 
         var mut_flags = flags;
@@ -183,16 +183,18 @@ pub const Batch = struct {
         var builder: Builder = try .begin(&self.pipeline, command, mut_flags);
         defer builder.end();
 
-        const fields = args_info.@"struct".fields;
-        inline for (fields) |field| {
-            const arg = @field(args, field.name);
-            switch (field.type) {
+        inline for (
+            args_info.@"struct".field_names,
+            args_info.@"struct".field_types,
+        ) |field_name, field_type| {
+            const arg = @field(args, field_name);
+            switch (field_type) {
                 []const Vec => for (arg) |vec| try builder.appendVec(vec),
                 Vec => try builder.appendVec(arg),
                 value.Scalar => try builder.appendScalarValue(arg),
                 Range => try builder.appendRange(arg),
-                else => switch (@typeInfo(field.type)) {
-                    .int, .float => try builder.appendNumeric(field.type, arg),
+                else => switch (@typeInfo(field_type)) {
+                    .int, .float => try builder.appendNumeric(field_type, arg),
                     else => @compileError("Unsupported Batch.build() argument type"),
                 },
             }

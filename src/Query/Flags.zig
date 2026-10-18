@@ -35,11 +35,11 @@ pub const Quota = enum(u64) {
     pub const default: Quota = .unlimited;
 
     pub fn init(value: u64) Quota {
-        return @enumFromInt(value);
+        return @fromBackingInt(@intCast(value));
     }
 
     pub fn get(self: Quota) u64 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     pub fn isDefault(self: Quota) bool {
@@ -47,11 +47,11 @@ pub const Quota = enum(u64) {
     }
 
     fn deserializeFromReader(reader: *std.Io.Reader) error{InvalidFormat}!Quota {
-        return @enumFromInt(try take(reader, u64));
+        return @fromBackingInt(@intCast(try take(reader, u64)));
     }
 
     fn serializeContentToWriter(self: Quota, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        return writer.writeInt(u64, @intFromEnum(self), .little);
+        return writer.writeInt(u64, @backingInt(self), .little);
     }
 
     fn isEqualTo(self: Quota, limit: Quota) bool {
@@ -122,7 +122,7 @@ pub const Unsigned = struct {
 const Tag = std.meta.FieldEnum(Flags);
 
 fn bitmask(tag: Tag) u64 {
-    return @as(u64, 1) << @as(u6, @intCast(@intFromEnum(tag)));
+    return @as(u64, 1) << @as(u6, @intCast(@backingInt(tag)));
 }
 
 const Mask = struct {

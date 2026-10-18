@@ -92,7 +92,7 @@ pub const Command = enum(u8) {
         self: Command,
         writer: *std.Io.Writer,
     ) std.Io.Writer.Error!void {
-        return writer.writeByte(@intFromEnum(self));
+        return writer.writeByte(@backingInt(self));
     }
 };
 

@@ -54,7 +54,7 @@ pub const Type = enum(u8) {
     }
 
     pub fn serializeToWriter(self: Type, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        return writer.writeByte(@intFromEnum(self));
+        return writer.writeByte(@backingInt(self));
     }
 };
 
