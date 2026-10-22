@@ -23,6 +23,8 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         args: *const cli.Command.Benchmark,
     ) Context.Error!Context {
+        // Already checked in cli/Benchmark.zig.
+        assert(args.clients != 0);
         if (args.key_size == 0) return error.KeyTooShort;
 
         const config: Config = .{
@@ -31,7 +33,7 @@ pub const Context = struct {
             .batch_size = args.batch_size,
             .test_cmd = std.meta.stringToEnum(Config.TestCmd, args.@"test") orelse
                 return error.UnsupportedTest,
-            .ops_per_client = std.math.divCeil(u64, args.ops, args.clients) catch unreachable,
+            .ops_per_client = @divCeil(args.ops, args.clients),
             .dataset_keys = args.dataset_keys,
             .warmup_batches = args.warmup_batches,
             .key_size = args.key_size,
@@ -73,16 +75,19 @@ pub const Config = struct {
     /// Value size in bytes.
     value_size: u32,
 
-    pub const TestCmd = enum { set, get };
+    pub const TestCmd = enum { set, @"get-hit", @"get-miss" };
 };
 
 config: Config,
 
-/// Single threaded or multi threaded Io. Current
+/// Single threaded or multi-threaded Io. Current
 /// configuration is affected by config.clients.
 io: std.Io,
 
-pub fn run(self: Benchmark, allocator: std.mem.Allocator) !Stats {
+dataset_keys: u64 = 0,
+shared_op_index: std.atomic.Value(u64) = .init(0),
+
+pub fn run(self: *Benchmark, allocator: std.mem.Allocator) !Stats {
     var clients: std.ArrayList(Client) = try .initCapacity(allocator, self.config.clients);
     defer clients.deinit(allocator);
     clients.expandToCapacity();
@@ -95,7 +100,13 @@ pub fn run(self: Benchmark, allocator: std.mem.Allocator) !Stats {
     for (clients.items) |*client| client.* = try .open(self.io, client_config);
     defer for (clients.items) |*client| client.close(self.io);
 
+    // All stats of clients merged with each other.
+    var stats: Stats = .empty;
+    stats.key_size = self.config.key_size;
+    stats.value_size = self.config.value_size;
+
     {
+        assert(clients.items.len != 0);
         const first_client = &clients.items[0];
         var batch = try first_client.batch(allocator, .{});
         defer batch.deinit();
@@ -103,8 +114,12 @@ pub fn run(self: Benchmark, allocator: std.mem.Allocator) !Stats {
         // dataset from this configuration.
         // For convenience we can use batch of first client as a guinea pig.
         try self.loadDataset(allocator, &batch);
+        const loaded_keys = self.dataset_keys;
         // Now we do warmup with the same guinea pig xD
-        try self.warmup(allocator, &batch);
+        const warmup_ok = try self.warmup(allocator, &batch);
+
+        stats.dataset_keys = loaded_keys;
+        stats.warmup_batches = if (warmup_ok) self.config.warmup_batches else 0;
     }
 
     for (clients.items, futures.items) |*client, *future| {
@@ -112,9 +127,6 @@ pub fn run(self: Benchmark, allocator: std.mem.Allocator) !Stats {
         // when `io` is initialized as single-threaded.
         future.* = self.io.async(runTest, .{ self, allocator, client });
     }
-
-    // All stats of clients merged with each other.
-    var stats: Stats = .init;
 
     for (futures.items) |*future| {
         // Propagate errors, if they are present.
@@ -134,7 +146,13 @@ pub const Stats = struct {
     duration: std.Io.Duration,
     total_ops: u64,
 
-    pub const init: Stats = .{
+    // Pre-benchmarking data.
+    dataset_keys: u64 = 0,
+    warmup_batches: u64 = 0,
+    key_size: ?u64 = null,
+    value_size: ?u64 = null,
+
+    pub const empty: Stats = .{
         .sorted_latencies = .empty,
         .duration = .zero,
         .total_ops = 0,
@@ -218,6 +236,22 @@ pub const Stats = struct {
     }
 
     pub fn print(self: Stats, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        assert(self.key_size != null);
+        assert(self.value_size != null);
+
+        if (self.dataset_keys == 0) {
+            try writer.print("Dataset: empty; ", .{});
+        } else {
+            try writer.print(
+                "Dataset: keys={d} key={d}B value={d}B; ",
+                .{ self.dataset_keys, self.key_size.?, self.value_size.? },
+            );
+        }
+        if (self.warmup_batches == 0) {
+            try writer.print("Warmup: no.\n", .{});
+        } else {
+            try writer.print("Warmup: {d} batches.\n", .{self.warmup_batches});
+        }
         try writer.print(
             "Summary:     {d} operations completed in {f}\n",
             .{ self.total_ops, self.duration },
@@ -232,7 +266,7 @@ pub const Stats = struct {
         );
 
         const batch_size = @divFloor(self.total_ops, @max(self.count(), 1));
-        try writer.print("batch={d:<4}   ", .{batch_size});
+        try writer.print("batch={d:<6} ", .{batch_size});
 
         const values = [_]std.Io.Duration{
             self.avg(),
@@ -244,7 +278,7 @@ pub const Stats = struct {
 
         for (values) |value| {
             var buf: [9]u8 = @splat(' ');
-            _ = std.fmt.bufPrint(&buf, "{f}", .{value}) catch {};
+            _ = std.fmt.bufPrint(&buf, "{f}", .{value}) catch unreachable;
             try writer.writeAll(&buf);
             try writer.writeByte(' ');
         }
@@ -253,16 +287,24 @@ pub const Stats = struct {
     }
 };
 
+fn createKey(
+    self: Benchmark,
+    allocator: std.mem.Allocator,
+    key_index: u64,
+) std.mem.Allocator.Error![]u8 {
+    return allocator.print("{d:0>[1]}", .{ key_index, self.config.key_size });
+}
+
 fn batchAppendSet(
     self: Benchmark,
     allocator: std.mem.Allocator,
     batch: *Client.Batch,
+    key_index: u64,
 ) std.mem.Allocator.Error!void {
-    const key: []u8 = try allocator.alloc(u8, self.config.key_size);
+    const key = try self.createKey(allocator, key_index);
     defer allocator.free(key);
     const string_value: []u8 = try allocator.alloc(u8, self.config.value_size);
     defer allocator.free(string_value);
-    self.io.random(key);
     self.io.random(string_value);
     try batch.set(.from(key), .{ .string = string_value }, .{});
 }
@@ -271,64 +313,107 @@ fn batchAppendGet(
     self: Benchmark,
     allocator: std.mem.Allocator,
     batch: *Client.Batch,
+    key_index: u64,
 ) std.mem.Allocator.Error!void {
-    const key: []u8 = try allocator.alloc(u8, self.config.key_size);
+    const key = try self.createKey(allocator, key_index);
     defer allocator.free(key);
-    self.io.random(key);
     try batch.get(&.{.from(key)}, .{});
 }
 
 fn loadDataset(
-    self: Benchmark,
+    self: *Benchmark,
     allocator: std.mem.Allocator,
     batch: *Client.Batch,
 ) Client.Batch.FlushError!void {
     if (self.config.dataset_keys == 0) return;
 
+    // Dummy batch size always good for loading any dataset.
+    const batch_size: u64 = 1024;
+
+    var load_count: u64 = 0;
     var remaining_set: u64 = self.config.dataset_keys;
-    while (remaining_set > 0) : (remaining_set -|= 1024) {
-        for (0..@min(remaining_set, 1024)) |_| {
-            try self.batchAppendSet(allocator, batch);
+    while (remaining_set > 0) : (remaining_set -|= batch_size) {
+        for (0..@min(remaining_set, batch_size)) |_| {
+            try self.batchAppendSet(allocator, batch, load_count);
+            load_count += 1;
         }
         _ = try batch.flush(self.io);
     }
+
+    self.dataset_keys = load_count;
 }
 
 fn warmup(
     self: Benchmark,
     allocator: std.mem.Allocator,
     batch: *Client.Batch,
-) Client.Batch.FlushError!void {
+) Client.Batch.FlushError!bool {
+    if (
     // Warmup should not set keys or make write operations.
-    if (self.config.test_cmd == .set) return;
+    (self.config.test_cmd == .set)
+    // Warmup has no sense when we do get-hit test and dataset is empty.
+    or (self.config.test_cmd == .@"get-hit" and self.dataset_keys == 0)) {
+        // No batches used for warmup.
+        return false;
+    }
 
+    var op_index: u64 = 0;
     for (0..self.config.warmup_batches) |_| {
-        for (0..self.config.batch_size) |_| switch (self.config.test_cmd) {
-            .get => try self.batchAppendGet(allocator, batch),
-            // Handled earlier.
-            .set => unreachable,
-        };
+        for (0..self.config.batch_size) |_| {
+            const key_index = switch (self.config.test_cmd) {
+                .@"get-miss" => self.dataset_keys + op_index,
+                .@"get-hit" => op_index % self.dataset_keys,
+                // Handled earlier.
+                .set => unreachable,
+            };
+
+            switch (self.config.test_cmd) {
+                .@"get-hit",
+                .@"get-miss",
+                => try self.batchAppendGet(allocator, batch, key_index),
+                // Handled earlier.
+                .set => unreachable,
+            }
+            op_index += 1;
+        }
         _ = try batch.flush(self.io);
     }
+
+    return true;
 }
 
 fn runTest(
-    self: Benchmark,
+    self: *Benchmark,
     allocator: std.mem.Allocator,
     client: *Client,
 ) Client.Batch.FlushError!Stats {
     var batch = try client.batch(allocator, .{});
     defer batch.deinit();
 
-    var stats: Stats = .init;
+    var stats: Stats = .empty;
+    errdefer stats.deinit(allocator);
 
     var remaining_ops = self.config.ops_per_client;
+
     while (remaining_ops > 0) : (remaining_ops -|= self.config.batch_size) {
-        // Bench always `batch_size` at time, this is not a bug.
-        for (0..self.config.batch_size) |_| switch (self.config.test_cmd) {
-            .set => try self.batchAppendSet(allocator, &batch),
-            .get => try self.batchAppendGet(allocator, &batch),
-        };
+        // Reserve a unique range of indices for this batch.
+        const base_index = self.shared_op_index.fetchAdd(self.config.batch_size, .monotonic);
+
+        for (0..self.config.batch_size) |batch_index| {
+            const global_index = base_index + @as(u64, @intCast(batch_index));
+
+            const key_index = switch (self.config.test_cmd) {
+                .set, .@"get-miss" => self.dataset_keys + global_index,
+                .@"get-hit" => global_index % self.dataset_keys,
+            };
+
+            switch (self.config.test_cmd) {
+                .@"get-hit",
+                .@"get-miss",
+                => try self.batchAppendGet(allocator, &batch, key_index),
+                .set => try self.batchAppendSet(allocator, &batch, key_index),
+            }
+        }
 
         const now: std.Io.Timestamp = .now(self.io, .awake);
         const rvs = try batch.flush(self.io);

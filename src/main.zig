@@ -127,26 +127,12 @@ fn commandBenchmark(
         return log.err("occurred error={t} while init benchmark context", .{err});
     defer context.deinit();
 
-    if (context.config.dataset_keys == 0) {
-        try stdout.print("Dataset: empty; ", .{});
-    } else {
-        try stdout.print(
-            "Dataset: keys={d} key={d}B value={d}B; ",
-            .{ context.config.dataset_keys, context.config.key_size, context.config.value_size },
-        );
-    }
-    if (context.config.warmup_batches == 0) {
-        try stdout.print("Warmup: no.\n", .{});
-    } else {
-        try stdout.print("Warmup: {d} batches.\n", .{context.config.warmup_batches});
-    }
-
     try stdout.print(
         "Benchmarking test={t} with {d} parallel clients...\n",
         .{ context.config.test_cmd, context.config.clients },
     );
 
-    const benchmark = context.benchmark();
+    var benchmark = context.benchmark();
     const stats = benchmark.run(gpa) catch |err|
         return log.err("occurred error={t} while running benchmark", .{err});
     return stats.print(stdout);
