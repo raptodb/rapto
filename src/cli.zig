@@ -100,7 +100,7 @@ pub const Command = union(enum) {
         \\
         \\  --test <command>
         \\      Specifies the command to benchmark.
-        \\      Available command are: set, get. More commands coming soon.
+        \\      Available command are: set, get-hit, get-miss. More commands coming soon.
         \\      *Required
         \\
         \\  --ops <quantity>

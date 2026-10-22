@@ -93,6 +93,8 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
 
     if (@"test" == null)
         fatal("missing required --test flag", .{});
+    if (clients == 0)
+        fatal("at least 1 client is required", .{});
 
     return .{
         .address = address,
