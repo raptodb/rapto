@@ -144,11 +144,8 @@ pub fn append(
     comptime Header: type,
     buf: []const u8,
 ) std.Io.Writer.Error!void {
-    var header: [@sizeOf(Header)]u8 = undefined;
-    std.mem.writeInt(Header, &header, @intCast(buf.len), .little);
-    // Builds buffer with length-prefix.
-    var vec: [2][]const u8 = .{ &header, buf };
-    return writer.writeVecAll(&vec);
+    try writer.writeInt(Header, @intCast(buf.len), .little);
+    return writer.writeAll(buf);
 }
 
 test "frames" {

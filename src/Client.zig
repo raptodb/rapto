@@ -64,8 +64,10 @@ pub const Batch = struct {
         fn appendVec(self: Builder, vec: Vec) std.mem.Allocator.Error!void {
             var builder = try self.serializer.beginArg();
             defer builder.end();
-            const data: []const []const u8 = if (vec == .data) vec.data else &[_][]const u8{vec.str};
-            _ = builder.writer.writeVec(data) catch |err| return switch (err) {
+            _ = switch (vec) {
+                .data => |data| builder.writer.writeVec(data),
+                .str => |str| builder.writer.write(str),
+            } catch |err| return switch (err) {
                 // Assuming writer is derived from std.Io.Writer.Allocating,
                 // write fails are caused by OOM.
                 error.WriteFailed => error.OutOfMemory,
