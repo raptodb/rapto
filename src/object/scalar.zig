@@ -13,7 +13,6 @@ const Value = @import("../object.zig").Value;
 pub const Void = @import("scalar/Void.zig");
 pub const Integer = @import("scalar/Integer.zig");
 pub const Decimal = @import("scalar/Decimal.zig");
-pub const Flag = @import("scalar/Flag.zig");
 pub const String = @import("scalar/String.zig");
 pub const Point = @import("scalar/Point.zig");
 
@@ -26,7 +25,6 @@ pub const Scalar = union(enum) {
     void: Void,
     integer: Integer,
     decimal: Decimal,
-    flag: Flag,
     string: String,
     point: Point,
 
@@ -43,7 +41,7 @@ pub const Scalar = union(enum) {
                 @tagName(vt),
                 .fromContent(),
             ),
-            inline .integer, .decimal, .flag => |vt| @unionInit(
+            inline .integer, .decimal => |vt| @unionInit(
                 Scalar,
                 @tagName(vt),
                 try .fromContent(content),
@@ -61,7 +59,7 @@ pub const Scalar = union(enum) {
     /// Deallocates value. Assuming value is initialized.
     pub fn deinit(self: Scalar, allocator: std.mem.Allocator) void {
         switch (self) {
-            .void, .integer, .decimal, .flag => {},
+            .void, .integer, .decimal => {},
             .string => self.string.deinit(allocator),
             .point => self.point.deinit(allocator),
         }
@@ -89,7 +87,6 @@ pub const Scalar = union(enum) {
             .void => true,
             .integer => |v| v.get() == item.integer.get(),
             .decimal => |v| v.isApproxEqualTo(item.decimal.get()),
-            .flag => |v| v.get() == item.flag.get(),
             .string => |v| std.mem.eql(u8, v.get(), item.string.get()),
             .point => |v| v.isApproxEqualTo(item.point.get()),
         };

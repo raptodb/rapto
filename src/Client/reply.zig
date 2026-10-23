@@ -105,7 +105,6 @@ pub const Value = union(enum) {
     void,
     integer: value.Integer,
     decimal: value.Decimal,
-    flag: value.Flag,
     string: value.String,
     point: value.Point,
     @"error": ErrorCode,
@@ -117,7 +116,6 @@ pub const Value = union(enum) {
             .void => void,
             .integer => value.Integer,
             .decimal => value.Decimal,
-            .flag => value.Flag,
             .string => value.String,
             .point => value.Point,
             .@"error" => ErrorCode,
@@ -141,10 +139,6 @@ pub const Value = union(enum) {
             .decimal => {
                 const bytes = reader.takeArray(@sizeOf(f64)) catch return error.InvalidFormat;
                 return .{ .decimal = std.mem.bytesToValue(f64, bytes) };
-            },
-            .flag => {
-                const tag_int = reader.takeInt(u64, .little) catch return error.InvalidFormat;
-                return .{ .flag = .fromInt(tag_int) };
             },
             .string => return .{ .string = content },
             .point => {
@@ -184,7 +178,6 @@ pub const Value = union(enum) {
                 try writer.writeByte('(');
                 switch (self) {
                     inline .integer, .decimal => |v| try writer.print("{d}", .{v}),
-                    .flag => |f| try writer.print("{t}", .{f}),
                     .string => |s| try writer.writeAll(s),
                     .point => |p| try writer.print("x={d} y={d} z={d}", .{ p.x, p.y, p.z }),
                     .@"error" => |e| try writer.writeAll(@tagName(e)),
@@ -204,7 +197,6 @@ test "scalar serialize and deserialize" {
         .void,
         .{ .integer = 100 },
         .{ .decimal = 3.14 },
-        .{ .flag = .true },
         .{ .string = "hello" },
         .{ .point = .{ .x = 1, .y = 2, .z = 3 } },
     };
@@ -219,7 +211,6 @@ test "scalar serialize and deserialize" {
             .void => try std.testing.expect(deserialized == .void),
             .integer => |v| try std.testing.expectEqual(v, deserialized.integer),
             .decimal => |v| try std.testing.expectEqual(v, deserialized.decimal),
-            .flag => |v| try std.testing.expectEqual(v, deserialized.flag),
             .string => |v| try std.testing.expectEqualStrings(v, deserialized.string),
             .point => |v| {
                 try std.testing.expectEqual(v.x, deserialized.point.x);

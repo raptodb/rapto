@@ -178,7 +178,6 @@ pub const Value = union {
     pub const Void = @import("object/scalar.zig").Void;
     pub const Integer = @import("object/scalar.zig").Integer;
     pub const Decimal = @import("object/scalar.zig").Decimal;
-    pub const Flag = @import("object/scalar.zig").Flag;
     pub const String = @import("object/scalar.zig").String;
     pub const Point = @import("object/scalar.zig").Point;
 
@@ -219,7 +218,6 @@ pub const Value = union {
         void = 0,
         integer,
         decimal,
-        flag,
         string,
         point,
 
@@ -235,7 +233,6 @@ pub const Value = union {
                 Value.Void => .void,
                 Value.Integer => .integer,
                 Value.Decimal => .decimal,
-                Value.Flag => .flag,
                 Value.String => .string,
                 Value.Point => .point,
                 Value.List => .list,
@@ -245,7 +242,7 @@ pub const Value = union {
 
         pub fn group(self: Type) enum { scalar, collection } {
             return switch (self) {
-                .void, .integer, .decimal, .flag, .string, .point => .scalar,
+                .void, .integer, .decimal, .string, .point => .scalar,
                 .list => .collection,
             };
         }
@@ -260,7 +257,6 @@ pub const Value = union {
             .void => Value.Void,
             .integer => Value.Integer,
             .decimal => Value.Decimal,
-            .flag => Value.Flag,
             .string => Value.String,
             .point => Value.Point,
             .list => Value.List,
@@ -273,7 +269,6 @@ pub const Value = union {
     void: Void,
     integer: Integer,
     decimal: Decimal,
-    flag: Flag,
     string: String,
     point: Point,
 
@@ -291,7 +286,7 @@ pub const Value = union {
                 @tagName(vt),
                 .fromContent(),
             ),
-            inline .integer, .decimal, .flag => |vt| @unionInit(
+            inline .integer, .decimal => |vt| @unionInit(
                 Value,
                 @tagName(vt),
                 try .fromContent(content),
@@ -315,7 +310,7 @@ pub const Value = union {
 
     pub fn deinit(self: Value, allocator: std.mem.Allocator, value_type: Type) void {
         switch (value_type) {
-            .void, .integer, .decimal, .flag => {},
+            .void, .integer, .decimal => {},
             inline else => |vt| @field(self, @tagName(vt)).deinit(allocator),
         }
     }
@@ -344,7 +339,7 @@ pub const Value = union {
 
         switch (value_type) {
             .void => self.void.set(),
-            inline .integer, .decimal, .flag, .point => |vt| {
+            inline .integer, .decimal, .point => |vt| {
                 try @field(self, @tagName(vt)).set(content);
             },
             inline .string => |vt| {
@@ -456,49 +451,6 @@ pub const Ref = struct {
     }
 };
 
-test "Value.Type" {
-    const allocator = std.testing.allocator;
-
-    try std.testing.expect(try Value.Type.fromInt(0) == .void);
-    try std.testing.expect(try Value.Type.fromInt(1) == .integer);
-    try std.testing.expect(try Value.Type.fromInt(2) == .decimal);
-    try std.testing.expect(try Value.Type.fromInt(3) == .flag);
-    try std.testing.expect(try Value.Type.fromInt(4) == .string);
-    try std.testing.expect(try Value.Type.fromInt(5) == .point);
-    try std.testing.expect(try Value.Type.fromInt(6) == .list);
-
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    defer allocating.deinit();
-
-    try Value.Type.serializeToWriter(.void, &allocating.writer);
-    try std.testing.expect(0 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.integer, &allocating.writer);
-    try std.testing.expect(1 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.decimal, &allocating.writer);
-    try std.testing.expect(2 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.flag, &allocating.writer);
-    try std.testing.expect(3 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.string, &allocating.writer);
-    try std.testing.expect(4 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.point, &allocating.writer);
-    try std.testing.expect(5 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-
-    try Value.Type.serializeToWriter(.list, &allocating.writer);
-    try std.testing.expect(6 == allocating.written()[0]);
-    allocating.clearRetainingCapacity();
-}
-
 test "Ref" {
     const allocator = std.testing.allocator;
 
@@ -586,11 +538,6 @@ test "Ref" {
         try ref.setValueFromContent(allocator, .decimal, &decimal_content);
         try std.testing.expectEqualStrings("evolving", ref.key());
         try std.testing.expectEqual(.decimal, ref.type());
-
-        const flag_content: [8]u8 = @bitCast(@as(u64, 1));
-        try ref.setValueFromContent(allocator, .flag, &flag_content);
-        try std.testing.expectEqualStrings("evolving", ref.key());
-        try std.testing.expectEqual(.flag, ref.type());
     }
 
     {

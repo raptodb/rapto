@@ -12,26 +12,11 @@ pub const Integer = i64;
 pub const Decimal = f64;
 pub const String = []const u8;
 pub const Point = struct { x: f64, y: f64, z: f64 };
-pub const Flag = enum(u64) {
-    false = 0,
-    true = 1,
-
-    null,
-    @"error",
-    pending,
-
-    unknown,
-
-    pub fn fromInt(int: u64) Flag {
-        return std.enums.fromInt(Flag, int) orelse .unknown;
-    }
-};
 
 pub const Type = enum(u8) {
     void = 0,
     integer,
     decimal,
-    flag,
     string,
     point,
     list,
@@ -48,7 +33,7 @@ pub const Type = enum(u8) {
 
     pub fn group(self: Type) enum { scalar, collection } {
         return switch (self) {
-            .void, .integer, .decimal, .flag, .string, .point, .@"error" => .scalar,
+            .void, .integer, .decimal, .string, .point, .@"error" => .scalar,
             .list => .collection,
         };
     }
@@ -62,7 +47,6 @@ pub const Scalar = union(enum) {
     void,
     integer: Integer,
     decimal: Decimal,
-    flag: Flag,
     string: String,
     point: Point,
 
@@ -76,7 +60,6 @@ pub const Scalar = union(enum) {
             .void => {},
             .integer => |int| try writer.writeInt(i64, int, .little),
             .decimal => |d| try writer.writeInt(u64, @bitCast(d), .little),
-            .flag => |f| try writer.writeInt(u64, @intFromEnum(f), .little),
             .string => |s| try writer.writeAll(s),
             .point => |p| {
                 try writer.writeInt(u64, @bitCast(p.x), .little);

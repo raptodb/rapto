@@ -184,18 +184,18 @@ pub fn count(self: List) u64 {
 test "List" {
     const allocator = std.testing.allocator;
 
-    var si1: Scalar = try .initFromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(u64, 10))));
+    const si1: Scalar = try .initFromContent(allocator, .integer, &@as([8]u8, @bitCast(@as(u64, 10))));
     defer si1.deinit(allocator);
 
-    var sf1: Scalar = try .initFromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 1))));
+    const sf1: Scalar = try .initFromContent(allocator, .string, "true");
     defer sf1.deinit(allocator);
 
-    var s: List = try .init(allocator);
+    const s: List = try .init(allocator);
     defer s.deinit(allocator);
 
     var pw_allocating: std.Io.Writer.Allocating = .init(allocator);
     defer pw_allocating.deinit();
-    var pw = &pw_allocating.writer;
+    const pw = &pw_allocating.writer;
 
     _ = pw.consumeAll();
     try si1.serializeToWriter(pw);
@@ -207,7 +207,7 @@ test "List" {
 
     try std.testing.expect(s.count() == 2);
 
-    var str_item: Scalar = try .initFromContent(allocator, .string, "example, \"string\"");
+    const str_item: Scalar = try .initFromContent(allocator, .string, "example, \"string\"");
     defer str_item.deinit(allocator);
     _ = pw.consumeAll();
     try str_item.serializeToWriter(pw);
@@ -219,7 +219,7 @@ test "List" {
     try pw.writeInt(u64, @bitCast(@as(f64, 1)), .little);
     try pw.writeInt(u64, @bitCast(@as(f64, 2)), .little);
     try pw.writeInt(u64, @bitCast(@as(f64, 3)), .little);
-    var point_item: Scalar = try .initFromContent(allocator, .point, pw.buffered());
+    const point_item: Scalar = try .initFromContent(allocator, .point, pw.buffered());
     defer point_item.deinit(allocator);
     _ = pw.consumeAll();
     try point_item.serializeToWriter(pw);
@@ -227,49 +227,40 @@ test "List" {
 
     try std.testing.expect(s.count() == 4);
 
-    var err_flag: Scalar = try .initFromContent(allocator, .flag, &@as([8]u8, @bitCast(@as(u64, 3))));
-    defer err_flag.deinit(allocator);
-    _ = pw.consumeAll();
-    try err_flag.serializeToWriter(pw);
-    try s.insert(allocator, 0, pw.buffered());
-
-    try std.testing.expect(s.count() == 5);
-
-    var dec_item: Scalar = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
+    const dec_item: Scalar = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
     defer dec_item.deinit(allocator);
     _ = pw.consumeAll();
     try dec_item.serializeToWriter(pw);
     try s.insert(allocator, 1, pw.buffered());
 
-    try std.testing.expect(s.count() == 6);
-    try std.testing.expect((try s.getByRange(0, 1))[0].flag.get() == .@"error");
+    try std.testing.expect(s.count() == 5);
     try std.testing.expect((try s.getByRange(1, 1))[0].decimal.get() == 3.14);
     {
-        const ax = (try s.getByRange(2, 1))[0].point.get();
+        const ax = (try s.getByRange(0, 1))[0].point.get();
         try std.testing.expect(ax.x.get() == 1);
         try std.testing.expect(ax.y.get() == 2);
         try std.testing.expect(ax.z.get() == 3);
     }
-    try std.testing.expect((try s.getByRange(3, 1))[0].integer.get() == 10);
-    try std.testing.expect((try s.getByRange(4, 1))[0].flag.get() == .true);
+    try std.testing.expect((try s.getByRange(2, 1))[0].integer.get() == 10);
+    try std.testing.expectEqualStrings((try s.getByRange(3, 1))[0].string.get(), "true");
     try std.testing.expectEqualStrings(
         "example, \"string\"",
-        (try s.getByRange(5, 1))[0].string.get(),
+        (try s.getByRange(4, 1))[0].string.get(),
     );
 
-    var str2: Scalar = try .initFromContent(allocator, .string, "example2");
+    const str2: Scalar = try .initFromContent(allocator, .string, "example2");
     defer str2.deinit(allocator);
     _ = pw.consumeAll();
     try str2.serializeToWriter(pw);
     try s.setByIndex(allocator, 3, pw.buffered());
     try std.testing.expectEqualStrings("example2", (try s.getByRange(3, 1))[0].string.get());
 
-    var void_item: Scalar = try .initFromContent(allocator, .void, &.{});
+    const void_item: Scalar = try .initFromContent(allocator, .void, &.{});
     defer void_item.deinit(allocator);
     _ = pw.consumeAll();
     try void_item.serializeToWriter(pw);
     try s.setByIndex(allocator, 4, pw.buffered());
-    try std.testing.expect(s.count() == 6);
+    try std.testing.expect(s.count() == 5);
 
     try std.testing.expectError(error.RangeOverflow, s.getByRange(99, 99));
 
@@ -280,20 +271,16 @@ test "List" {
     try std.testing.expect(s.get().len == s.count());
 
     try s.removeByRange(allocator, 1, 2);
-    try std.testing.expect(s.count() == 4);
+    try std.testing.expect(s.count() == 3);
 
-    _ = pw.consumeAll();
-    try err_flag.serializeToWriter(pw);
-    try std.testing.expect(try s.indexOfItemInRange(allocator, pw.buffered(), 0, s.count() - 1) == 0);
+    try std.testing.expect(try s.indexOfItemInRange(allocator, pw.buffered(), 0, s.count() - 1) == 2);
 
-    var dec_item2: Scalar = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
+    const dec_item2: Scalar = try .initFromContent(allocator, .decimal, &@as([8]u8, @bitCast(@as(u64, @bitCast(@as(f64, 3.14))))));
     defer dec_item2.deinit(allocator);
     _ = pw.consumeAll();
     try dec_item2.serializeToWriter(pw);
     try std.testing.expectError(error.ItemNotFound, s.indexOfItemInRange(allocator, pw.buffered(), 0, s.count() - 1));
 
-    _ = pw.consumeAll();
-    try err_flag.serializeToWriter(pw);
     try std.testing.expectError(error.RangeOverflow, s.indexOfItemInRange(allocator, pw.buffered(), 2, 1));
     try std.testing.expectError(error.RangeOverflow, s.indexOfItemInRange(allocator, pw.buffered(), 0, 99));
 

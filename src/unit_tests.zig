@@ -20,7 +20,6 @@ comptime {
     _ = @import("object/collection/List.zig");
     _ = @import("object/scalar.zig");
     _ = @import("object/scalar/Decimal.zig");
-    _ = @import("object/scalar/Flag.zig");
     _ = @import("object/scalar/Integer.zig");
     _ = @import("object/scalar/Point.zig");
     _ = @import("object/scalar/String.zig");
