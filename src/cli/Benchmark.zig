@@ -37,7 +37,7 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
     var @"test": ?[]const u8 = null;
     var ops: u64 = 100_000;
     var dataset_keys: u32 = 100_000;
-    var key_size: u32 = 3;
+    var key_size: u32 = 12;
     var value_size: u32 = 3;
     var warmup_batches: u32 = 512;
 

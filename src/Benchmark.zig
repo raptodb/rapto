@@ -292,7 +292,18 @@ fn createKey(
     allocator: std.mem.Allocator,
     key_index: u64,
 ) std.mem.Allocator.Error![]u8 {
-    return allocator.print("{d:0>[1]}", .{ key_index, self.config.key_size });
+    var allocating: std.Io.Writer.Allocating = .init(allocator);
+    defer allocating.deinit();
+
+    allocating.writer.print("{d:0>[1]}", .{
+        key_index, self.config.key_size,
+    }) catch return error.OutOfMemory;
+
+    var list = allocating.toArrayList();
+    errdefer list.deinit(allocator);
+
+    list.replaceRangeAssumeCapacity(0, list.items.len - self.config.key_size, &.{});
+    return list.toOwnedSlice(allocator);
 }
 
 fn batchAppendSet(
@@ -330,14 +341,31 @@ fn loadDataset(
     // Dummy batch size always good for loading any dataset.
     const batch_size: u64 = 1024;
 
+    var key_index: u64 = 0;
     var load_count: u64 = 0;
-    var remaining_set: u64 = self.config.dataset_keys;
-    while (remaining_set > 0) : (remaining_set -|= batch_size) {
-        for (0..@min(remaining_set, batch_size)) |_| {
-            try self.batchAppendSet(allocator, batch, load_count);
+
+    const string_value = try allocator.alloc(u8, self.config.value_size);
+    defer allocator.free(string_value);
+
+    while (key_index < self.config.dataset_keys) {
+        for (0..@min(self.config.dataset_keys - key_index, batch_size)) |_| {
+            const key = try self.createKey(allocator, key_index);
+            defer allocator.free(key);
+            key_index += 1;
+
+            self.io.random(string_value);
+            try batch.set(
+                .from(key),
+                .{ .string = string_value },
+                .{ .if_not_exists = true },
+            );
+        }
+
+        var replies = try batch.flush(self.io);
+        while (replies.next() catch continue) |reply| {
+            if (reply.maybeError(.key_already_exists)) continue;
             load_count += 1;
         }
-        _ = try batch.flush(self.io);
     }
 
     self.dataset_keys = load_count;
@@ -387,11 +415,13 @@ fn runTest(
     allocator: std.mem.Allocator,
     client: *Client,
 ) Client.Batch.FlushError!Stats {
-    var batch = try client.batch(allocator, .{});
-    defer batch.deinit();
-
     var stats: Stats = .empty;
     errdefer stats.deinit(allocator);
+
+    if (self.config.test_cmd == .@"get-hit" and self.dataset_keys == 0) return stats;
+
+    var batch = try client.batch(allocator, .{});
+    defer batch.deinit();
 
     var remaining_ops = self.config.ops_per_client;
 

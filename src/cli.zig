@@ -117,7 +117,7 @@ pub const Command = union(enum) {
         \\
         \\  --key-size <bytes>
         \\      Size in bytes of each randomic-generated key.
-        \\      Default: 3.
+        \\      Default: 12.
         \\
         \\  --value-size <bytes>
         \\      Size in bytes of each randomic-generated value.
