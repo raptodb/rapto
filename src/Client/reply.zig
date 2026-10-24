@@ -87,6 +87,7 @@ pub const ErrorCode = enum(u8) {
     range_overflow,
     unknown_command,
     locked,
+    key_already_exists,
 
     unknown,
 

@@ -24,6 +24,7 @@ pub const ErrorCode = enum(u8) {
     range_overflow,
     unknown_command,
     locked,
+    key_already_exists,
 
     unknown = std.math.maxInt(u8),
 
@@ -48,6 +49,7 @@ pub const ErrorCode = enum(u8) {
             error.RangeOverflow => .range_overflow,
             error.UnknownCommand => .unknown_command,
             error.Locked => .locked,
+            error.KeyAlreadyExists => .key_already_exists,
             else => .unknown,
         };
     }

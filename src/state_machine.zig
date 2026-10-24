@@ -362,6 +362,8 @@ fn setOne(ctx: *const Context) !void {
         }
         if (!ctx.query.flags.if_not_exists.get()) {
             try ref.setValueFromContent(ctx.allocator, value_type, content);
+        } else {
+            return error.KeyAlreadyExists;
         }
     } else {
         _ = try ctx.memory.put(ctx.allocator, key, value_type, content);
