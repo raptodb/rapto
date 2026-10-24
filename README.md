@@ -21,20 +21,20 @@ Although Rapto is still an immature project and depends in part on the optimizat
 *\* Benchmarked on WSL2 with Intel Core i7-12700H, server instance with default parameters*
 ```
 Benchmarking test=get-hit with 1 parallel clients...
-Dataset: keys=100000 key=3B value=3B; Warmup: 16 batches.
-Summary:     10000000 operations completed in 5.289s
-             1890665.58 ops/s 29541.65 batches/s throughput
+Dataset: keys=1000000 key=12B value=3B; Warmup: 16 batches.
+Summary:     100032 operations completed in 60.477ms
+             1654028.17 ops/s 25844.19 batches/s throughput
 Latencies:   avg       min       p50       p95       p99       max      
-batch=64     33.85us   20.804us  32.099us  40.285us  66.466us  6.756ms
+batch=64     38.693us  31.615us  37.123us  43.633us  69.465us  255.816us
 ```
 
 ```
 Benchmarking test=get-hit with 512 parallel clients...
-Dataset: keys=100000 key=3B value=3B; Warmup: 16 batches.
-Summary:     10027008 operations completed in 128.433ms
-             78071415.36 ops/s 1219865.87 batches/s throughput
+Dataset: keys=1000000 key=12B value=3B; Warmup: 16 batches.
+Summary:     131072 operations completed in 5.565ms
+             23551523.45 ops/s 367992.55 batches/s throughput
 Latencies:   avg       min       p50       p95       p99       max      
-batch=64     245.248us 21.887us  243.041us 409.894us 573.954us 4.644ms
+batch=64     349.036us 36.544us  314.741us 643.11us  911.76us  4.19ms
 ```
 
 Here, we can see that throughput increases significantly as the number of clients grows. **But the server is entirely single-threaded**. Rather, a larger number of concurrent clients keeps the event loop constantly fed, allowing the server to amortize event handling costs. This occurs because the architecture enabled me to optimize the `epoll`-based event poller **separately and independently**.
@@ -263,34 +263,44 @@ To learn how to customize benchmarks, simply **run** `./raptodb help` and check 
 
 *\* Benchmarked on WSL2 with Intel Core i7-12700H*
 ```
+> ./raptodb benchmark --test get-hit --dataset-keys 10000000 --ops 10000000
+  --value-size 64 --batch-size 1024 --clients 1
+Benchmarking test=get-hit with 1 parallel clients...
+Dataset: keys=10000000 key=12B value=64B; Warmup: 512 batches.
+Summary:     10000384 operations completed in 2.263s
+             4417870.61 ops/s 4314.33 batches/s throughput
+Latencies:   avg       min       p50       p95       p99       max      
+batch=1024   231.785us 190.462us 216.717us 283.918us 394.909us 25.384ms
+```
+```
 > ./raptodb benchmark --test get-miss --dataset-keys 1000000 --ops 1000000
   --key-size 512 --value-size 512 --batch-size 1024 --warmup-batches 8 --clients 1
 Benchmarking test=get-miss with 1 parallel clients...
 Dataset: keys=1000000 key=512B value=512B; Warmup: 8 batches.
-Summary:     1000448 operations completed in 92.574ms
-             10806916.11 ops/s 10553.63 batches/s throughput
+Summary:     1000448 operations completed in 101.779ms
+             9829609.86 ops/s 9599.23 batches/s throughput
 Latencies:   avg       min       p50       p95       p99       max      
-batch=1024   94.754us  80.295us  89.183us  128.071us 159.5us   429.697us
+batch=1024   104.175us 93.271us  98.89us   134.386us 174.762us 265.737us
 ```
 ```
 > ./raptodb benchmark --test set --dataset-keys 1000000 --ops 1000000
   --key-size 64 --value-size 64 --batch-size 1024 --clients 1
 Benchmarking test=set with 1 parallel clients...
-Dataset: keys=100000 key=64B value=64B; Warmup: no.
-Summary:     100352 operations completed in 32.343ms
-             3102686.17 ops/s 3029.97 batches/s throughput
+Dataset: keys=1000000 key=64B value=64B; Warmup: no.
+Summary:     1000448 operations completed in 375.32ms
+             2665580.89 ops/s 2603.11 batches/s throughput
 Latencies:   avg       min       p50       p95       p99       max      
-batch=1024   330.036us 136.827us 159.587us 345.62us  704.459us 14.072ms
+batch=1024   384.156us 172.589us 196.215us 703.249us 783.551us 140.187ms
 ```
 ```
 > ./raptodb benchmark --test set --dataset-keys 100000 --ops 100000
-  --key-size 3 --value-size 3 --batch-size 1 --clients 128 --warmup-batches 0
+  --value-size 3 --batch-size 1 --clients 128 --warmup-batches 0
 Benchmarking test=set with 128 parallel clients...
-Dataset: keys=100000 key=3B value=3B; Warmup: no.
-Summary:     100096 operations completed in 194.986ms
-             513347.89 ops/s 513347.89 batches/s throughput
+Dataset: keys=100000 key=12B value=3B; Warmup: no.
+Summary:     100096 operations completed in 212.622ms
+             470768.39 ops/s 470768.39 batches/s throughput
 Latencies:   avg       min       p50       p95       p99       max      
-batch=1      166.867us 6.56us    177.466us 285.201us 398.314us 6.301ms
+batch=1      177.268us 12.826us  181.491us 318.789us 431.078us 9.199ms
 ```
 
 ## For contributors
