@@ -48,16 +48,18 @@ pub fn main(init: std.process.Init.Minimal) u8 {
     var threaded: std.Io.Threaded = .init_single_threaded;
     defer threaded.deinit();
 
-    handleCommand(mimalloc.allocator(), threaded.io(), command) catch |err| {
+    const allocator = mimalloc.allocator();
+    const io = threaded.io();
+    const success = handleCommand(allocator, io, command) catch |err| status: {
         log.err("occurred fatal error={t}", .{err});
         if (@errorReturnTrace()) |trace| std.debug.dumpErrorReturnTrace(trace);
-        return 1;
+        break :status false;
     };
 
-    return 0;
+    return @intFromBool(!success);
 }
 
-fn handleCommand(gpa: std.mem.Allocator, io: std.Io, command: cli.Command) !void {
+fn handleCommand(gpa: std.mem.Allocator, io: std.Io, command: cli.Command) !bool {
     return switch (command) {
         .server => |*args| commandServer(gpa, io, args),
 
@@ -82,7 +84,7 @@ fn commandServer(
     gpa: std.mem.Allocator,
     io: std.Io,
     args: *const cli.Command.Server,
-) std.mem.Allocator.Error!void {
+) std.mem.Allocator.Error!bool {
     const pid = std.os.linux.getpid();
     log.info("server name={s} pid={d} addr={f}", .{ args.name, pid, args.address });
 
@@ -99,14 +101,19 @@ fn commandServer(
     };
     const allocator = zprof_instance.allocator();
 
-    var context = Server.Context.init(allocator, io, args) catch |err|
-        return log.err("occurred error={t} while init server context", .{err});
+    var context = Server.Context.init(allocator, io, args) catch |err| {
+        log.err("occurred error={t} while init server context", .{err});
+        return false;
+    };
+
     defer context.deinit(allocator, io);
 
     if (context.aof != null) {
         var start: std.Io.Timestamp = .now(io, .awake);
-        context.loadAof(allocator, io, args.aof_load_until) catch |err|
-            return log.err("occurred error={t} while loading AOF", .{err});
+        context.loadAof(allocator, io, args.aof_load_until) catch |err| {
+            log.err("occurred error={t} while loading AOF", .{err});
+            return false;
+        };
         log.info("loaded AOF file in {f}", .{start.untilNow(io, .awake)});
     }
 
@@ -115,16 +122,20 @@ fn commandServer(
 
     log.info("server is LISTENING...", .{});
     const server = context.server();
-    return server.run(allocator, io);
+    try server.run(allocator, io);
+
+    return true;
 }
 
 fn commandBenchmark(
     gpa: std.mem.Allocator,
     stdout: *std.Io.Writer,
     args: *const cli.Command.Benchmark,
-) (std.Io.Writer.Error || std.mem.Allocator.Error)!void {
-    var context = Benchmark.Context.init(gpa, args) catch |err|
-        return log.err("occurred error={t} while init benchmark context", .{err});
+) (std.Io.Writer.Error || std.mem.Allocator.Error)!bool {
+    var context = Benchmark.Context.init(gpa, args) catch |err| {
+        log.err("occurred error={t} while init benchmark context", .{err});
+        return false;
+    };
     defer context.deinit();
 
     try stdout.print(
@@ -133,19 +144,25 @@ fn commandBenchmark(
     );
 
     var benchmark = context.benchmark();
-    const stats = benchmark.run(gpa) catch |err|
-        return log.err("occurred error={t} while running benchmark", .{err});
-    return stats.print(stdout);
+    const stats = benchmark.run(gpa) catch |err| {
+        log.err("occurred error={t} while running benchmark", .{err});
+        return false;
+    };
+    try stats.print(stdout);
+
+    return true;
 }
 
-fn commandVersion(stdout: *std.Io.Writer) std.Io.Writer.Error!void {
-    return stdout.print("Raptodb version {f}\n", .{version});
+fn commandVersion(stdout: *std.Io.Writer) std.Io.Writer.Error!bool {
+    try stdout.print("Raptodb version {f}\n", .{version});
+    return true;
 }
 
-fn commandHelp(stdout: *std.Io.Writer) std.Io.Writer.Error!void {
-    return stdout.writeAll(cli.Command.usage);
+fn commandHelp(stdout: *std.Io.Writer) std.Io.Writer.Error!bool {
+    try stdout.writeAll(cli.Command.usage);
+    return true;
 }
 
 fn bytesToKiB(bytes: u64) f64 {
-    return @as(f64, @floatFromInt(bytes)) / @as(f64, 1024);
+    return @as(f64, @floatFromInt(bytes)) / (1 << 10);
 }
