@@ -509,6 +509,8 @@ fn addOrSub(comptime op: enum { add, sub }) *const fn (*const Context) anyerror!
 
             const serialized = args.next() orelse return error.MissingTokens;
             const val: value.Union = try .deserialize(serialized);
+            if (ref.value.type() != val.type()) return error.MismatchType;
+
             const result = switch (val) {
                 inline .integer, .decimal => |_, t| res: {
                     const a = @field(ref.value, @tagName(t));
@@ -547,16 +549,25 @@ fn renameOne(ctx: *const Context) !bool {
     if (std.mem.eql(u8, selected_key, new_key)) return true;
 
     const new_ref = memoryGet(ctx, new_key);
-    if (new_ref) |ref| if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
-    if (new_ref != null and ctx.query.flags.if_not_exists.get()) return false;
+    if (new_ref) |ref| {
+        if (!assume_lock_ownership and ref.metadata.locked)
+            return error.Locked;
 
-    const selected_ref = memoryGet(ctx, selected_key) orelse return error.KeyNotFound;
-    if (!assume_lock_ownership and selected_ref.metadata.locked) return error.Locked;
-    const locked = selected_ref.metadata.locked;
+        if (ctx.query.flags.if_not_exists.get()) return false;
+    }
+
+    const selected_ref = memoryGet(ctx, selected_key) orelse
+        return error.KeyNotFound;
+    if (!assume_lock_ownership and selected_ref.metadata.locked)
+        return error.Locked;
+
+    const lock_new_key = selected_ref.metadata.locked and
+        (new_ref == null or !new_ref.?.metadata.locked);
 
     try memoryPut(ctx, new_key, selected_ref.value);
-    // Inserting a key may resize the hashset and invalidate references.
-    if (locked) assert(memoryGet(ctx, new_key).?.lock());
+
+    // Inserting a key may invalidate references into the hashset.
+    if (lock_new_key) assert(memoryGet(ctx, new_key).?.lock());
     ctx.memory.remove(ctx.allocator, memoryGet(ctx, selected_key).?);
     return true;
 }
@@ -567,6 +578,8 @@ fn copy(ctx: *const Context) Error!void {
 
 fn copyOneWrapper(ctx: *const Context) !void {
     const success = try copyOne(ctx);
+    if (ctx.query.flags.get.get()) return;
+
     const integer: value.Union = .{ .integer = .from(@intFromBool(success)) };
     try reply.writeValue(ctx.writer, integer);
 }
@@ -588,7 +601,7 @@ fn copyOne(ctx: *const Context) !bool {
     }
 
     const src = memoryGet(ctx, src_key) orelse return error.KeyNotFound;
-    if (!std.mem.eql(u8, src_key, dst_key)) return true;
+    if (std.mem.eql(u8, src_key, dst_key)) return true;
 
     try memoryPut(ctx, dst_key, src.value);
 
@@ -650,7 +663,6 @@ fn keysPatternsOne(ctx: *const Context) !void {
         has_any_pattern = true;
     }
 
-    try reply.writeValue(ctx.writer, .{ .list = .empty });
     const serializer: value.List.Serializer = try .begin(ctx.writer);
 
     var iterator = ctx.memory.iterator();
@@ -852,8 +864,8 @@ fn writeOrThrowForEachKey(
         defer item.end();
 
         const offset = ctx.writer.end;
-        callback(ctx, key) catch |err| return switch (err) {
-            inline error.OutOfMemory, error.WriteFailed => |e| @errorCast(e),
+        callback(ctx, key) catch |err| switch (err) {
+            inline error.OutOfMemory, error.WriteFailed => |e| return @errorCast(e),
             else => err: {
                 ctx.writer.end = offset;
                 break :err try reply.writeError(ctx.writer, .fromError(err));
@@ -893,13 +905,17 @@ fn writeValue(ctx: *const Context, val: value.Union) !void {
 fn nextRange(
     iterator: *frames.IteratorType(Query.Args.Header),
     length: u64,
-) error{ MissingTokens, MismatchType }!struct { u64, u64 } {
+) error{ MissingTokens, MismatchType, RangeOverflow }!struct { u64, u64 } {
     const from = try nextIndex(iterator, length);
     const to = try nextIndex(iterator, length);
+    if (from > to) return error.RangeOverflow;
     return .{ from, to };
 }
 
-fn nextIndex(iterator: *frames.IteratorType(Query.Args.Header), length: u64) error{ MissingTokens, MismatchType }!u64 {
+fn nextIndex(
+    iterator: *frames.IteratorType(Query.Args.Header),
+    length: u64,
+) error{ MissingTokens, MismatchType }!u64 {
     const relative_index = try nextNumeric(iterator, i64);
     return resolveIndex(relative_index, length);
 }
