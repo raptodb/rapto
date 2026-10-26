@@ -16,6 +16,7 @@ comptime {
     _ = refAllDecls(@import("glob.zig"));
     _ = refAllDecls(@import("main.zig"));
     _ = refAllDecls(@import("Memory.zig"));
+    _ = refAllDecls(@import("Memory/Record.zig"));
     _ = refAllDecls(@import("Mimalloc.zig"));
     _ = refAllDecls(@import("Pipeline.zig"));
     _ = refAllDecls(@import("Query.zig"));
