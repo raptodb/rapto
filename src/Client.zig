@@ -286,14 +286,14 @@ pub const Batch = struct {
 
     /// Deletes keys matching glob patterns. Returns integer count
     /// of deleted keys. Skips locked keys, unless this batch owns
-    /// the lock. If a pattern is exactly "*" and no lock/cursor/limit
+    /// the lock. If a pattern is exactly "*" and no lock/limit
     /// gets in the way, deletes everything with a fast path.
     pub fn delMatching(
         self: *Batch,
         glob_patterns: []const Vec,
-        config: MatchingCursorConfig,
+        config: MatchingConfig,
     ) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{ .limit = config.limit, .cursor = .init(config.cursor) };
+        const flags: Query.Flags = .{ .limit = config.limit };
         return self.build(.del_patterns, flags, .{glob_patterns});
     }
 
@@ -733,23 +733,6 @@ pub const Cursor = struct {
         };
     }
 
-    pub fn delIterator(
-        self: Cursor,
-        glob_patterns: []const Batch.Vec,
-        count: u64,
-        /// Once `next()` reaches this position, it returns null instead of
-        /// issuing another query. Maybe retrieved with `Batch.count(.{})`.
-        max_cursor: u64,
-    ) IntegerResultIterator(KeysContext) {
-        return .{
-            .b = self.b,
-            .ctx = .{ .glob_patterns = glob_patterns },
-            .queryFn = delMatchingFn,
-            .count = count,
-            .max_cursor = max_cursor,
-        };
-    }
-
     fn keysMatchingFn(
         ctx: *const KeysContext,
         b: *Batch,
@@ -764,14 +747,6 @@ pub const Cursor = struct {
         config: Batch.MatchingCursorConfig,
     ) std.mem.Allocator.Error!void {
         return b.countMatching(ctx.glob_patterns, config);
-    }
-
-    fn delMatchingFn(
-        ctx: *const KeysContext,
-        b: *Batch,
-        config: Batch.MatchingCursorConfig,
-    ) std.mem.Allocator.Error!void {
-        return b.delMatching(ctx.glob_patterns, config);
     }
 };
 
