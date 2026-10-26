@@ -4,42 +4,17 @@
 //!
 //! This file is part of "Rapto".
 //! It contains the implementation of memory.
-//!
-//! Main data structure of Rapto that stores
-//! the key-value pairs of the database. It
-//! provides safe CRUD operations to access Ref.
+
 const Memory = @This();
 
 const std = @import("std");
-const object = @import("object.zig");
+const value = @import("value.zig");
 const rapidhash = .{ .micro = @import("rapidhash").rapidhashMicro };
 const assert = std.debug.assert;
 
-const SearchContext = struct {
-    pub fn hash(_: @This(), s: []const u8) u64 {
-        return rapidhash.micro(s.ptr, s.len);
-    }
-    pub fn eql(_: @This(), a: []const u8, b: object.Key) bool {
-        return std.mem.eql(u8, a, b.get());
-    }
-};
+const Record = @import("Memory/Record.zig");
 
-const PutContext = struct {
-    pub fn hash(_: @This(), s: object.Key) u64 {
-        return (SearchContext{}).hash(s.get());
-    }
-    pub fn eql(_: @This(), a: object.Key, b: object.Key) bool {
-        return (SearchContext{}).eql(a.get(), b);
-    }
-};
-
-const load_factor: u32 = 75;
-const Map = std.HashMapUnmanaged(
-    object.Key,
-    object.Value,
-    PutContext,
-    load_factor,
-);
+const load_factor = 75;
 
 pub const Config = struct {
     /// Preallocation of hashmap during initialization
@@ -47,160 +22,160 @@ pub const Config = struct {
     initial_keys: u32,
 
     fn initialCapacity(config: Config) u32 {
+        if (config.initial_keys == 0) return 0;
         const cap: u32 = config.initial_keys * 100 / load_factor + 1;
-        return std.math.ceilPowerOfTwo(u32, cap) catch unreachable;
+        // 8 is the minimal capacity defined in `std.HashMapUnmanaged`.
+        return @max(8, std.math.ceilPowerOfTwoAssert(u32, cap));
     }
 };
 
+const SearchContext = struct {
+    pub fn hash(_: @This(), key: []const u8) u64 {
+        return rapidhash.micro(key.ptr, key.len);
+    }
+    pub fn eql(_: @This(), key_a: []const u8, record_b: Record) bool {
+        const key_b = record_b.key();
+        return std.mem.eql(u8, key_a, key_b);
+    }
+};
+
+const PutContext = struct {
+    pub fn hash(_: @This(), s: Record) u64 {
+        return (SearchContext{}).hash(s.key());
+    }
+    pub fn eql(_: @This(), a: Record, b: Record) bool {
+        return std.mem.eql(u8, a.key(), b.key());
+    }
+};
+
+const Hashset = std.HashMapUnmanaged(Record, void, PutContext, load_factor);
+
 config: Config,
-/// Hashmap of objects. Internal API
-/// should not be used directly.
-map: Map,
+
+hashset: Hashset,
 
 pub fn init(allocator: std.mem.Allocator, config: Config) std.mem.Allocator.Error!Memory {
-    var self: Memory = .{ .config = config, .map = .empty };
-    try self.map.ensureTotalCapacity(allocator, config.initial_keys);
+    var self: Memory = .{ .hashset = .empty, .config = config };
+    try self.hashset.ensureTotalCapacity(allocator, config.initial_keys);
     return self;
 }
 
 pub fn deinit(self: *Memory, allocator: std.mem.Allocator) void {
     self.removeAll(allocator);
-    self.map.deinit(allocator);
+    self.hashset.deinit(allocator);
 }
 
-pub const PutError = error{
-    InvalidKey,
-    InvalidFormat,
-    MismatchType,
-    UnknownType,
-} || std.mem.Allocator.Error;
+pub const Ref = struct {
+    value: value.Union,
+    metadata: Record.Metadata,
+    /// Likely to not be accessed directly.
+    ptr: *const Record,
+
+    fn from(record: *const Record) Ref {
+        const metadata = record.metadata().*;
+        const val = value.Union.fromOwnedSlice(
+            metadata.value_type,
+            record.valueAsBytes(),
+        ) catch |err| switch (err) {
+            error.InvalidFormat => unreachable,
+        };
+        return .{ .value = val, .metadata = metadata, .ptr = record };
+    }
+
+    pub fn lock(self: Ref) bool {
+        const mutable_metadata = self.ptr.metadata();
+        if (mutable_metadata.locked) return false;
+        // Unlocked record, so we can lock it.
+        mutable_metadata.locked = true;
+        return true;
+    }
+
+    pub fn unlock(self: Ref) void {
+        const mutable_metadata = self.ptr.metadata();
+        mutable_metadata.locked = false;
+    }
+};
+
+pub fn get(self: *Memory, key: []const u8) ?Ref {
+    const record = self.hashset.getKeyPtrAdapted(key, SearchContext{}) orelse return null;
+    return .from(record);
+}
+
+pub const PutError = Record.Error;
 
 pub fn put(
     self: *Memory,
     allocator: std.mem.Allocator,
     key: []const u8,
-    value_type: object.Value.Type,
-    content: []const u8,
-) PutError!object.Ref {
-    const entry = try self.map.getOrPutAdapted(allocator, key, SearchContext{});
-    const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
+    val: value.Union,
+) PutError!void {
+    const gop = try self.hashset.getOrPutAdapted(allocator, key, SearchContext{});
 
-    if (entry.found_existing) {
-        try ref.setValueFromContent(allocator, value_type, content);
+    if (gop.found_existing) {
+        try gop.key_ptr.set(allocator, val.type(), val.bytes());
     } else {
-        errdefer self.map.removeByPtr(entry.key_ptr);
-        entry.key_ptr.*, entry.value_ptr.* = try object.init(allocator, key, value_type, content);
+        errdefer self.hashset.removeByPtr(gop.key_ptr);
+        gop.key_ptr.* = try .init(allocator, key, val.type(), val.bytes());
     }
-
-    return ref;
 }
 
-pub fn copy(
-    self: *Memory,
-    allocator: std.mem.Allocator,
-    src_key: []const u8,
-    dst_ref: object.Ref,
-) error{ KeyNotFound, InvalidKey, OutOfMemory }!void {
-    const src_ref = try self.get(src_key);
-    const src_type = src_ref.type();
-
-    const old_type = dst_ref.key_ptr.getValueType();
-    dst_ref.key_ptr.setValueType(src_type);
-    dst_ref.value_ptr.deinit(allocator, old_type);
-
-    dst_ref.value_ptr.* = switch (src_ref.type()) {
-        inline else => |vt| .init(
-            vt,
-            try src_ref.dupeValue(allocator, vt),
-        ),
-    };
-}
-
-pub const EnsureResult = struct {
-    ref: object.Ref,
-    found_existing: bool,
-};
-
-pub fn ensure(
-    self: *Memory,
-    allocator: std.mem.Allocator,
-    key: []const u8,
-    value_type: object.Value.Type,
-    content: []const u8,
-) PutError!EnsureResult {
-    const entry = try self.map.getOrPutAdapted(allocator, key, SearchContext{});
-    const ref: object.Ref = .wrap(entry.key_ptr, entry.value_ptr);
-
-    if (!entry.found_existing) {
-        errdefer self.map.removeByPtr(entry.key_ptr);
-        entry.key_ptr.*, entry.value_ptr.* = try object.init(allocator, key, value_type, content);
-    }
-
-    return .{ .ref = ref, .found_existing = entry.found_existing };
-}
-
-pub fn get(self: *Memory, key: []const u8) error{KeyNotFound}!object.Ref {
-    const entry = self.map.getEntryAdapted(key, SearchContext{}) orelse
-        return error.KeyNotFound;
-    return .wrap(entry.key_ptr, entry.value_ptr);
-}
-
-/// Removes key from memory by ref.
-/// Associated object.Ref will be invalidated.
-pub fn removeByRef(self: *Memory, allocator: std.mem.Allocator, ref: object.Ref) void {
-    object.deinit(allocator, ref.key_ptr.*, ref.value_ptr.*);
-    self.map.removeByPtr(ref.key_ptr);
+pub fn remove(self: *Memory, allocator: std.mem.Allocator, ref: Ref) void {
+    ref.ptr.deinit(allocator);
+    // `removeByPtr()` never modifies pointer.
+    // Fix: https://codeberg.org/ziglang/zig/pulls/37187
+    // (requested by me and merged for Zig 0.17.1)
+    self.hashset.removeByPtr(@constCast(ref.ptr));
 }
 
 pub fn removeAll(self: *Memory, allocator: std.mem.Allocator) void {
+    if (self.count() == 0) return;
     var iter = self.iterator();
-    while (iter.next()) |ref| {
-        object.deinit(allocator, ref.key_ptr.*, ref.value_ptr.*);
-    }
-    self.map.clearRetainingCapacity();
+    while (iter.next()) |entry| self.remove(allocator, entry.ref);
+    self.hashset.clearRetainingCapacity();
 }
 
-pub fn count(self: *const Memory) u64 {
-    return self.map.count();
+pub fn count(self: *Memory) u32 {
+    return self.hashset.count();
 }
 
-/// Clears Memory maintaining the preallocation of initial keys.
+/// Clears records maintaining the preallocation of initial keys.
 pub fn clear(self: *Memory, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
     // Other functions never reduce capacity less than initial keys.
-    assert(self.map.capacity() >= self.config.initialCapacity());
+    assert(self.hashset.capacity() >= self.config.initialCapacity());
 
-    if (self.map.capacity() == self.config.initialCapacity()) {
-        // We don't need Hashmap resizing to
+    if (self.hashset.capacity() == self.config.initialCapacity()) {
+        // We don't need hashset resizing to
         // keep the initial keys preallocated.
         self.removeAll(allocator);
     } else {
+        const new_memory: Memory = try .init(allocator, self.config);
         self.deinit(allocator);
-        self.* = try .init(allocator, self.config);
+        self.* = new_memory;
     }
 
-    assert(self.map.capacity() == self.config.initialCapacity());
+    assert(self.hashset.capacity() == self.config.initialCapacity());
 }
 
 pub const Iterator = struct {
-    memory: *Memory,
-    wrapped_iterator: Map.Iterator,
+    memory: *const Memory,
+    wrapped_iterator: Hashset.KeyIterator,
 
-    pub fn next(self: *Iterator) ?object.Ref {
-        const entry = self.wrapped_iterator.next() orelse return null;
-        return .wrap(entry.key_ptr, entry.value_ptr);
+    pub fn next(self: *Memory.Iterator) ?struct { key: []const u8, ref: Ref } {
+        const record = self.wrapped_iterator.next() orelse return null;
+        return .{ .key = record.key(), .ref = .from(record) };
     }
 
-    pub fn skip(self: *Iterator, n: u64) void {
+    pub fn skip(self: *Memory.Iterator, n: u64) void {
         for (0..n) |_| _ = self.next() orelse return;
     }
 
-    pub fn reset(self: *Iterator) void {
-        self.wrapped_iterator.index = 0;
+    pub fn reset(self: *Memory.Iterator) void {
+        self.wrapped_iterator = self.memory.hashset.keyIterator();
     }
 };
 
-pub fn iterator(self: *Memory) Iterator {
-    return .{ .memory = self, .wrapped_iterator = self.map.iterator() };
+pub fn iterator(self: *const Memory) Memory.Iterator {
+    return .{ .memory = self, .wrapped_iterator = self.hashset.keyIterator() };
 }
 
 test "put/get/remove" {
@@ -209,51 +184,30 @@ test "put/get/remove" {
     var memory: Memory = try .init(allocator, .{ .initial_keys = 4 });
     defer memory.deinit(allocator);
 
-    const int_content: [8]u8 = @bitCast(@as(i64, 10));
-    _ = try memory.put(allocator, "a", .integer, &int_content);
-    _ = try memory.put(allocator, "b", .integer, &int_content);
+    try memory.put(allocator, "a", .{ .integer = .from(10) });
+    try memory.put(allocator, "b", .{ .integer = .from(10) });
 
     try std.testing.expectEqual(2, memory.count());
 
-    const ref_a = try memory.get("a");
-    try std.testing.expectEqual(.integer, ref_a.type());
-    try std.testing.expectEqual(@as(i64, 10), ref_a.value(.integer).get());
+    const ref = memory.get("a").?;
+    try std.testing.expectEqual(.integer, ref.value.type());
+    try std.testing.expectEqual(@as(i64, 10), ref.value.integer.value);
 
-    try std.testing.expectError(error.KeyNotFound, memory.get("missing"));
+    try std.testing.expectEqual(null, memory.get("missing"));
 
-    _ = try memory.put(allocator, "a", .string, "hello");
-    const ref_a_after = try memory.get("a");
-    try std.testing.expectEqual(.string, ref_a_after.type());
-    try std.testing.expectEqualStrings("hello", ref_a_after.value(.string).get());
+    try memory.put(allocator, "a", .{ .string = .from("hello") });
+    const ref_after = memory.get("a").?;
+    try std.testing.expectEqual(.string, ref_after.value.type());
+    try std.testing.expectEqualStrings("hello", ref_after.value.string.value);
     try std.testing.expectEqual(2, memory.count());
 
-    memory.removeByRef(allocator, ref_a_after);
+    memory.remove(allocator, ref_after);
     try std.testing.expectEqual(1, memory.count());
-    try std.testing.expectError(error.KeyNotFound, memory.get("a"));
+    try std.testing.expectEqual(null, memory.get("a"));
 
-    try std.testing.expectError(error.KeyNotFound, memory.get("a"));
-    const ref_b = try memory.get("b");
-    try std.testing.expectEqual(.integer, ref_b.type());
-}
-
-test "ensure" {
-    const allocator = std.testing.allocator;
-
-    var memory: Memory = try .init(allocator, .{ .initial_keys = 4 });
-    defer memory.deinit(allocator);
-
-    const first_content: [8]u8 = @bitCast(@as(i64, 1));
-    const er1 = try memory.ensure(allocator, "k", .integer, &first_content);
-    try std.testing.expect(!er1.found_existing);
-    try std.testing.expectEqual(@as(i64, 1), er1.ref.value(.integer).get());
-
-    const second_content: [8]u8 = @bitCast(@as(i64, 999));
-    const er2 = try memory.ensure(allocator, "k", .integer, &second_content);
-    try std.testing.expect(er2.found_existing);
-    try std.testing.expectEqual(@as(i64, 1), er2.ref.value(.integer).get());
-
-    try std.testing.expectEqual(1, memory.count());
-    try std.testing.expectEqual(er1.ref.key_ptr, er2.ref.key_ptr);
+    try std.testing.expectEqual(null, memory.get("a"));
+    const ref_b = memory.get("b").?;
+    try std.testing.expectEqual(.integer, ref_b.value.type());
 }
 
 test "iterator" {
@@ -262,17 +216,16 @@ test "iterator" {
     var memory: Memory = try .init(allocator, .{ .initial_keys = 8 });
     defer memory.deinit(allocator);
 
-    const content: [8]u8 = @bitCast(@as(i64, 0));
     const keys = [_][]const u8{ "k0", "k1", "k2", "k3" };
-    for (keys) |k| _ = try memory.put(allocator, k, .integer, &content);
+    for (keys) |k| try memory.put(allocator, k, .{ .integer = .from(0) });
 
     var seen: std.StringHashMap(void) = .init(allocator);
     defer seen.deinit();
 
     var it = memory.iterator();
     var visited: usize = 0;
-    while (it.next()) |ref| : (visited += 1) {
-        try seen.put(ref.key(), {});
+    while (it.next()) |kv| : (visited += 1) {
+        try seen.put(kv.key, {});
     }
     try std.testing.expectEqual(keys.len, visited);
     try std.testing.expectEqual(keys.len, seen.count());
@@ -293,22 +246,24 @@ test "clear" {
     var memory: Memory = try .init(allocator, .{ .initial_keys = 4 });
     defer memory.deinit(allocator);
 
-    const content: [8]u8 = @bitCast(@as(i64, 0));
     var i: usize = 0;
     while (i < 50) : (i += 1) {
         var buf: [8]u8 = undefined;
         const k = std.fmt.bufPrint(&buf, "key{d}", .{i}) catch unreachable;
-        _ = try memory.put(allocator, k, .integer, &content);
+        try memory.put(allocator, k, .{ .integer = .from(0) });
     }
     try std.testing.expectEqual(50, memory.count());
 
     try memory.clear(allocator);
 
     try std.testing.expectEqual(0, memory.count());
-    try std.testing.expectError(error.KeyNotFound, memory.get("key0"));
+    try std.testing.expectEqual(null, memory.get("key0"));
 
-    _ = try memory.put(allocator, "new", .integer, &content);
+    try memory.put(allocator, "new", .{ .integer = .from(0) });
     try std.testing.expectEqual(1, memory.count());
-    const ref = try memory.get("new");
-    try std.testing.expectEqual(@as(i64, 0), ref.value(.integer).get());
+    const ref = memory.get("new").?;
+    try std.testing.expectEqual(@as(i64, 0), ref.value.integer.value);
+
+    try memory.clear(allocator);
+    try std.testing.expectEqual(0, memory.count());
 }
