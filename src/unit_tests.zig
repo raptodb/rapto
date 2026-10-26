@@ -17,16 +17,6 @@ comptime {
     _ = refAllDecls(@import("main.zig"));
     _ = refAllDecls(@import("Memory.zig"));
     _ = refAllDecls(@import("Mimalloc.zig"));
-    _ = refAllDecls(@import("object.zig"));
-    _ = refAllDecls(@import("object/collection.zig"));
-    _ = refAllDecls(@import("object/collection/List.zig"));
-    _ = refAllDecls(@import("object/scalar.zig"));
-    _ = refAllDecls(@import("object/scalar/Decimal.zig"));
-    _ = refAllDecls(@import("object/scalar/Integer.zig"));
-    _ = refAllDecls(@import("object/scalar/Point.zig"));
-    _ = refAllDecls(@import("object/scalar/String.zig"));
-    _ = refAllDecls(@import("object/scalar/Void.zig"));
-    _ = refAllDecls(@import("object/tagged_ptr.zig"));
     _ = refAllDecls(@import("Pipeline.zig"));
     _ = refAllDecls(@import("Query.zig"));
     _ = refAllDecls(@import("Query/Flags.zig"));
