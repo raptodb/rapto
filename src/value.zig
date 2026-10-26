@@ -297,7 +297,6 @@ pub const Union = union(enum(u4)) {
     pub const DeserializeError = error{ InvalidFormat, UnknownType };
 
     pub fn deserialize(serialized: []const u8) DeserializeError!Union {
-        if (serialized.len == 0 or serialized.len >= std.math.maxInt(u8)) return error.InvalidFormat;
         const value_type: Type = std.enums.fromInt(Type, serialized[0]) orelse
             return error.UnknownType;
         const content = serialized[1..];
