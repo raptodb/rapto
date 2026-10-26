@@ -59,7 +59,7 @@ pub fn IteratorType(comptime HeaderType: type) type {
         pub fn at(self: Self, index: u32) []const u8 {
             assert(index < self.len());
             var iterator: Self = .init(self.frames);
-            iterator.skip(index -| 1);
+            iterator.skip(index);
             return iterator.next() orelse unreachable;
         }
 

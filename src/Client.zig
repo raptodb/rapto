@@ -680,6 +680,9 @@ pub const Cursor = struct {
             pub fn next(self: *Self, io: std.Io) Batch.FlushOneError!?i64 {
                 assert(self.b.pending == 0);
 
+                if (self.cursor >= self.max_cursor) return null;
+                assert(self.count != 0);
+
                 const config: Batch.MatchingCursorConfig = .{
                     .limit = .init(self.count),
                     .cursor = self.cursor,

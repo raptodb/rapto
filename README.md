@@ -168,7 +168,7 @@ zig fetch --save git+https://github.com/raptodb/rapto
 Then add it as dependency:
 ```zig
 const rapto = b.dependency("rapto", .{ .target = target, .optimize = optimize });
-exe.root_module.addImport("rapto", rapto.module("rapto-client"));
+exe.root_module.addImport("rapto-client", rapto.module("rapto"));
 ```
 
 But, if you need a client in another programming language, you can create it yourself by following `Client.zig`, `Client/value.zig` and understanding how works "frames" and "pipeline" concept.

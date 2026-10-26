@@ -95,6 +95,8 @@ pub fn parse(args: *std.process.Args.Iterator) Server {
         fatal("missing required --test flag", .{});
     if (clients == 0)
         fatal("at least 1 client is required", .{});
+    if (batch_size == 0)
+        fatal("--batch-size must be greater than or equal to 1", .{});
 
     return .{
         .address = address,

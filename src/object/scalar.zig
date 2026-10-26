@@ -112,7 +112,7 @@ pub const Scalar = union(enum) {
     }
 
     pub fn @"type"(self: Scalar) Value.Type {
-        const self_int_enum: u3 = @intFromEnum(std.meta.activeTag(self));
+        const self_int_enum: u3 = @backingInt(std.meta.activeTag(self));
         // This enum is always a subset with less quantity of Type(s),
         // so the conversion is always possible.
         return Value.Type.fromInt(self_int_enum) catch unreachable;

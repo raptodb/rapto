@@ -90,7 +90,7 @@ pub const Key = struct {
         @memcpy(slice[0..@sizeOf(Metadata)], std.mem.asBytes(&m));
         @memcpy(slice[@sizeOf(Metadata)..], key);
 
-        return .{ .ptr = .init(slice.ptr, @intFromEnum(value_type)) };
+        return .{ .ptr = .init(slice.ptr, @backingInt(value_type)) };
     }
 
     /// Deallocates key string with included length.
@@ -160,7 +160,7 @@ pub const Key = struct {
     }
 
     pub fn setValueType(self: *Key, value_type: Value.Type) void {
-        self.ptr.setTag(@intFromEnum(value_type));
+        self.ptr.setTag(@backingInt(value_type));
     }
 
     pub fn isValidKey(key: []const u8) bool {
@@ -248,7 +248,7 @@ pub const Value = union {
         }
 
         pub fn serializeToWriter(self: Type, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-            try writer.writeByte(@intFromEnum(self));
+            try writer.writeByte(@backingInt(self));
         }
     };
 

@@ -231,6 +231,14 @@ pub fn append(self: *Aof, ts: std.Io.Timestamp, pipeline: []const u8) std.mem.Al
     // Derived from std.Io.Writer.Allocating.
     // Any WriteFailed error corresponds to OutOfMemory.
     const writer = self.rw_buffer.writer();
+    const start_pos = writer.end;
+    // If `frames.append()` fails, cursor is reset
+    // to not consider the content of timestamp.
+    // Even though an error.OutOfMemory error will lead
+    // to an immediate shutdown, it is still good
+    // practice to handle the case explicitly.
+    errdefer writer.end = start_pos;
+
     const ns_timestamp: u64 = @intCast(ts.toNanoseconds());
     writer.writeInt(u64, ns_timestamp, .little) catch |err| return switch (err) {
         error.WriteFailed => error.OutOfMemory,
@@ -245,12 +253,14 @@ pub const FlushError = std.Io.File.SyncError || std.Io.File.WritePositionalError
 /// Flushes all appended pipelines to AOF file. Waits
 /// until file is syncronized with flushed content.
 pub fn flush(self: *Aof, io: std.Io) FlushError!void {
-    const written = self.rw_buffer.take();
+    const written = self.rw_buffer.peek();
     if (written.len == 0) return;
 
     try self.file.writePositionalAll(io, written, self.write_offset);
     try self.file.sync(io);
 
+    // Swap buffers only when the write is successful.
+    _ = self.rw_buffer.take();
     self.rw_buffer.reset();
     self.write_offset += written.len;
 }
@@ -280,6 +290,7 @@ pub fn load(
         if (batch.timestamp.toNanoseconds() > until.toNanoseconds()) break;
 
         try loadPipeline(allocator, writer, memory, batch.pipeline);
+        tmp.clearRetainingCapacity();
     }
 }
 

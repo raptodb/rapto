@@ -512,11 +512,11 @@ fn addOrSub(comptime op: enum { add, sub }) *const fn (*const Context) anyerror!
 
             switch (value_type) {
                 inline .integer, .decimal => |vt| {
-                    var result: Value.UnionType(vt) = try .fromContent(content);
-                    const value = ref.value(vt).get();
+                    var result: Value.UnionType(vt) = ref.value(vt);
+                    const value: Value.UnionType(vt) = try .fromContent(content);
                     switch (op) {
-                        .add => try result.add(value),
-                        .sub => try result.sub(value),
+                        .add => try result.add(value.get()),
+                        .sub => try result.sub(value.get()),
                     }
                     ref.setValue(ctx.allocator, vt, result);
 

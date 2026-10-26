@@ -60,7 +60,7 @@ pub const List = struct {
         return @field(value_at, @tagName(value_type));
     }
 
-    pub fn skip(self: *List, n: u64) void {
+    pub fn skip(self: *List, n: u32) void {
         self.wrapped_iterator.skip(n);
     }
 

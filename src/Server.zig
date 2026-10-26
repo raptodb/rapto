@@ -134,7 +134,7 @@ pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Alloc
         defer if (self.aof) |aof| {
             const now: std.Io.Timestamp = .now(io, .awake);
             const elapsed = last_flush.durationTo(now);
-            if (elapsed.toSeconds() >= self.config.aof_sync_seconds) {
+            if (!running or elapsed.toSeconds() >= self.config.aof_sync_seconds) {
                 // When at least `aof_sync_seconds` are elapsed,
                 // we have to update aof file with new queries.
                 aof.flush(io) catch |err| {
@@ -151,7 +151,7 @@ pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Alloc
                 self.consumeEvent(allocator, io, event);
 
             maybe_error catch |err| return switch (err) {
-                error.Shutdown => {},
+                error.Shutdown => running = false,
                 error.OutOfMemory => error.OutOfMemory,
             };
         }

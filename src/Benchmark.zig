@@ -23,8 +23,9 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         args: *const cli.Command.Benchmark,
     ) Context.Error!Context {
-        // Already checked in cli/Benchmark.zig.
         assert(args.clients != 0);
+        assert(args.batch_size != 0);
+
         if (args.key_size == 0) return error.KeyTooShort;
 
         const config: Config = .{
@@ -93,7 +94,13 @@ pub fn run(self: *Benchmark, allocator: std.mem.Allocator) !Stats {
     clients.expandToCapacity();
     var futures: std.ArrayList(std.Io.Future(Client.Batch.FlushError!Stats)) =
         try .initCapacity(allocator, self.config.clients);
-    defer futures.deinit(allocator);
+    defer {
+        for (futures.items) |*future| {
+            var client_stats = future.cancel(self.io) catch continue;
+            client_stats.deinit(allocator);
+        }
+        futures.deinit(allocator);
+    }
     futures.expandToCapacity();
     const client_config: Client.Config = .{ .address = self.config.address };
     // Perform connections.
@@ -130,9 +137,7 @@ pub fn run(self: *Benchmark, allocator: std.mem.Allocator) !Stats {
 
     for (futures.items) |*future| {
         // Propagate errors, if they are present.
-        var client_stats: Stats = try future.await(self.io);
-        defer client_stats.deinit(allocator);
-
+        const client_stats: Stats = try future.await(self.io);
         try stats.merge(allocator, client_stats);
     }
 
@@ -363,7 +368,7 @@ fn loadDataset(
 
         var replies = try batch.flush(self.io);
         while (replies.next() catch continue) |reply| {
-            if (reply.maybeError(.key_already_exists)) continue;
+            if (reply != .none) continue;
             load_count += 1;
         }
     }

@@ -199,6 +199,11 @@ pub fn listen(allocator: std.mem.Allocator, io: std.Io, config: Config) Error!Li
 }
 
 pub fn deinit(self: *Listener, allocator: std.mem.Allocator, io: std.Io) void {
+    const rc = linux.close(@intCast(self.epoll_fd));
+    switch (linux.errno(rc)) {
+        .SUCCESS, .INTR => {},
+        else => unreachable,
+    }
     self.streams.deinit(allocator, io);
     self.events.deinit(allocator);
 }
