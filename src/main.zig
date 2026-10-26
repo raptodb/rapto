@@ -50,10 +50,10 @@ pub fn main(init: std.process.Init.Minimal) u8 {
 
     const allocator = mimalloc.allocator();
     const io = threaded.io();
-    const success = handleCommand(allocator, io, command) catch |err| status: {
+    const success = handleCommand(allocator, io, command) catch |err| s: {
         log.err("occurred fatal error={t}", .{err});
         if (@errorReturnTrace()) |trace| std.debug.dumpErrorReturnTrace(trace);
-        break :status false;
+        break :s false;
     };
 
     return @intFromBool(!success);
@@ -105,7 +105,6 @@ fn commandServer(
         log.err("occurred error={t} while init server context", .{err});
         return false;
     };
-
     defer context.deinit(allocator, io);
 
     if (context.aof != null) {
