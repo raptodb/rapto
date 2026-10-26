@@ -27,4 +27,5 @@ comptime {
     _ = refAllDecls(@import("Server/Listener.zig"));
     _ = refAllDecls(@import("state_machine.zig"));
     _ = refAllDecls(@import("Stream.zig"));
+    _ = refAllDecls(@import("value.zig"));
 }
