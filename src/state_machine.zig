@@ -9,13 +9,12 @@ const std = @import("std");
 const frames = @import("frames.zig");
 const glob = @import("glob.zig");
 const reply = @import("reply.zig");
+const value = @import("value.zig");
 const assert = std.debug.assert;
 
-const Ref = @import("object.zig").Ref;
 const Memory = @import("Memory.zig");
 const Query = @import("Query.zig");
 const Flags = Query.Flags;
-const Value = @import("object.zig").Value;
 
 /// The only errors that can be returned to execute function.
 /// Others errors must be written on frames.
@@ -95,7 +94,7 @@ pub fn execute(
 }
 
 fn ping(ctx: *const Context) Error!void {
-    const integer: Value.Integer = .fromValue(1);
+    const integer: value.Union = .{ .integer = .from(1) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -104,8 +103,8 @@ fn get(ctx: *const Context) Error!void {
 }
 
 fn getOne(ctx: *const Context, key: []const u8) !void {
-    const ref = try ctx.memory.get(key);
-    return writeRef(ctx, ref);
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    return writeValue(ctx, ref.value);
 }
 
 fn get_list(ctx: *const Context) Error!void {
@@ -113,20 +112,17 @@ fn get_list(ctx: *const Context) Error!void {
 }
 
 fn getListOne(ctx: *const Context) !void {
-    var limit: Quota = .init(ctx.query.flags.limit.get());
+    const limit: Quota = .init(ctx.query.flags.limit.get());
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .list) return error.MismatchType;
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (ref.value != .list) return error.MismatchType;
 
-    const list: Value.List = ref.value(.list);
-
+    const list = ref.value.list;
     const from, const to = try nextRange(&args, list.count());
-    const range_len = from + @min(to - from + 1, limit.remaining());
-    const range = try list.getByRange(from, range_len);
-
-    try serializeList(ctx.writer, range);
+    const range = list.getRange(from, @min(to - from + 1, limit.remaining()));
+    try reply.writeValue(ctx.writer, .{ .list = range });
 }
 
 fn del(ctx: *const Context) Error!void {
@@ -139,24 +135,24 @@ fn del(ctx: *const Context) Error!void {
     const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
     var total_deleted: i64 = 0;
     while (args.next()) |key| {
-        const ref = ctx.memory.get(key) catch continue;
-        if (!assume_lock_ownership and ref.isLocked()) continue;
+        const ref = memoryGet(ctx, key) orelse continue;
+        if (!assume_lock_ownership and ref.metadata.locked) continue;
 
-        ctx.memory.removeByRef(ctx.allocator, ref);
+        ctx.memory.remove(ctx.allocator, ref);
         total_deleted += 1;
     }
 
-    const integer: Value.Integer = .fromValue(total_deleted);
+    const integer: value.Union = .{ .integer = .from(total_deleted) };
     try reply.writeValue(ctx.writer, integer);
 }
 
 fn getDelOne(ctx: *const Context, key: []const u8) !void {
     const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
-    const ref = try ctx.memory.get(key);
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
 
-    try writeRef(ctx, ref);
-    ctx.memory.removeByRef(ctx.allocator, ref);
+    try writeValue(ctx, ref.value);
+    ctx.memory.remove(ctx.allocator, ref);
 }
 
 fn del_patterns(ctx: *const Context) Error!void {
@@ -192,12 +188,12 @@ fn del_patterns(ctx: *const Context) Error!void {
         var iterator = ctx.memory.iterator();
         // Starts from last cursor.
         iterator.skip(cursor);
-        while (iterator.next()) |ref| {
+        while (iterator.next()) |entry| {
             if (limit.exceeded()) break;
             defer limit.advance();
-            const key = ref.key();
+            const key, const ref = .{ entry.key, entry.ref };
 
-            if (!assume_lock_ownership and ref.isLocked()) continue;
+            if (!assume_lock_ownership and ref.metadata.locked) continue;
 
             var matches: bool = has_any_pattern;
             // If any pattern `*` is not detected, we should see
@@ -217,7 +213,7 @@ fn del_patterns(ctx: *const Context) Error!void {
 
             // Removes the key if any of selected patterns matches.
             if (matches) {
-                ctx.memory.removeByRef(ctx.allocator, ref);
+                ctx.memory.remove(ctx.allocator, ref);
                 deleted += 1;
             }
         }
@@ -225,7 +221,7 @@ fn del_patterns(ctx: *const Context) Error!void {
         break :blk deleted;
     };
 
-    const integer: Value.Integer = .fromValue(total_deleted);
+    const integer: value.Union = .{ .integer = .from(total_deleted) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -235,28 +231,29 @@ fn del_list(ctx: *const Context) Error!void {
 
 fn delListOne(ctx: *const Context) !void {
     const assume_lock_ownership = ctx.query.flags.assume_lock_ownership.get();
-    var limit: Quota = .init(ctx.query.flags.limit.get());
+    const limit: Quota = .init(ctx.query.flags.limit.get());
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .list) return error.MismatchType;
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
+    if (ref.value != .list) return error.MismatchType;
 
-    const list: Value.List = ref.value(.list);
-
+    const list = ref.value.list;
     const from, const to = try nextRange(&args, list.count());
-    const range_len: u64 = @min(to - from + 1, limit.remaining());
-    const range = try list.getByRange(from, range_len);
+    const removed = list.getRange(from, @min(to - from + 1, limit.remaining()));
 
     if (ctx.query.flags.get.get()) {
-        try serializeList(ctx.writer, range);
+        try reply.writeValue(ctx.writer, .{ .list = removed });
     } else {
-        const integer: Value.Integer = .fromValue(@intCast(range_len));
+        const integer: value.Union = .{ .integer = .from(@intCast(removed.count())) };
         try reply.writeValue(ctx.writer, integer);
     }
 
-    try list.removeByRange(ctx.allocator, from, range_len);
+    var allocating: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer allocating.deinit();
+    try list.removeRangeToWriter(&allocating.writer, from, removed.count());
+    try memoryPut(ctx, key, .{ .list = .fromOwnedSlice(allocating.written()) });
 }
 
 fn count_patterns(ctx: *const Context) Error!void {
@@ -284,17 +281,16 @@ fn count_patterns(ctx: *const Context) Error!void {
         var iterator = ctx.memory.iterator();
         // Starts from last cursor.
         iterator.skip(cursor);
-        while (iterator.next()) |ref| {
+        while (iterator.next()) |entry| {
             if (limit.exceeded()) break;
             defer limit.advance();
-            const key = ref.key();
 
             var matches: bool = false;
             // To avoid allocations we should
             // iterate patterns for each key.
             args.reset();
             while (args.next()) |pattern| {
-                if (glob.match(pattern, key)) {
+                if (glob.match(pattern, entry.key)) {
                     // We found a matching pattern!
                     matches = true;
                     break;
@@ -307,7 +303,7 @@ fn count_patterns(ctx: *const Context) Error!void {
         break :blk counted;
     };
 
-    const integer: Value.Integer = .fromValue(key_count);
+    const integer: value.Union = .{ .integer = .from(key_count) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -319,12 +315,12 @@ fn countListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (ref.type() != .list) return error.MismatchType;
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (ref.value != .list) return error.MismatchType;
 
-    const list: Value.List = ref.value(.list);
-
-    const integer: Value.Integer = .fromValue(@intCast(list.count()));
+    // This cast is safe because a list that is too large is impossible.
+    const list_count: i64 = @intCast(ref.value.list.count());
+    const integer: value.Union = .{ .integer = .from(list_count) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -333,8 +329,8 @@ fn exists(ctx: *const Context) Error!void {
 }
 
 fn existsOne(ctx: *const Context, key: []const u8) !void {
-    const key_exists = ctx.memory.get(key) != error.KeyNotFound;
-    const integer: Value.Integer = .fromValue(@intFromBool(key_exists));
+    const key_exists = memoryGet(ctx, key) != null;
+    const integer: value.Union = .{ .integer = .from(@intFromBool(key_exists)) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -348,26 +344,20 @@ fn setOne(ctx: *const Context) !void {
 
     const key = args.next() orelse return error.MissingTokens;
     const serialized = args.next() orelse return error.MissingTokens;
+    const val: value.Union = try .deserialize(serialized);
+    if (val == .list) return error.MismatchType;
 
-    const value_type, const content = try Value.splitSerialized(serialized);
-    if (value_type.group() == .collection) return error.MismatchType;
-
-    const existing_ref: ?Ref = ctx.memory.get(key) catch null;
-
-    if (existing_ref) |ref| {
-        if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+    if (memoryGet(ctx, key)) |ref| {
+        if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
 
         if (ctx.query.flags.get.get()) {
-            try writeRef(ctx, ref);
+            try writeValue(ctx, ref.value);
         }
-        if (!ctx.query.flags.if_not_exists.get()) {
-            try ref.setValueFromContent(ctx.allocator, value_type, content);
-        } else {
-            return error.KeyAlreadyExists;
-        }
-    } else {
-        _ = try ctx.memory.put(ctx.allocator, key, value_type, content);
+
+        if (ctx.query.flags.if_not_exists.get()) return error.KeyAlreadyExists;
     }
+
+    _ = try memoryPut(ctx, key, val);
 }
 
 fn append_list(ctx: *const Context) Error!void {
@@ -380,18 +370,23 @@ fn appendListOne(ctx: *const Context) !void {
 
     const key = args.next() orelse return error.MissingTokens;
     const serialized = args.next() orelse return error.MissingTokens;
+    const val: value.Union = try .deserialize(serialized);
+    if (val == .list) return error.MismatchType;
 
-    const er = try ctx.memory.ensure(ctx.allocator, key, .list, &.{});
-    const ref = er.ref;
-    errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
+    const list: value.List = blk: {
+        const ref = memoryGet(ctx, key) orelse break :blk .empty;
+        if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
+        if (ref.value != .list) return error.MismatchType;
+        break :blk ref.value.list;
+    };
+    const count = list.count();
 
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .list) return error.MismatchType;
+    var allocating: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer allocating.deinit();
+    try list.appendToWriter(&allocating.writer, val);
+    try memoryPut(ctx, key, .{ .list = .fromOwnedSlice(allocating.written()) });
 
-    const list: Value.List = ref.value(.list);
-    try list.insert(ctx.allocator, list.count(), serialized);
-
-    const integer: Value.Integer = .fromValue(@intCast(list.count()));
+    const integer: value.Union = .{ .integer = .from(@intCast(count + 1)) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -405,21 +400,23 @@ fn appendStringOne(ctx: *const Context) !void {
 
     const key = args.next() orelse return error.MissingTokens;
     const serialized = args.next() orelse return error.MissingTokens;
-    const value_type, const content = try Value.splitSerialized(serialized);
-    if (value_type != .string) return error.MismatchType;
+    const val: value.Union = try .deserialize(serialized);
+    if (val != .string) return error.MismatchType;
 
-    const er = try ctx.memory.ensure(ctx.allocator, key, .string, &.{});
-    const ref = er.ref;
-    errdefer if (!er.found_existing) ctx.memory.removeByRef(ctx.allocator, ref);
+    const string: value.String = blk: {
+        const ref = memoryGet(ctx, key) orelse break :blk .from("");
+        if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
+        if (ref.value != .string) return error.MismatchType;
+        break :blk ref.value.string;
+    };
 
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (value_type != .string) return error.MismatchType;
+    var allocating: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer allocating.deinit();
+    try string.appendToWriter(&allocating.writer, val.string);
+    const result: value.String = .fromOwnedSlice(allocating.written());
+    try memoryPut(ctx, key, .{ .string = result });
 
-    var string: Value.String = ref.value(.string);
-    try string.insert(ctx.allocator, string.len(), content);
-    ref.setValue(ctx.allocator, .string, string);
-
-    const integer: Value.Integer = .fromValue(@intCast(string.len()));
+    const integer: value.Union = .{ .integer = .from(@intCast(result.len())) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -432,29 +429,29 @@ fn insertStringOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
+    if (ref.value != .string) return error.MismatchType;
 
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .string) return error.MismatchType;
-
-    var string: Value.String = ref.value(.string);
-
+    const string = ref.value.string;
     const index = try nextIndex(&args, string.len());
     const serialized = args.next() orelse return error.MissingTokens;
-    const value_type, const content = try Value.splitSerialized(serialized);
-    if (value_type != .string) return error.MismatchType;
+    const val: value.Union = try .deserialize(serialized);
+    if (val != .string) return error.MismatchType;
+
+    var allocating: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer allocating.deinit();
+    if (ctx.query.flags.replace.get()) {
+        try string.replaceToWriter(&allocating.writer, val.string, index);
+    } else {
+        try string.insertToWriter(&allocating.writer, val.string, index);
+    }
 
     if (ctx.query.flags.get.get()) {
-        try reply.writeValue(ctx.writer, string);
+        try reply.writeValue(ctx.writer, ref.value);
     }
 
-    if (ctx.query.flags.replace.get()) {
-        try string.replace(@truncate(index), content);
-    } else {
-        try string.insert(ctx.allocator, @truncate(index), content);
-    }
-
-    ref.setValue(ctx.allocator, .string, string);
+    try memoryPut(ctx, key, .{ .string = .fromOwnedSlice(allocating.written()) });
 }
 
 fn insert_list(ctx: *const Context) Error!void {
@@ -466,25 +463,30 @@ fn insertListOne(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
-    if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-    if (ref.type() != .list) return error.MismatchType;
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
+    if (ref.value != .list) return error.MismatchType;
 
-    const list: Value.List = ref.value(.list);
-
+    const list = ref.value.list;
     const index = try nextIndex(&args, list.count());
     const serialized = args.next() orelse return error.MissingTokens;
+    const val: value.Union = try .deserialize(serialized);
+    if (val == .list) return error.MismatchType;
 
-    if (ctx.query.flags.get.get()) {
-        const old_value = (try list.getByRange(index, 1))[0];
-        try reply.writeValue(ctx.writer, old_value);
-    }
+    var allocating: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer allocating.deinit();
 
     if (ctx.query.flags.replace.get()) {
-        try list.setByIndex(ctx.allocator, index, serialized);
+        try list.replaceToWriter(&allocating.writer, val, index);
     } else {
-        try list.insert(ctx.allocator, index, serialized);
+        try list.insertToWriter(&allocating.writer, val, index);
     }
+
+    if (ctx.query.flags.get.get()) {
+        try reply.writeValue(ctx.writer, try list.get(index));
+    }
+
+    try memoryPut(ctx, key, .{ .list = .fromOwnedSlice(allocating.written()) });
 }
 
 fn add(ctx: *const Context) Error!void {
@@ -502,28 +504,25 @@ fn addOrSub(comptime op: enum { add, sub }) *const fn (*const Context) anyerror!
             var args = ctx.query.args.iterator();
 
             const key = args.next() orelse return error.MissingTokens;
-            const ref = try ctx.memory.get(key);
-
-            if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
+            const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+            if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
 
             const serialized = args.next() orelse return error.MissingTokens;
-            const value_type, const content = try Value.splitSerialized(serialized);
-            if (value_type != ref.type()) return error.MismatchType;
-
-            switch (value_type) {
-                inline .integer, .decimal => |vt| {
-                    var result: Value.UnionType(vt) = ref.value(vt);
-                    const value: Value.UnionType(vt) = try .fromContent(content);
-                    switch (op) {
-                        .add => try result.add(value.get()),
-                        .sub => try result.sub(value.get()),
-                    }
-                    ref.setValue(ctx.allocator, vt, result);
-
-                    try reply.writeValue(ctx.writer, result);
+            const val: value.Union = try .deserialize(serialized);
+            const result = switch (val) {
+                inline .integer, .decimal => |_, t| res: {
+                    const a = @field(ref.value, @tagName(t));
+                    const b = @field(val, @tagName(t));
+                    const res = switch (op) {
+                        .add => try a.add(b),
+                        .sub => try a.sub(b),
+                    };
+                    break :res @unionInit(value.Union, @tagName(t), res);
                 },
                 else => return error.MismatchType,
-            }
+            };
+            try memoryPut(ctx, key, result);
+            try reply.writeValue(ctx.writer, result);
         }
     }.addOrSub;
 }
@@ -534,7 +533,7 @@ fn rename(ctx: *const Context) Error!void {
 
 fn renameOneWrapper(ctx: *const Context) !void {
     const success = try renameOne(ctx);
-    const integer: Value.Integer = .fromValue(@intCast(@intFromBool(success)));
+    const integer: value.Union = .{ .integer = .from(@intFromBool(success)) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -547,18 +546,18 @@ fn renameOne(ctx: *const Context) !bool {
 
     if (std.mem.eql(u8, selected_key, new_key)) return true;
 
-    const new_ref: ?Ref = ctx.memory.get(new_key) catch |err| switch (err) {
-        error.KeyNotFound => null,
-    };
-    if (new_ref) |ref| if (!assume_lock_ownership and ref.isLocked()) return error.Locked;
-
+    const new_ref = memoryGet(ctx, new_key);
+    if (new_ref) |ref| if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
     if (new_ref != null and ctx.query.flags.if_not_exists.get()) return false;
 
-    if (new_ref) |ref| ctx.memory.removeByRef(ctx.allocator, ref);
-    const selected_ref = try ctx.memory.get(selected_key);
-    if (!assume_lock_ownership and selected_ref.isLocked()) return error.Locked;
+    const selected_ref = memoryGet(ctx, selected_key) orelse return error.KeyNotFound;
+    if (!assume_lock_ownership and selected_ref.metadata.locked) return error.Locked;
+    const locked = selected_ref.metadata.locked;
 
-    try selected_ref.setKey(ctx.allocator, new_key);
+    try memoryPut(ctx, new_key, selected_ref.value);
+    // Inserting a key may resize the hashset and invalidate references.
+    if (locked) assert(memoryGet(ctx, new_key).?.lock());
+    ctx.memory.remove(ctx.allocator, memoryGet(ctx, selected_key).?);
     return true;
 }
 
@@ -568,7 +567,7 @@ fn copy(ctx: *const Context) Error!void {
 
 fn copyOneWrapper(ctx: *const Context) !void {
     const success = try copyOne(ctx);
-    const integer: Value.Integer = .fromValue(@intCast(@intFromBool(success)));
+    const integer: value.Union = .{ .integer = .from(@intFromBool(success)) };
     try reply.writeValue(ctx.writer, integer);
 }
 
@@ -579,17 +578,20 @@ fn copyOne(ctx: *const Context) !bool {
     const src_key = args.next() orelse return error.MissingTokens;
     const dst_key = args.next() orelse return error.MissingTokens;
 
-    const dst = try ctx.memory.ensure(ctx.allocator, dst_key, .void, &.{});
-    errdefer if (!dst.found_existing) ctx.memory.removeByRef(ctx.allocator, dst.ref);
-    if (!assume_lock_ownership and dst.ref.isLocked()) return error.Locked;
+    if (memoryGet(ctx, dst_key)) |ref| {
+        if (!assume_lock_ownership and ref.metadata.locked) return error.Locked;
+        if (ctx.query.flags.if_not_exists.get()) return false;
 
-    if (dst.found_existing and ctx.query.flags.if_not_exists.get()) return false;
-
-    if (ctx.query.flags.get.get() and dst.found_existing) {
-        try writeRef(ctx, dst.ref);
+        if (ctx.query.flags.get.get()) {
+            try writeValue(ctx, ref.value);
+        }
     }
 
-    try ctx.memory.copy(ctx.allocator, src_key, dst.ref);
+    const src = memoryGet(ctx, src_key) orelse return error.KeyNotFound;
+    if (!std.mem.eql(u8, src_key, dst_key)) return true;
+
+    try memoryPut(ctx, dst_key, src.value);
+
     return true;
 }
 
@@ -598,8 +600,9 @@ fn @"type"(ctx: *const Context) Error!void {
 }
 
 fn typeOne(ctx: *const Context, key: []const u8) !void {
-    const ref = try ctx.memory.get(key);
-    try reply.writeSerialized(ctx.writer, .string, @tagName(ref.type()));
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    const string: value.Union = .{ .string = .from(@tagName(ref.value.type())) };
+    try reply.writeValue(ctx.writer, string);
 }
 
 fn type_list(ctx: *const Context) Error!void {
@@ -607,28 +610,25 @@ fn type_list(ctx: *const Context) Error!void {
 }
 
 fn typeListOne(ctx: *const Context) !void {
-    var limit: Quota = .init(ctx.query.flags.limit.get());
+    const limit: Quota = .init(ctx.query.flags.limit.get());
     var args = ctx.query.args.iterator();
 
     const key = args.next() orelse return error.MissingTokens;
-    const ref = try ctx.memory.get(key);
+    const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+    if (ref.value != .list) return error.MismatchType;
 
-    if (ref.type() != .list) return error.MismatchType;
-
-    const list: Value.List = ref.value(.list);
-
+    const list = ref.value.list;
     const from, const to = try nextRange(&args, list.count());
-    const range_len = @min(to - from + 1, limit.remaining());
-    const range = try list.getByRange(from, range_len);
+    const range = list.getRange(from, @min(to - from + 1, limit.remaining()));
 
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
+    const serializer: value.List.Serializer = try .begin(ctx.writer);
+    var items = range.iterator();
+    while (try items.next()) |val| {
+        const item = try serializer.beginItem();
+        defer item.end();
 
-    for (range) |scalar| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        try reply.writeSerialized(ctx.writer, .string, @tagName(scalar.type()));
+        const string: value.Union = .{ .string = .from(@tagName(val.type())) };
+        try reply.writeValue(ctx.writer, string);
     }
 }
 
@@ -650,16 +650,16 @@ fn keysPatternsOne(ctx: *const Context) !void {
         has_any_pattern = true;
     }
 
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
+    try reply.writeValue(ctx.writer, .{ .list = .empty });
+    const serializer: value.List.Serializer = try .begin(ctx.writer);
 
     var iterator = ctx.memory.iterator();
     // Starts from last cursor.
     iterator.skip(cursor);
-    while (iterator.next()) |ref| {
+    while (iterator.next()) |entry| {
         if (limit.exceeded()) break;
         defer limit.advance();
-        const key = ref.key();
+        const key = entry.key;
 
         var matches: bool = has_any_pattern;
         // If any pattern `*` is not detected, we should see
@@ -678,10 +678,11 @@ fn keysPatternsOne(ctx: *const Context) !void {
         }
 
         if (matches) {
-            var frame = try serializer.beginFrame();
-            defer frame.end();
+            const item = try serializer.beginItem();
+            defer item.end();
 
-            try reply.writeSerialized(ctx.writer, .string, key);
+            const string: value.Union = .{ .string = .from(key) };
+            try reply.writeValue(ctx.writer, string);
         }
     }
 }
@@ -699,26 +700,25 @@ fn tryLock(ctx: *const Context) !void {
     var args = ctx.query.args.iterator();
     // First we have to check if any key is already locked.
     while (args.next()) |key| {
-        const ref = try ctx.memory.get(key);
-        if (ref.isLocked()) return error.Locked;
+        const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+        if (ref.metadata.locked) return error.Locked;
     }
     args.reset();
     // Assuming all the keys aren't locked,
     // we can lock them all.
     while (args.next()) |key| {
-        const ref = try ctx.memory.get(key);
-        ref.lock();
+        const ref = memoryGet(ctx, key) orelse return error.KeyNotFound;
+        assert(ref.lock());
     }
 }
 
 fn unlock(ctx: *const Context) Error!void {
     // implicit assume_lock_ownership = true
-
     var args = ctx.query.args.iterator();
     // Unlocks all keys that exists.
     while (args.next()) |key| {
         // Maybe deleted key after lock?
-        const ref = ctx.memory.get(key) catch continue;
+        const ref = memoryGet(ctx, key) orelse continue;
         ref.unlock();
     }
 }
@@ -740,8 +740,8 @@ fn lockPatternsOne(ctx: *const Context) !void {
     }
 
     var iterator = ctx.memory.iterator();
-    while (iterator.next()) |ref| {
-        const key = ref.key();
+    while (iterator.next()) |entry| {
+        const key = entry.key;
 
         var matches: bool = has_any_pattern;
         // If any pattern `*` is not detected, we should see
@@ -759,13 +759,13 @@ fn lockPatternsOne(ctx: *const Context) !void {
             }
         }
 
-        if (matches and ref.isLocked()) return error.Locked;
+        if (matches and entry.ref.metadata.locked) return error.Locked;
     }
 
     iterator.reset();
     // We need another iteration to avoid allocations.
-    while (iterator.next()) |ref| {
-        const key = ref.key();
+    while (iterator.next()) |entry| {
+        const key, const ref = .{ entry.key, entry.ref };
 
         var matches: bool = has_any_pattern;
         // If any pattern `*` is not detected, we should see
@@ -785,7 +785,7 @@ fn lockPatternsOne(ctx: *const Context) !void {
 
         // Assuming all selected keys are not locked, now
         // we can lock them as owner.
-        if (matches) ref.lock();
+        if (matches) assert(ref.lock());
     }
 }
 
@@ -807,8 +807,8 @@ fn unlockPatternsOne(ctx: *const Context) !void {
     }
 
     var iterator = ctx.memory.iterator();
-    while (iterator.next()) |ref| {
-        const key = ref.key();
+    while (iterator.next()) |entry| {
+        const key, const ref = .{ entry.key, entry.ref };
 
         var matches: bool = has_any_pattern;
         // If any pattern `*` is not detected, we should see
@@ -830,21 +830,34 @@ fn unlockPatternsOne(ctx: *const Context) !void {
     }
 }
 
+fn memoryGet(ctx: *const Context, key: []const u8) ?Memory.Ref {
+    if (glob.classify(key) != .literal) return null;
+    return ctx.memory.get(key);
+}
+
+fn memoryPut(ctx: *const Context, key: []const u8, val: value.Union) !void {
+    if (glob.classify(key) != .literal) return error.InvalidKey;
+    return ctx.memory.put(ctx.allocator, key, val);
+}
+
 fn writeOrThrowForEachKey(
     ctx: *const Context,
     callback: *const fn (*const Context, key: []const u8) anyerror!void,
 ) Error!void {
-    var serializer: reply.ListSerializer = try .begin(ctx.writer);
-    defer serializer.end();
+    const serializer: value.List.Serializer = try .begin(ctx.writer);
 
     var args = ctx.query.args.iterator();
     while (args.next()) |key| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
+        const item = try serializer.beginItem();
+        defer item.end();
 
+        const offset = ctx.writer.end;
         callback(ctx, key) catch |err| return switch (err) {
             inline error.OutOfMemory, error.WriteFailed => |e| @errorCast(e),
-            else => reply.writeError(ctx.writer, .fromError(err)),
+            else => err: {
+                ctx.writer.end = offset;
+                break :err try reply.writeError(ctx.writer, .fromError(err));
+            },
         };
     }
 }
@@ -853,39 +866,26 @@ fn writeOrThrow(
     ctx: *const Context,
     callback: *const fn (*const Context) anyerror!void,
 ) Error!void {
+    const offset = ctx.writer.end;
     callback(ctx) catch |err| return switch (err) {
         inline error.OutOfMemory, error.WriteFailed => |e| @errorCast(e),
-        else => reply.writeError(ctx.writer, .fromError(err)),
+        else => blk: {
+            ctx.writer.end = offset;
+            break :blk reply.writeError(ctx.writer, .fromError(err));
+        },
     };
 }
 
-fn serializeList(
-    writer: *std.Io.Writer,
-    items: []const Value.Scalar,
-) Error!void {
-    var serializer: reply.ListSerializer = try .begin(writer);
-    defer serializer.end();
-
-    for (items) |scalar| {
-        var frame = try serializer.beginFrame();
-        defer frame.end();
-
-        try reply.writeValue(writer, scalar);
-    }
-}
-
-fn writeRef(ctx: *const Context, ref: Ref) !void {
+fn writeValue(ctx: *const Context, val: value.Union) !void {
     var limit: Quota = .init(ctx.query.flags.limit.get());
 
-    switch (ref.type()) {
-        .list => {
-            const list: Value.List = ref.value(.list);
-            const range = list.get();
-            const fixed_range = range[0..@min(range.len, limit.remaining())];
-            try serializeList(ctx.writer, fixed_range);
+    switch (val) {
+        .list => |list| {
+            const range = list.getRange(0, limit.remaining());
+            try reply.writeValue(ctx.writer, .{ .list = range });
         },
-        inline else => |value_type| {
-            try reply.writeValue(ctx.writer, ref.value(value_type));
+        else => {
+            try reply.writeValue(ctx.writer, val);
         },
     }
 }

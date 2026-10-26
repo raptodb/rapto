@@ -11,7 +11,7 @@ pub const Void = void;
 pub const Integer = i64;
 pub const Decimal = f64;
 pub const String = []const u8;
-pub const Point = struct { x: f64, y: f64, z: f64 };
+pub const Point = extern struct { x: f64, y: f64, z: f64 };
 
 pub const Type = enum(u8) {
     void = 0,
@@ -61,11 +61,7 @@ pub const Scalar = union(enum) {
             .integer => |int| try writer.writeInt(i64, int, .little),
             .decimal => |d| try writer.writeInt(u64, @bitCast(d), .little),
             .string => |s| try writer.writeAll(s),
-            .point => |p| {
-                try writer.writeInt(u64, @bitCast(p.x), .little);
-                try writer.writeInt(u64, @bitCast(p.y), .little);
-                try writer.writeInt(u64, @bitCast(p.z), .little);
-            },
+            .point => |p| try writer.writeAll(std.mem.asBytes(&p)),
         }
     }
 };

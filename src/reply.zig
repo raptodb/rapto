@@ -7,11 +7,7 @@
 
 const std = @import("std");
 const frames = @import("frames.zig");
-const assert = std.debug.assert;
-
-const Value = @import("object.zig").Value;
-
-pub const ListSerializer = Value.List.Serializer;
+const value = @import("value.zig");
 
 pub const ErrorCode = enum(u8) {
     key_not_found = 0,
@@ -55,22 +51,11 @@ pub const ErrorCode = enum(u8) {
     }
 };
 
-/// Serialize to writer values that have `serializeContentToWriter` method.
-pub fn writeValue(writer: *std.Io.Writer, value: anytype) std.Io.Writer.Error!void {
-    return Value.serializeToWriter(writer, value);
+pub fn writeValue(writer: *std.Io.Writer, val: value.Union) std.Io.Writer.Error!void {
+    return val.serializeToWriter(writer);
 }
 
-/// Method to serialize error as serializing value with `serializeToWriter`.
 pub fn writeError(writer: *std.Io.Writer, err_code: ErrorCode) std.Io.Writer.Error!void {
     try writer.writeInt(u8, std.math.maxInt(u8), .little);
     try err_code.serializeToWriter(writer);
-}
-
-pub fn writeSerialized(
-    writer: *std.Io.Writer,
-    value_type: Value.Type,
-    content: []const u8,
-) std.Io.Writer.Error!void {
-    try value_type.serializeToWriter(writer);
-    return writer.writeAll(content);
 }

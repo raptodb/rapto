@@ -19,9 +19,8 @@ pub const List = struct {
     len: u64,
 
     pub fn init(content: []const u8) error{InvalidFormat}!List {
-        var reader: std.Io.Reader = .fixed(content);
-        const len = reader.takeInt(u64, .little) catch return error.InvalidFormat;
-        return .{ .wrapped_iterator = .init(reader.buffered()), .len = len };
+        const iterator: frames.IteratorType(List.Header) = .init(content);
+        return .{ .wrapped_iterator = iterator, .len = iterator.len() };
     }
 
     pub fn count(self: List) u64 {
@@ -144,14 +143,7 @@ pub const Value = union(enum) {
             .string => return .{ .string = content },
             .point => {
                 if (content.len != @sizeOf(f64) * 3) return error.InvalidFormat;
-                const x_bytes = reader.takeArray(@sizeOf(f64)) catch return error.InvalidFormat;
-                const y_bytes = reader.takeArray(@sizeOf(f64)) catch return error.InvalidFormat;
-                const z_bytes = reader.takeArray(@sizeOf(f64)) catch return error.InvalidFormat;
-                return .{ .point = .{
-                    .x = std.mem.bytesToValue(f64, x_bytes),
-                    .y = std.mem.bytesToValue(f64, y_bytes),
-                    .z = std.mem.bytesToValue(f64, z_bytes),
-                } };
+                return .{ .point = std.mem.bytesToValue(value.Point, content) };
             },
             .@"error" => {
                 const tag_int = reader.takeByte() catch return error.InvalidFormat;
