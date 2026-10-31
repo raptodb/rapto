@@ -34,6 +34,8 @@ const SearchContext = struct {
         return rapidhash.micro(key.ptr, key.len);
     }
     pub fn eql(_: @This(), key_a: []const u8, record_b: Record) bool {
+        const metadata_b = record_b.metadata();
+        if (key_a.len != metadata_b.key_len) return false;
         const key_b = record_b.key();
         return std.mem.eql(u8, key_a, key_b);
     }
