@@ -1,8 +1,0 @@
-//! Copyright 2026 Andrea Vaccaro
-//! Licensed under the Apache License, Version 2.0
-//! http://www.apache.org/licenses/LICENSE-2.0
-//!
-//! This file is part of "Rapto".
-//! It contains the implementation of collections.
-
-pub const List = @import("collection/List.zig");
