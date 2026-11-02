@@ -78,10 +78,7 @@ streams: struct {
     /// optimizes also iterator and allows efficient shrink.
     registered: std.DynamicBitSetUnmanaged,
 
-    const init: Streams = .{
-        .table = .empty,
-        .registered = .{},
-    };
+    const empty: Streams = .{ .table = .empty, .registered = .{} };
 
     fn deinit(self: *Streams, allocator: std.mem.Allocator, io: std.Io) void {
         var iter = self.iterator();
@@ -190,7 +187,7 @@ pub fn listen(allocator: std.mem.Allocator, io: std.Io, config: Config) Error!Li
         .epoll_fd = @intCast(linux.epoll_create1(linux.EPOLL.CLOEXEC)),
         .server = server,
         .events = try .init(allocator),
-        .streams = .init,
+        .streams = .empty,
     };
     // Register listener as first file descriptor.
     try self.register(allocator, .fromSocket(server_socket));
@@ -209,7 +206,7 @@ pub fn deinit(self: *Listener, allocator: std.mem.Allocator, io: std.Io) void {
 }
 
 pub const EventQueue = struct {
-    listener: *Listener,
+    listener: *const Listener,
     events: []const linux.epoll_event,
     index: u64 = 0,
 
@@ -270,7 +267,6 @@ pub fn collectEvents(
     // More events available than capacity?
     if (len == events.len) {
         @branchHint(.unlikely);
-        // More available events for next call to `collectEvents()`.
         try self.events.grow(allocator);
         events = self.events.buffered();
     }
@@ -288,17 +284,15 @@ pub const Acceptor = struct {
         allocator: std.mem.Allocator,
         io: std.Io,
     ) Acceptor.Error!?Stream {
+        const server = &self.listener.server;
         while (true) {
-            const client = Stream.nonBlockAccept(
-                io,
-                &self.listener.server,
-            ) catch |err| return switch (err) {
+            const client = Stream.nonBlockAccept(io, server) catch |err| switch (err) {
                 // Client disconnected during accept.
                 // Maybe another available client?
                 error.ConnectionAborted => continue,
                 // No other clients are available.
-                error.WouldBlock => null,
-                else => err,
+                error.WouldBlock => return null,
+                else => return err,
             };
             try self.listener.register(allocator, client);
             return client;
@@ -356,10 +350,12 @@ fn unregister(
     return self.streams.removeAssumeExists(allocator, stream_fd);
 }
 
-const EventType = enum { new_connection, disconnection, incoming_data, unknown };
-
 /// Translates lower-level event to higher-level classification.
-fn @"type"(self: Listener, event_fd: linux.fd_t, event: u32) EventType {
+fn @"type"(
+    self: *const Listener,
+    event_fd: linux.fd_t,
+    event: u32,
+) enum { new_connection, disconnection, incoming_data, unknown } {
     const EPOLL = linux.EPOLL;
     const EPOLL_ERRHUP = EPOLL.ERR | EPOLL.HUP;
     const listener_fd = self.server.socket.handle;
