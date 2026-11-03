@@ -32,42 +32,14 @@ pub fn build(b: *std.Build) void {
     mimalloc(b, exe.root_module);
     rapidhash(b, exe.root_module, target);
 
-    const unit_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/unit_tests.zig"),
-            .target = target,
-            .optimize = .debug,
-            .single_threaded = false,
-            .link_libc = true,
-        }),
-        .use_llvm = true,
-        .use_lld = true,
-    });
+    const run_unit_tests = addTest(b, b.path("src/unit_tests.zig"), target);
+    const run_integration_tests = addTest(b, b.path("src/integration_tests.zig"), target);
+    run_integration_tests.producer.?.filters = &.{"integration"};
 
-    zprof(b, unit_tests.root_module);
-    mimalloc(b, unit_tests.root_module);
-    rapidhash(b, unit_tests.root_module, target);
-
-    const run_tests = b.addRunArtifact(unit_tests);
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_tests.step);
-
-    const install_tests = b.addInstallArtifact(unit_tests, .{
-        .dest_dir = .{ .override = .bin },
-        .dest_sub_path = "test-bin",
-    });
-
-    const run_coverage = b.addSystemCommand(&.{
-        "kcov",
-        "--clean",
-        "--include-pattern=rapto/src",
-        "--exclude-line=unreachable",
-        b.pathJoin(&.{ b.root.sub_path, "zig-out", "cov" }),
-        b.pathJoin(&.{ b.root.sub_path, "zig-out", "bin", "test-bin" }),
-    });
-    run_coverage.step.dependOn(&install_tests.step);
-    const cover_step = b.step("coverage", "Generate test coverage report");
-    cover_step.dependOn(&run_coverage.step);
+    // Single step to run both unit and integration tests.
+    const test_step = b.step("test", "Run unit and integration tests");
+    test_step.dependOn(&run_unit_tests.step);
+    test_step.dependOn(&run_integration_tests.step);
 
     const lib = b.addLibrary(.{
         .name = "rapto-client",
@@ -82,6 +54,30 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(lib);
     b.installArtifact(exe);
+}
+
+fn addTest(
+    b: *std.Build,
+    path: std.Build.LazyPath,
+    target: std.Build.ResolvedTarget,
+) *std.Build.Step.Run {
+    const test_compile = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = path,
+            .target = target,
+            .optimize = .debug,
+            .single_threaded = false,
+            .link_libc = true,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+
+    zprof(b, test_compile.root_module);
+    mimalloc(b, test_compile.root_module);
+    rapidhash(b, test_compile.root_module, target);
+
+    return b.addRunArtifact(test_compile);
 }
 
 fn zprof(b: *std.Build, module: *std.Build.Module) void {
