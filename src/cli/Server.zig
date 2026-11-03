@@ -33,6 +33,17 @@ expected_keys: u32,
 /// Maybe used when clients sends big queries or batches.
 io_preserved_size: u64,
 
+pub const default: Server = .{
+    .name = "rapto",
+    .aof = false,
+    .aof_file = null,
+    .aof_sync_seconds = 1,
+    .aof_load_until = .fromNanoseconds(std.math.maxInt(i96)),
+    .address = .{ .ip4 = .loopback(7286) },
+    .expected_keys = 32 * 1024,
+    .io_preserved_size = 16 * 1024,
+};
+
 pub fn parse(args: *std.process.Args.Iterator) Server {
     var name: ?[]const u8 = null;
     var aof: bool = false;
