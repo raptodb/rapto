@@ -158,7 +158,7 @@ pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Alloc
     }
 }
 
-pub fn consumeEvent(
+fn consumeEvent(
     self: Server,
     allocator: std.mem.Allocator,
     io: std.Io,
