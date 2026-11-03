@@ -123,7 +123,20 @@ memory: *Memory,
 pipeline: *Pipeline,
 aof: ?*Aof,
 
-pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Allocator.Error!void {
+pub fn runAssumeUncancelable(
+    self: Server,
+    allocator: std.mem.Allocator,
+    io: std.Io,
+) std.mem.Allocator.Error!void {
+    self.run(allocator, io) catch |err| return switch (err) {
+        error.Canceled => unreachable,
+        error.OutOfMemory => error.OutOfMemory,
+    };
+}
+
+const RunError = std.mem.Allocator.Error || std.Io.Cancelable;
+
+pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) RunError!void {
     var running: bool = true;
     var last_flush: std.Io.Timestamp = .now(io, .awake);
 
@@ -144,6 +157,8 @@ pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Alloc
                 last_flush = now;
             }
         };
+
+        try io.checkCancel();
 
         var events = try self.listener.collectEvents(allocator);
         while (events.next()) |event| {
@@ -206,9 +221,13 @@ fn onReadable(self: Server, allocator: std.mem.Allocator, io: std.Io, stream: St
     self.pipeline.read(&reader.interface) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         error.EndOfStream => self.onDisconnect(allocator, io, stream),
-        error.ReadFailed => err: {
-            log.warn("occurred error={t} while reading batch", .{reader.err.?});
-            break :err self.onDisconnect(allocator, io, stream);
+        error.ReadFailed => err: switch (reader.err.?) {
+            // Propagate cancel to Server.run.
+            error.Canceled => io.recancel(),
+            else => {
+                log.warn("occurred error={t} while reading batch", .{reader.err.?});
+                break :err self.onDisconnect(allocator, io, stream);
+            },
         },
         error.StreamTooLong => err: {
             log.warn("occurred error={t} while reading batch", .{err});
@@ -230,9 +249,13 @@ fn onReadable(self: Server, allocator: std.mem.Allocator, io: std.Io, stream: St
     };
 
     self.pipeline.stream(&writer.interface) catch |err| return switch (err) {
-        error.WriteFailed => err: {
-            log.err("occurred error={t} while sending replies", .{writer.err.?});
-            break :err self.onDisconnect(allocator, io, stream);
+        error.WriteFailed => err: switch (writer.err.?) {
+            // Propagate cancel to Server.run.
+            error.Canceled => io.recancel(),
+            else => {
+                log.err("occurred error={t} while sending replies", .{writer.err.?});
+                break :err self.onDisconnect(allocator, io, stream);
+            },
         },
     };
 }
