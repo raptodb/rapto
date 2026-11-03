@@ -238,16 +238,9 @@ Quick run of server:
 ```sh
 ./raptodb server --name myserver
 ```
-To run unit tests:
+To run tests (unit and integration):
 ```sh
 zig build test
-```
-
-More unit tests will be available. Fuzz testing and integration will also be supported soon.
-
-To generate test coverage report:
-```sh
-zig build coverage
 ```
 
 ## Run the benchmark yourself
