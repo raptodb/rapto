@@ -30,18 +30,6 @@ key_size: u32,
 /// Value size in bytes.
 value_size: u32,
 
-pub const default: Benchmark = .{
-    .address = .{ .ip4 = .loopback(7286) },
-    .clients = 1,
-    .batch_size = 1,
-    .@"test" = "",
-    .ops = 100_000,
-    .dataset_keys = 100_000,
-    .warmup_batches = 512,
-    .key_size = 12,
-    .value_size = 3,
-};
-
 pub fn parse(args: *std.process.Args.Iterator) Benchmark {
     var address: std.Io.net.IpAddress = .{ .ip4 = .loopback(7286) };
     var clients: u32 = 1;
