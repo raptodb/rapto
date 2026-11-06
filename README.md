@@ -227,7 +227,7 @@ while (try iterator.next(io)) |keys_iter| {
 
 This will allow, in the future, once the `inspect` tool is implemented, the AOF to be compacted, modified, analyzed, and its statistics displayed. For now, we can only record and load the AOF, with the ability to load batches up to a given timestamp.
 
-## Build, testing and coverage
+## Build and testing
 
 To build and run:
 ```sh
@@ -242,6 +242,8 @@ To run tests (unit and integration):
 ```sh
 zig build test
 ```
+
+I would like to emphasize that I do not believe there is ever a point where unit tests and integration tests alone are sufficient. The goal is to include as many tests and checks as possible throughout the lifecycle of Rapto.
 
 ## Run the benchmark yourself
 
