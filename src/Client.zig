@@ -283,7 +283,7 @@ pub const Batch = struct {
     /// otherwise returns integer count of deleted keys.
     /// Skips key if locked, unless this batch owns the lock.
     pub fn del(self: *Batch, keys: []const Vec, config: DelConfig) std.mem.Allocator.Error!void {
-        const flags: Query.Flags = .{ .get = config.get };
+        const flags: Query.Flags = .{ .get = .init(config.get) };
         return self.build(.del, flags, .{keys});
     }
 
