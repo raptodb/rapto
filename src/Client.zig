@@ -103,7 +103,10 @@ pub const Batch = struct {
     pipeline: Pipeline,
     /// Queries appended but not flushed.
     pending: u64 = 0,
+
     /// For each query, sets flag `assume_lock_ownership` to true.
+    /// This can be enabled to allow fast paths on state machine,
+    /// but may be inconsistent.
     assume_lock_ownership: bool = false,
 
     pub fn deinit(self: *Batch) void {
