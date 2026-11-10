@@ -327,6 +327,8 @@ fn register(
         .data = .{ .fd = fd },
     };
 
+    try self.streams.putNoClobber(allocator, stream);
+
     const rc = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, fd, &event);
     switch (linux.errno(rc)) {
         .SUCCESS => {},
@@ -335,8 +337,6 @@ fn register(
             std.debug.panic("epoll_ctl: occurred error={t} with op=add\n", .{err});
         },
     }
-
-    try self.streams.putNoClobber(allocator, stream);
 }
 
 /// Transfer ownership to caller, responsible for closing the stream.
