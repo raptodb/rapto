@@ -26,6 +26,12 @@ test "integration" {
     var future = try io.concurrent(Server.run, .{ server, allocator, io });
     defer _ = future.cancel(io) catch {};
 
+    errdefer if (@errorReturnTrace()) |trace| {
+        // The test runner hides part of the error trace,
+        // so we print full stack trace before cleanup.
+        std.debug.dumpErrorReturnTrace(trace);
+    };
+
     // All integration tests.
     try integration.commands.run(allocator, io, server_config.address);
 }

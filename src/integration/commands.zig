@@ -10,6 +10,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const Client = @import("../Client.zig");
+const Vec = Client.Batch.Vec;
 
 pub fn run(allocator: std.mem.Allocator, io: std.Io, address: std.Io.net.IpAddress) !void {
     const client_config: Client.Config = .{ .address = address };
@@ -19,14 +20,21 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, address: std.Io.net.IpAddre
     var batch = try client.batch(allocator, .{});
     defer batch.deinit();
 
-    try basicSetGet(io, &batch);
+    const TestFn = *const fn (io: std.Io, batch: *Client.Batch) anyerror!void;
+    const test_functions: []const TestFn = &.{
+        testSetGetRoundtrip,
+    };
+    for (test_functions) |testFunc| {
+        assert(batch.pending == 0);
+        try testFunc(io, &batch);
+    }
 }
 
-pub fn basicSetGet(io: std.Io, batch: *Client.Batch) !void {
-    assert(batch.pending == 0);
+fn testSetGetRoundtrip(io: std.Io, batch: *Client.Batch) !void {
+    const key: Vec = .from("key1");
 
-    try batch.set(.from("key1"), .{ .string = "some text" }, .{});
-    try batch.get(&.{.from("key1")}, .{});
+    try batch.set(key, .{ .string = "some text" }, .{});
+    try batch.get(&.{key}, .{});
 
     const replies = try batch.flush(io);
     const r1 = try replies.at(0);
