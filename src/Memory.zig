@@ -123,10 +123,7 @@ pub fn put(
 
 pub fn remove(self: *Memory, allocator: std.mem.Allocator, ref: Ref) void {
     ref.ptr.deinit(allocator);
-    // `removeByPtr()` never modifies pointer.
-    // Fix: https://codeberg.org/ziglang/zig/pulls/37187
-    // (requested by me and merged for Zig 0.17.1)
-    self.hashset.removeByPtr(@constCast(ref.ptr));
+    self.hashset.removeByPtr(ref.ptr);
 }
 
 pub fn removeAll(self: *Memory, allocator: std.mem.Allocator) void {
