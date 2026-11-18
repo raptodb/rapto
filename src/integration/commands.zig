@@ -37,15 +37,25 @@ fn testSetGetRoundtrip(io: std.Io, batch: *Client.Batch) !void {
     try batch.get(&.{key}, .{});
 
     const replies = try batch.flush(io);
-    const r1 = try replies.at(0);
-    const r2 = try replies.at(1);
+    const r1 = try replies.peekAt(0);
+    const r2 = try replies.peekAt(1);
 
     try std.testing.expect(r1 == .none);
     try std.testing.expect(r2 == .list);
     try std.testing.expect(r2.list.count() == 1);
 
-    const r2_item1 = try r2.list.at(0);
+    const r2_item1 = try r2.list.peekAt(0);
 
-    try std.testing.expect(r2_item1 == .string);
-    try std.testing.expectEqualStrings(r2_item1.string, "some text");
+    try expectValue(.string, r2_item1, "some text");
+}
+
+fn expectValue(
+    comptime value_type: Client.value.Type,
+    actual_value: Client.reply.Value,
+    expected: anytype,
+) !void {
+    const actual_type = actual_value.type() orelse return error.TestExpectedEqual;
+    try std.testing.expect(actual_type == value_type);
+    const value_field = @field(actual_value, @tagName(value_type));
+    try std.testing.expectEqualStrings(value_field, expected);
 }

@@ -66,14 +66,14 @@ try batch.set(.from("x"), .{ .string = "rapto" }, .{});
 try batch.add(.from("last_updated_x"), .{ .integer = 1 });
 
 var replies = try batch.flush(io);
-while (try replies.next()) |value| assert(value != .@"error");
+while (try replies.take()) |value| assert(value != .@"error");
 ```
 
 Now that we have introduced **batch**, we can derive from this primitive to structures such as `Cursor`, to perform efficient scans (but potentially inconsistent), and `Lock`, to build operations such as **CAS**.
 
 ```zig
 try batch.count(.{});
-const total_keys = try batch.flushOneExpect(io, .integer);
+const total_keys = try batch.flushOneAs(io, .integer);
 
 const cursor = batch.cursor();
 var iterator = cursor.keysIterator(
@@ -97,8 +97,8 @@ defer _ = lock.unlock(io) catch {};
 
 const money = blk: {
     try lock.batch.get(&.{.from("wallet:01")}, .{});
-    const list = try lock.batch.flushOneExpect(io, .list);
-    break :blk list.atExpect(0, .decimal);
+    const list = try lock.batch.flushOneAs(io, .list);
+    break :blk list.peekAtAs(0, .decimal);
 };
 
 // At this point, no client can modify "wallet:01".
@@ -184,11 +184,11 @@ try batch.get(&.{
     .join(&.{ store_name, ":earnings" }),
     .join(&.{ store_name, ":coordinates" }),
 }, .{});
-const replies = try batch.flush(io);
+const values = try batch.flushOneAs(io, .list);
 
-const name = try replies.atExpect(0, .string);
-const earnings = try replies.atExpect(1, .decimal);
-const coordinates = try replies.atExpect(2, .point);
+const name = try values.peekAtAs(0, .string);
+const earnings = try values.peekAtAs(1, .decimal);
+const coordinates = try values.peekAtAs(2, .point);
 ```
 
 ```zig
@@ -198,7 +198,7 @@ var write_batch = try client.batch(allocator, .{});
 defer write_batch.deinit();
 
 try read_batch.count(.{});
-const total_keys = try read_batch.flushOneExpect(io, .integer);
+const total_keys = try read_batch.flushOneAs(io, .integer);
 
 const cursor = read_batch.cursor();
 var iterator = cursor.keysIterator(
@@ -209,7 +209,7 @@ var iterator = cursor.keysIterator(
 
 while (try iterator.next(io)) |keys_iter| {
     var keys = keys_iter;
-    while (try keys.nextExpect(.string)) |key| {
+    while (try keys.takeAs(.string)) |key| {
         const new_key: []u8 = try allocator.alloc(u8, key.len);
         defer allocator.free(new_key);
 

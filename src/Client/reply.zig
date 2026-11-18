@@ -27,35 +27,34 @@ pub const List = struct {
         return self.len;
     }
 
-    pub fn next(self: *List) Value.DeserializeError!?Value {
+    pub fn take(self: *List) Value.DeserializeError!?Value {
         const serialized = self.wrapped_iterator.next() orelse return null;
         return try .deserialize(serialized);
     }
 
-    /// Typed `next()`.
-    pub fn nextExpect(
+    pub fn takeAs(
         self: *List,
         comptime value_type: value.Type,
-    ) Value.DeserializeError!?Value.FieldType(value_type) {
-        const next_value = try self.next() orelse return null;
-        assert(next_value.type() == value_type);
+    ) (Value.DeserializeError || error{UnexpectedType})!?Value.FieldType(value_type) {
+        const next_value = try self.take() orelse return null;
+        if (next_value.type() != value_type) return error.UnexpectedType;
         return @field(next_value, @tagName(value_type));
     }
 
     /// Retrieve scalar from index, assuming it is in bounds.
-    pub fn at(self: List, index: u32) Value.DeserializeError!Value {
+    pub fn peekAt(self: List, index: u32) Value.DeserializeError!Value {
         const serialized = self.wrapped_iterator.at(index);
         return .deserialize(serialized);
     }
 
     /// Retrieve typed scalar from index, assuming it is in bounds.
-    pub fn atExpect(
+    pub fn peekAtAs(
         self: List,
         index: u32,
         comptime value_type: value.Type,
-    ) Value.DeserializeError!Value.FieldType(value_type) {
-        const value_at = try self.at(index);
-        assert(value_at.type() == value_type);
+    ) (Value.DeserializeError || error{UnexpectedType})!Value.FieldType(value_type) {
+        const value_at = try self.peekAt(index);
+        if (value_at.type() != value_type) return error.UnexpectedType;
         return @field(value_at, @tagName(value_type));
     }
 
@@ -67,7 +66,7 @@ pub const List = struct {
         var iterator = self;
         try writer.print("list:{d}->[", .{iterator.len});
         var i: u64 = 0;
-        while (iterator.next() catch return error.WriteFailed) |s| : (i += 1) {
+        while (iterator.take() catch return error.WriteFailed) |s| : (i += 1) {
             if (i != 0) try writer.writeByte(' ');
             try writer.print("{f}", .{s});
         }
@@ -228,35 +227,34 @@ pub const Iterator = struct {
         return self.wrapped_iterator.frames;
     }
 
-    pub fn next(self: *Iterator) Value.DeserializeError!?Value {
+    pub fn take(self: *Iterator) Value.DeserializeError!?Value {
         const serialized = self.wrapped_iterator.next() orelse return null;
         return try .deserialize(serialized);
     }
 
-    /// Typed `next()`.
-    pub fn nextExpect(
+    pub fn takeAs(
         self: *Iterator,
         comptime value_type: value.Type,
-    ) Value.DeserializeError!?Value.FieldType(value_type) {
-        const next_value = try self.next() orelse return null;
-        assert(next_value.type() == value_type);
+    ) (Value.DeserializeError || error{UnexpectedType})!?Value.FieldType(value_type) {
+        const next_value = try self.take() orelse return null;
+        if (next_value.type() != value_type) return error.UnexpectedType;
         return @field(next_value, @tagName(value_type));
     }
 
-    /// Retrieve value from index, assuming it is in bounds.
-    pub fn at(self: Iterator, index: u32) Value.DeserializeError!Value {
+    /// Retrieve scalar from index, assuming it is in bounds.
+    pub fn peekAt(self: Iterator, index: u32) Value.DeserializeError!Value {
         const serialized = self.wrapped_iterator.at(index);
         return .deserialize(serialized);
     }
 
-    /// Retrieve typed value from index, assuming it is in bounds.
-    pub fn atExpect(
+    /// Retrieve typed scalar from index, assuming it is in bounds.
+    pub fn peekAtAs(
         self: Iterator,
         index: u32,
         comptime value_type: value.Type,
-    ) Value.DeserializeError!Value.FieldType(value_type) {
-        const value_at = try self.at(index);
-        assert(value_at.type() == value_type);
+    ) (Value.DeserializeError || error{UnexpectedType})!Value.FieldType(value_type) {
+        const value_at = try self.peekAt(index);
+        if (value_at.type() != value_type) return error.UnexpectedType;
         return @field(value_at, @tagName(value_type));
     }
 };

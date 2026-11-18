@@ -157,19 +157,21 @@ pub const Batch = struct {
         assert(self.pending == 1);
         const rvs = try self.flush(io);
         assert(rvs.len == 1 and self.pending == 0);
-        return rvs.at(0);
+        return rvs.peekAt(0);
     }
 
-    /// As `flushOne()` but typed, assuming one pending query.
+    pub const FlushOneAsError = FlushOneError || error{UnexpectedType};
+
+    /// As `flushOne()` but typed, assuming one queued query.
     /// Not thread-safe between `Client`.
     /// The return value of last flush, will be invalidated.
-    pub fn flushOneExpect(
+    pub fn flushOneAs(
         self: *Batch,
         io: std.Io,
         comptime value_type: value.Type,
-    ) FlushOneError!reply.Value.FieldType(value_type) {
+    ) FlushOneAsError!reply.Value.FieldType(value_type) {
         const r = try self.flushOne(io);
-        assert(r.type() == value_type);
+        if (r.type() != value_type) return error.UnexpectedType;
         return @field(r, @tagName(value_type));
     }
 
