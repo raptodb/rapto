@@ -695,7 +695,7 @@ pub const Cursor = struct {
                 };
                 try self.queryFn(&self.ctx, self.b, config);
 
-                const res = try self.b.flushOneExpect(io, .integer);
+                const res = try self.b.flushOneAs(io, .integer);
 
                 self.cursor = @min(self.cursor +| self.count, self.max_cursor);
                 return res;
