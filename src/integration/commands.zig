@@ -25,7 +25,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, address: std.Io.net.IpAddre
         testSetGetRoundtrip,
     };
     for (test_functions) |testFunc| {
-        assert(batch.pending == 0);
+        assert(batch.queued == 0);
         try testFunc(io, &batch);
     }
 }

@@ -217,7 +217,9 @@ while (try iterator.next(io)) |keys_iter| {
         try write_batch.rename(.from(key), .from(new_key), .{});
     }
 
-    _ = try write_batch.flush(io);
+    if (write_batch.queued != 0) {
+        _ = try write_batch.flush(io);
+    }
 }
 ```
 

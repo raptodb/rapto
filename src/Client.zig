@@ -102,7 +102,7 @@ pub const Batch = struct {
     client: Client,
     pipeline: Pipeline,
     /// Queries appended but not flushed.
-    pending: u64 = 0,
+    queued: u64 = 0,
 
     /// For each query, sets flag `assume_lock_ownership` to true.
     /// This can be enabled to allow fast paths on state machine,
@@ -120,8 +120,8 @@ pub const Batch = struct {
     /// After flushing, returns replies pipeline. Not thread-safe.
     /// The return values of last flush, will be invalidated.
     pub fn flush(self: *Batch, io: std.Io) FlushError!reply.Iterator {
-        assert(self.pending != 0);
-        const pending_before_stream = self.pending;
+        assert(self.queued != 0);
+        const queued_before_stream = self.queued;
 
         var reader = self.client.stream.reader(io);
         var writer = self.client.stream.writer(io);
@@ -129,8 +129,8 @@ pub const Batch = struct {
         self.pipeline.stream(&writer.interface) catch |err| return switch (err) {
             error.WriteFailed => writer.err.?,
         };
-        // All pending queries were drained.
-        self.pending = 0;
+        // All queued queries were drained.
+        self.queued = 0;
 
         self.pipeline.read(&reader.interface) catch |err| return switch (err) {
             error.OutOfMemory, error.EndOfStream => |e| e,
@@ -144,19 +144,19 @@ pub const Batch = struct {
         };
 
         const replies: reply.Iterator = .init(self.pipeline.take());
-        assert(pending_before_stream == replies.len);
+        assert(queued_before_stream == replies.len);
 
         return replies;
     }
 
     pub const FlushOneError = FlushError || reply.Value.DeserializeError;
 
-    /// As `flush()`, assuming one pending query. Not thread-safe between `Client`.
+    /// As `flush()`, assuming one queued query. Not thread-safe between `Client`.
     /// The return value of last flush, will be invalidated.
     pub fn flushOne(self: *Batch, io: std.Io) FlushOneError!reply.Value {
-        assert(self.pending == 1);
+        assert(self.queued == 1);
         const rvs = try self.flush(io);
-        assert(rvs.len == 1 and self.pending == 0);
+        assert(rvs.len == 1 and self.queued == 0);
         return rvs.peekAt(0);
     }
 
@@ -207,7 +207,7 @@ pub const Batch = struct {
             }
         }
 
-        self.pending += 1;
+        self.queued += 1;
     }
 
     /// Range of relative indexes.
@@ -490,7 +490,7 @@ pub const Batch = struct {
     /// Tries to lock atomically keys until `unlock`. If any key is
     /// already locked, it fails throwing error.Locked.
     /// Initializes lock instance that assumes all queries appended do not include
-    /// non-owned keys or locked keys by others. Initialization assumes no pending
+    /// non-owned keys or locked keys by others. Initialization assumes no queued
     /// queries. Ownership will be transfered to caller, responsible of `unlock()`.
     ///
     /// After this call, the batch used to perform lock operations can be accessed
@@ -506,7 +506,7 @@ pub const Batch = struct {
     }
 
     /// As `lock`, but keys are locked/unlocked by searching keys
-    /// with glob patterns. Initialization assumes no pending queries.
+    /// with glob patterns. Initialization assumes no queued queries.
     /// Ownership will be transfered to caller, responsible of `unlock()`.
     ///
     /// After this call, the batch used to perform lock operations can be accessed
@@ -523,7 +523,7 @@ pub const Batch = struct {
 
     /// Cursor is used by iterative operations, so `flush()`
     /// is handled automatically. Iterative function `next()` of cursor,
-    /// asserts no pending queries and invalidates last return values
+    /// asserts no queued queries and invalidates last return values
     /// from `flush()` or `next()`. Does not take ownership.
     pub fn cursor(self: *Batch) Cursor {
         return .{ .b = self };
@@ -567,7 +567,7 @@ pub const Lock = struct {
         keys: Keys,
         config: Lock.Config,
     ) Lock.Error!Lock {
-        assert(b.pending == 0);
+        assert(b.queued == 0);
 
         var lock_instance: Lock = undefined;
         lock_instance.b = b;
@@ -604,10 +604,10 @@ pub const Lock = struct {
     }
 
     /// Unlocks all locked keys/patterns. This call flushes query.
-    /// Assumes no pending queries from all two batches.
+    /// Assumes no queued queries from all two batches.
     pub fn unlock(self: *Lock, io: std.Io) Batch.FlushOneError!void {
         assert(self.locked);
-        assert(self.b.pending == 0 and self.batch.pending == 0);
+        assert(self.b.queued == 0 and self.batch.queued == 0);
 
         switch (self.keys) {
             .literals => |l| try self.b.build(.unlock, .{}, .{l}),
@@ -645,7 +645,7 @@ pub const Cursor = struct {
             max_cursor: u64,
 
             pub fn next(self: *Self, io: std.Io) Batch.FlushOneError!?reply.List {
-                assert(self.b.pending == 0);
+                assert(self.b.queued == 0);
                 while (self.cursor != self.max_cursor) {
                     const config: Batch.MatchingCursorConfig = .{
                         .limit = .init(self.count),
@@ -683,7 +683,7 @@ pub const Cursor = struct {
             max_cursor: u64,
 
             pub fn next(self: *Self, io: std.Io) Batch.FlushOneError!?i64 {
-                assert(self.b.pending == 0);
+                assert(self.b.queued == 0);
 
                 if (self.cursor >= self.max_cursor) return null;
                 assert(self.count != 0);
