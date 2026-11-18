@@ -494,7 +494,7 @@ pub const Batch = struct {
     /// queries. Ownership will be transfered to caller, responsible of `unlock()`.
     ///
     /// After this call, the batch used to perform lock operations can be accessed
-    /// directly from Lock.batch, not responsible of `deinit()`.
+    /// directly from `Lock.batch`, not responsible of `deinit()`.
     pub fn lock(
         self: *Batch,
         allocator: std.mem.Allocator,
@@ -510,7 +510,7 @@ pub const Batch = struct {
     /// Ownership will be transfered to caller, responsible of `unlock()`.
     ///
     /// After this call, the batch used to perform lock operations can be accessed
-    /// directly from Lock.batch, not responsible of `deinit()`.
+    /// directly from `Lock.batch`, not responsible of `deinit()`.
     pub fn lockMatching(
         self: *Batch,
         allocator: std.mem.Allocator,
@@ -545,20 +545,20 @@ pub const Lock = struct {
         max_pipeline_bytes: u64 = std.math.maxInt(u32),
     };
 
-    pub const Error = Batch.FlushOneError || error{ Locked, KeyNotFound };
-
-    /// Likely to be accessed directly. This batch sets
-    /// by default `assume_lock_ownership` to true.
-    batch: Batch,
-
-    b: *Batch,
-    locked: bool,
-    keys: Keys,
-
     const Keys = union(enum) {
         literals: []const Batch.Vec,
         glob_patterns: []const Batch.Vec,
     };
+
+    /// Likely to be accessed directly. This batch sets
+    /// by default `assume_lock_ownership` to true.
+    batch: Batch,
+    state: enum { locked, unlocked },
+
+    b: *Batch,
+    keys: Keys,
+
+    pub const Error = Batch.FlushOneError || error{ Locked, KeyNotFound };
 
     fn lock(
         b: *Batch,
@@ -572,6 +572,7 @@ pub const Lock = struct {
         var lock_instance: Lock = undefined;
         lock_instance.b = b;
         lock_instance.keys = keys;
+        lock_instance.state = .unlocked;
 
         const batch_config: Batch.Config = .{
             .pipeline_preserved_size = config.batch_pipeline_preserved_size,
@@ -596,7 +597,7 @@ pub const Lock = struct {
                 else => unreachable,
             },
             .none => blk: {
-                lock_instance.locked = true;
+                lock_instance.state = .locked;
                 break :blk lock_instance;
             },
             else => unreachable,
@@ -606,7 +607,7 @@ pub const Lock = struct {
     /// Unlocks all locked keys/patterns. This call flushes query.
     /// Assumes no queued queries from all two batches.
     pub fn unlock(self: *Lock, io: std.Io) Batch.FlushOneError!void {
-        assert(self.locked);
+        assert(self.state == .locked);
         assert(self.b.queued == 0 and self.batch.queued == 0);
 
         switch (self.keys) {
@@ -619,7 +620,7 @@ pub const Lock = struct {
 
         self.batch.deinit();
         // In this line flush has succeeded.
-        self.locked = false;
+        self.state = .unlocked;
         self.b.assume_lock_ownership = false;
     }
 };
