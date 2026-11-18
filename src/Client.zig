@@ -149,7 +149,7 @@ pub const Batch = struct {
         return replies;
     }
 
-    pub const FlushOneError = FlushError || reply.Value.DeserializeError;
+    pub const FlushOneError = FlushError || reply.Iterator.AccessError;
 
     /// As `flush()`, assuming one queued query. Not thread-safe between `Client`.
     /// The return value of last flush, will be invalidated.
@@ -160,7 +160,7 @@ pub const Batch = struct {
         return rvs.peekAt(0);
     }
 
-    pub const FlushOneAsError = FlushOneError || error{UnexpectedType};
+    pub const FlushOneAsError = FlushError || reply.Iterator.AccessAsError;
 
     /// As `flushOne()` but typed, assuming one queued query.
     /// Not thread-safe between `Client`.

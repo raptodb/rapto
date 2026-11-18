@@ -15,6 +15,9 @@ const Pipeline = @import("../Pipeline.zig");
 pub const List = struct {
     const Header = u32;
 
+    pub const AccessError = Value.DeserializeError;
+    pub const AccessAsError = AccessError || error{UnexpectedType};
+
     wrapped_iterator: frames.IteratorType(List.Header),
     len: u64,
 
@@ -27,7 +30,7 @@ pub const List = struct {
         return self.len;
     }
 
-    pub fn take(self: *List) Value.DeserializeError!?Value {
+    pub fn take(self: *List) AccessError!?Value {
         const serialized = self.wrapped_iterator.next() orelse return null;
         return try .deserialize(serialized);
     }
@@ -35,14 +38,14 @@ pub const List = struct {
     pub fn takeAs(
         self: *List,
         comptime value_type: value.Type,
-    ) (Value.DeserializeError || error{UnexpectedType})!?Value.FieldType(value_type) {
+    ) AccessAsError!?Value.FieldType(value_type) {
         const next_value = try self.take() orelse return null;
         if (next_value.type() != value_type) return error.UnexpectedType;
         return @field(next_value, @tagName(value_type));
     }
 
     /// Retrieve scalar from index, assuming it is in bounds.
-    pub fn peekAt(self: List, index: u32) Value.DeserializeError!Value {
+    pub fn peekAt(self: List, index: u32) AccessError!Value {
         const serialized = self.wrapped_iterator.at(index);
         return .deserialize(serialized);
     }
@@ -52,7 +55,7 @@ pub const List = struct {
         self: List,
         index: u32,
         comptime value_type: value.Type,
-    ) (Value.DeserializeError || error{UnexpectedType})!Value.FieldType(value_type) {
+    ) AccessAsError!Value.FieldType(value_type) {
         const value_at = try self.peekAt(index);
         if (value_at.type() != value_type) return error.UnexpectedType;
         return @field(value_at, @tagName(value_type));
@@ -214,6 +217,9 @@ test "scalar serialize and deserialize" {
 }
 
 pub const Iterator = struct {
+    pub const AccessError = Value.DeserializeError;
+    pub const AccessAsError = AccessError || error{UnexpectedType};
+
     wrapped_iterator: frames.IteratorType(Pipeline.FrameHeader),
     /// Likely to be accessed directly.
     len: u32,
@@ -227,7 +233,7 @@ pub const Iterator = struct {
         return self.wrapped_iterator.frames;
     }
 
-    pub fn take(self: *Iterator) Value.DeserializeError!?Value {
+    pub fn take(self: *Iterator) AccessError!?Value {
         const serialized = self.wrapped_iterator.next() orelse return null;
         return try .deserialize(serialized);
     }
@@ -235,14 +241,14 @@ pub const Iterator = struct {
     pub fn takeAs(
         self: *Iterator,
         comptime value_type: value.Type,
-    ) (Value.DeserializeError || error{UnexpectedType})!?Value.FieldType(value_type) {
+    ) AccessAsError!?Value.FieldType(value_type) {
         const next_value = try self.take() orelse return null;
         if (next_value.type() != value_type) return error.UnexpectedType;
         return @field(next_value, @tagName(value_type));
     }
 
     /// Retrieve scalar from index, assuming it is in bounds.
-    pub fn peekAt(self: Iterator, index: u32) Value.DeserializeError!Value {
+    pub fn peekAt(self: Iterator, index: u32) AccessError!Value {
         const serialized = self.wrapped_iterator.at(index);
         return .deserialize(serialized);
     }
@@ -252,7 +258,7 @@ pub const Iterator = struct {
         self: Iterator,
         index: u32,
         comptime value_type: value.Type,
-    ) (Value.DeserializeError || error{UnexpectedType})!Value.FieldType(value_type) {
+    ) AccessAsError!Value.FieldType(value_type) {
         const value_at = try self.peekAt(index);
         if (value_at.type() != value_type) return error.UnexpectedType;
         return @field(value_at, @tagName(value_type));
