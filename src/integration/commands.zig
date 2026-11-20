@@ -29,6 +29,10 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, address: std.Io.net.IpAddre
     for (test_functions) |testFunc| {
         assert(batch.queued == 0);
         try testFunc(io, &batch);
+
+        // Cleanup dataset after test.
+        batch.purge();
+        _ = try batch.flushOneAs(io, .void);
     }
 }
 
