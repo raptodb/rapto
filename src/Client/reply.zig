@@ -111,7 +111,6 @@ pub const Value = union(enum) {
     point: value.Point,
     @"error": ErrorCode,
     list: List,
-    none,
 
     pub fn FieldType(comptime from_type: value.Type) type {
         return switch (from_type) {
@@ -127,7 +126,7 @@ pub const Value = union(enum) {
 
     pub fn deserialize(serialized: []const u8) DeserializeError!Value {
         const value_type, const content = splitSerialized(serialized) catch
-            return .none;
+            return .void;
         const tag = value.Type.fromInt(value_type) orelse return error.UnknownType;
 
         var reader: std.Io.Reader = .fixed(content);
@@ -168,7 +167,7 @@ pub const Value = union(enum) {
 
         try writer.print("{t}", .{self});
         switch (self) {
-            .void, .none => {},
+            .void => {},
             inline else => {
                 try writer.writeByte('(');
                 switch (self) {
@@ -177,7 +176,7 @@ pub const Value = union(enum) {
                     .point => |p| try writer.print("x={d} y={d} z={d}", .{ p.x, p.y, p.z }),
                     .@"error" => |e| try writer.writeAll(@tagName(e)),
                     // Handled earlier.
-                    .list, .void, .none => unreachable,
+                    .list, .void => unreachable,
                 }
                 try writer.writeAll(")");
             },

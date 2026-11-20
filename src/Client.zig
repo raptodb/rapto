@@ -596,7 +596,7 @@ pub const Lock = struct {
                 .key_not_found => error.KeyNotFound,
                 else => unreachable,
             },
-            .none => blk: {
+            .void => blk: {
                 lock_instance.state = .locked;
                 break :blk lock_instance;
             },

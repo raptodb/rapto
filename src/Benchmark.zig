@@ -368,7 +368,7 @@ fn loadDataset(
 
         var replies = try batch.flush(self.io);
         while (replies.take() catch continue) |reply| {
-            if (reply != .none) continue;
+            if (reply != .void) continue;
             load_count += 1;
         }
     }
