@@ -10,6 +10,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const Client = @import("../Client.zig");
+
+const value = Client.value;
 const Vec = Client.Batch.Vec;
 
 pub fn run(allocator: std.mem.Allocator, io: std.Io, address: std.Io.net.IpAddress) !void {
@@ -31,22 +33,44 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, address: std.Io.net.IpAddre
 }
 
 fn testSetGetRoundtrip(io: std.Io, batch: *Client.Batch) !void {
-    const key: Vec = .from("key1");
+    {
+        const key: Vec = .from("key1");
+        const content: value.Scalar = .{ .string = "content for key1" };
 
-    try batch.set(key, .{ .string = "some text" }, .{});
-    try batch.get(&.{key}, .{});
+        try batch.set(key, content, .{});
+        try batch.get(&.{key}, .{});
+        const replies = try batch.flush(io);
 
-    const replies = try batch.flush(io);
-    const r1 = try replies.peekAt(0);
-    const r2 = try replies.peekAt(1);
+        // Check if set was successful.
+        _ = try replies.peekAtAs(0, .void);
 
-    try std.testing.expect(r1 == .none);
-    try std.testing.expect(r2 == .list);
-    try std.testing.expect(r2.list.count() == 1);
+        const get_result = try replies.peekAtAs(1, .list);
+        try std.testing.expect(get_result.count() == 1);
 
-    const r2_item1 = try r2.list.peekAt(0);
+        try expectValue(.string, try get_result.peekAt(0), content.string);
+    }
+    {
+        const key: Vec = .from("key100");
+        const long_key: Vec = .from(&@as([255]u8, @splat('a')));
+        const short_key: Vec = .from("a");
 
-    try expectValue(.string, r2_item1, "some text");
+        const dummy_content: value.Scalar = .{ .string = "dummy content" };
+
+        try batch.set(key, dummy_content, .{});
+        try batch.set(long_key, dummy_content, .{});
+        try batch.set(short_key, dummy_content, .{});
+        var set_result = try batch.flush(io);
+        // Check if sets were successful.
+        while (try set_result.takeAs(.void)) |_| {}
+
+        try batch.get(&.{ key, long_key, short_key }, .{});
+        var get_result = try batch.flushOneAs(io, .list);
+
+        try std.testing.expect(get_result.count() == 3);
+        while (try get_result.take()) |v| {
+            try expectValue(.string, v, dummy_content.string);
+        }
+    }
 }
 
 fn expectValue(
