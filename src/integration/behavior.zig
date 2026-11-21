@@ -4,7 +4,7 @@
 //!
 //! This file is part of "Rapto".
 //! It contains the implementation of integration test
-//! about basic commands.
+//! about behavior of commands.
 
 const std = @import("std");
 const assert = std.debug.assert;

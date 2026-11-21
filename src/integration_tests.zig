@@ -9,7 +9,7 @@ const std = @import("std");
 const cli = @import("cli.zig");
 const assert = std.debug.assert;
 const integration = .{
-    .commands = @import("integration/commands.zig"),
+    .behavior = @import("integration/behavior.zig"),
 };
 
 const Server = @import("Server.zig");
@@ -33,7 +33,7 @@ test "integration" {
     };
 
     // All integration tests.
-    try integration.commands.run(allocator, io, server_config.address);
+    try integration.behavior.run(allocator, io, server_config.address);
 
     {
         const client_config: Client.Config = .{ .address = server_config.address };
