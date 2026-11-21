@@ -1,7 +1,7 @@
 .{
     .name = .rapto,
     .version = "0.1.0-dev",
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .mimalloc = .{
             .url = "git+https://github.com/microsoft/mimalloc.git#fc1e2acbced0b3e893da1a1375e02ac159d0423f",
