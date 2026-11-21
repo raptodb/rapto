@@ -121,7 +121,7 @@ fn commandServer(
 
     log.info("server is LISTENING...", .{});
     const server = context.server();
-    try server.runAssumeUncancelable(allocator, io);
+    try server.run(allocator, io);
 
     return true;
 }

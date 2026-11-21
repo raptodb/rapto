@@ -13,6 +13,7 @@ const integration = .{
 };
 
 const Server = @import("Server.zig");
+const Client = @import("Client.zig");
 
 test "integration" {
     const allocator, const io = .{ std.testing.allocator, std.testing.io };
@@ -22,9 +23,8 @@ test "integration" {
     defer context.deinit(allocator, io);
     const server = context.server();
 
-    assert(server.config.aof_sync_seconds > 0);
     var future = try io.concurrent(Server.run, .{ server, allocator, io });
-    defer _ = future.cancel(io) catch {};
+    defer _ = future.cancel(io) catch unreachable;
 
     errdefer if (@errorReturnTrace()) |trace| {
         // The test runner hides part of the error trace,
@@ -34,4 +34,17 @@ test "integration" {
 
     // All integration tests.
     try integration.commands.run(allocator, io, server_config.address);
+
+    {
+        const client_config: Client.Config = .{ .address = server_config.address };
+        var client: Client = try .open(io, client_config);
+        defer client.close(io);
+
+        var batch = try client.batch(allocator, .{ .pipeline_preserved_size = 64 });
+        defer batch.deinit();
+
+        // Procedure to shutdown server.
+        try batch.down();
+        _ = try batch.flushOneAs(io, .void);
+    }
 }

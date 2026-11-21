@@ -123,20 +123,7 @@ memory: *Memory,
 pipeline: *Pipeline,
 aof: ?*Aof,
 
-pub fn runAssumeUncancelable(
-    self: Server,
-    allocator: std.mem.Allocator,
-    io: std.Io,
-) std.mem.Allocator.Error!void {
-    self.run(allocator, io) catch |err| return switch (err) {
-        error.Canceled => unreachable,
-        error.OutOfMemory => error.OutOfMemory,
-    };
-}
-
-const RunError = std.mem.Allocator.Error || std.Io.Cancelable;
-
-pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) RunError!void {
+pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) std.mem.Allocator.Error!void {
     var running: bool = true;
     var last_flush: std.Io.Timestamp = .now(io, .awake);
 
@@ -157,8 +144,6 @@ pub fn run(self: Server, allocator: std.mem.Allocator, io: std.Io) RunError!void
                 last_flush = now;
             }
         };
-
-        try io.checkCancel();
 
         var events = try self.listener.collectEvents(allocator);
         while (events.next()) |event| {
@@ -240,11 +225,12 @@ fn onReadable(self: Server, allocator: std.mem.Allocator, io: std.Io, stream: St
         try aof.append(pipeline_timestamp, self.pipeline.peek());
     }
 
-    self.execute(allocator) catch |err| return switch (err) {
-        error.OutOfMemory => error.OutOfMemory,
-        error.Shutdown => err: {
+    var shutdown: bool = false;
+    self.execute(allocator) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.Shutdown => {
+            shutdown = true;
             log.info("shutdown requested by {f}", .{stream.address()});
-            break :err error.Shutdown;
         },
     };
 
@@ -258,6 +244,8 @@ fn onReadable(self: Server, allocator: std.mem.Allocator, io: std.Io, stream: St
             },
         },
     };
+
+    if (shutdown) return error.Shutdown;
 }
 
 fn execute(self: Server, allocator: std.mem.Allocator) Error!void {

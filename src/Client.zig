@@ -253,7 +253,7 @@ pub const Batch = struct {
         return self.build(.ping, .{}, .{});
     }
 
-    /// Signals server shutdown. Server will not process any query after.
+    /// Signals server shutdown. If it was successful, void is returned.
     /// If AOF is enabled, before shutdown saves all queued queries until this.
     pub fn down(self: *Batch) std.mem.Allocator.Error!void {
         return self.build(.down, .{}, .{});
